@@ -1,6 +1,10 @@
 PODS:
   - audio_session (0.0.1):
     - Flutter
+  - cloud_functions (6.3.5):
+    - Firebase/Functions (= 12.15.0)
+    - firebase_core
+    - Flutter
   - DKImagePickerController/Core (4.3.9):
     - DKImagePickerController/ImageDataManager
     - DKImagePickerController/Resource
@@ -40,7 +44,44 @@ PODS:
   - file_picker (0.0.1):
     - DKImagePickerController/PhotoGallery
     - Flutter
+  - Firebase/CoreOnly (12.15.0):
+    - FirebaseCore (~> 12.15.0)
+  - Firebase/Functions (12.15.0):
+    - Firebase/CoreOnly
+    - FirebaseFunctions (~> 12.15.0)
+  - firebase_core (4.12.1):
+    - Firebase/CoreOnly (= 12.15.0)
+    - Flutter
+  - FirebaseAppCheckInterop (12.15.0)
+  - FirebaseAuthInterop (12.15.0)
+  - FirebaseCore (12.15.0):
+    - FirebaseCoreInternal (~> 12.15.0)
+    - GoogleUtilities/Environment (~> 8.1)
+    - GoogleUtilities/Logger (~> 8.1)
+  - FirebaseCoreExtension (12.15.0):
+    - FirebaseCore (~> 12.15.0)
+  - FirebaseCoreInternal (12.15.0):
+    - "GoogleUtilities/NSData+zlib (~> 8.1)"
+  - FirebaseFunctions (12.15.0):
+    - FirebaseAppCheckInterop (~> 12.15.0)
+    - FirebaseAuthInterop (~> 12.15.0)
+    - FirebaseCore (~> 12.15.0)
+    - FirebaseCoreExtension (~> 12.15.0)
+    - FirebaseMessagingInterop (~> 12.15.0)
+    - FirebaseSharedSwift (~> 12.15.0)
+    - GTMSessionFetcher/Core (< 6.0, >= 3.4)
+  - FirebaseMessagingInterop (12.15.0)
+  - FirebaseSharedSwift (12.15.0)
   - Flutter (1.0.0)
+  - GoogleUtilities/Environment (8.1.2):
+    - GoogleUtilities/Privacy
+  - GoogleUtilities/Logger (8.1.2):
+    - GoogleUtilities/Environment
+    - GoogleUtilities/Privacy
+  - "GoogleUtilities/NSData+zlib (8.1.2)":
+    - GoogleUtilities/Privacy
+  - GoogleUtilities/Privacy (8.1.2)
+  - GTMSessionFetcher/Core (5.3.0)
   - just_audio (0.0.1):
     - Flutter
     - FlutterMacOS
@@ -53,8 +94,10 @@ PODS:
 
 DEPENDENCIES:
   - audio_session (from `.symlinks/plugins/audio_session/ios`)
+  - cloud_functions (from `.symlinks/plugins/cloud_functions/ios`)
   - ffmpeg_kit_flutter_new_min (from `.symlinks/plugins/ffmpeg_kit_flutter_new_min/ios`)
   - file_picker (from `.symlinks/plugins/file_picker/ios`)
+  - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
   - Flutter (from `Flutter`)
   - just_audio (from `.symlinks/plugins/just_audio/darwin`)
   - whisper_ggml (from `.symlinks/plugins/whisper_ggml/ios`)
@@ -63,16 +106,31 @@ SPEC REPOS:
   trunk:
     - DKImagePickerController
     - DKPhotoGallery
+    - Firebase
+    - FirebaseAppCheckInterop
+    - FirebaseAuthInterop
+    - FirebaseCore
+    - FirebaseCoreExtension
+    - FirebaseCoreInternal
+    - FirebaseFunctions
+    - FirebaseMessagingInterop
+    - FirebaseSharedSwift
+    - GoogleUtilities
+    - GTMSessionFetcher
     - SDWebImage
     - SwiftyGif
 
 EXTERNAL SOURCES:
   audio_session:
     :path: ".symlinks/plugins/audio_session/ios"
+  cloud_functions:
+    :path: ".symlinks/plugins/cloud_functions/ios"
   ffmpeg_kit_flutter_new_min:
     :path: ".symlinks/plugins/ffmpeg_kit_flutter_new_min/ios"
   file_picker:
     :path: ".symlinks/plugins/file_picker/ios"
+  firebase_core:
+    :path: ".symlinks/plugins/firebase_core/ios"
   Flutter:
     :path: Flutter
   just_audio:
@@ -82,11 +140,24 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   audio_session: 9bb7f6c970f21241b19f5a3658097ae459681ba0
+  cloud_functions: 87096942a5fc49359e6b3e8f011c044142c32b09
   DKImagePickerController: 946cec48c7873164274ecc4624d19e3da4c1ef3c
   DKPhotoGallery: b3834fecb755ee09a593d7c9e389d8b5d6deed60
   ffmpeg_kit_flutter_new_min: 85493896be79f45e846b5c9b23a3bf73eb284c4a
   file_picker: a0560bc09d61de87f12d246fc47d2119e6ef37be
+  Firebase: a8539b633d474fbeb654c7043f9c1649e274045b
+  firebase_core: 1c1e250a77e2df9e80bb8bf0875c8b427044a697
+  FirebaseAppCheckInterop: 5083c9acf65f206832fe659e1c676b7bc3d55e8a
+  FirebaseAuthInterop: 0778f5f24d6cccd6d67ef45832fe9c67a0b944ea
+  FirebaseCore: 2e86a4ea1684d4381707069e4a6d89ac808e901e
+  FirebaseCoreExtension: 10d2a627977b39418759ad88ada80fbbd34f1c4f
+  FirebaseCoreInternal: 6ab6a02c94446c026d2cf35cf5383842ebaa4992
+  FirebaseFunctions: 207bd3636bf538a5852a1ae34737fa15581e6f7a
+  FirebaseMessagingInterop: 23d50835a19ee3ffae1e5058b9dfea8b651ff298
+  FirebaseSharedSwift: 3f5c2758484d32099d693f269f110d3249c3f7e3
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  GoogleUtilities: 766ace00c6b10d8148408f329d10c4f051931850
+  GTMSessionFetcher: 127211aeec0b1e904fc49f4f6f895dcc535b0ecf
   just_audio: 4e391f57b79cad2b0674030a00453ca5ce817eed
   SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
   SwiftyGif: 706c60cf65fa2bc5ee0313beece843c8eb8194d4

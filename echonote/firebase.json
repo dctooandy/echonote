@@ -1,18 +1,1 @@
-{
-  "functions": [
-    {
-      "source": "functions",
-      "codebase": "default",
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "*.local"
-      ],
-      "predeploy": [
-        "npm --prefix \"$RESOURCE_DIR\" run build"
-      ]
-    }
-  ]
-}
+{"functions":[{"source":"functions","codebase":"default","ignore":["node_modules",".git","firebase-debug.log","firebase-debug.*.log","*.local"],"predeploy":["npm --prefix \"$RESOURCE_DIR\" run build"]}],"flutter":{"platforms":{"ios":{"default":{"projectId":"echonote-64428","appId":"1:218763541305:ios:fb1fcf4083d37b6dfb46e8","uploadDebugSymbols":false,"fileOutput":"ios/Runner/GoogleService-Info.plist"}},"dart":{"lib/firebase_options.dart":{"projectId":"echonote-64428","configurations":{"ios":"1:218763541305:ios:fb1fcf4083d37b6dfb46e8"}}}}}}
