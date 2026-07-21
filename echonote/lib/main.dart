@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:whisper_ggml/whisper_ggml.dart';
 
@@ -32,6 +33,7 @@ class TranscribePocScreen extends StatefulWidget {
 
 class _TranscribePocScreenState extends State<TranscribePocScreen> {
   final _whisperController = WhisperController();
+  final _audioPlayer = AudioPlayer();
 
   WhisperModel _selectedModel = WhisperModel.base;
   String? _audioPath;
@@ -39,7 +41,23 @@ class _TranscribePocScreenState extends State<TranscribePocScreen> {
   bool _isBusy = false;
   String _status = '尚未選擇音檔';
   String _resultText = '';
+  List<WhisperTranscribeSegment> _segments = [];
   Duration? _elapsed;
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _seekAndPlay(Duration position) async {
+    try {
+      await _audioPlayer.seek(position);
+      await _audioPlayer.play();
+    } catch (e) {
+      debugPrint('[POC] seek/play failed: $e');
+    }
+  }
 
   String _formatTimestamp(Duration d) {
     final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -67,11 +85,17 @@ class _TranscribePocScreenState extends State<TranscribePocScreen> {
     );
     final path = result?.files.single.path;
     if (path == null) return;
+    try {
+      await _audioPlayer.setFilePath(path);
+    } catch (e) {
+      debugPrint('[POC] setFilePath failed: $e');
+    }
     setState(() {
       _audioPath = path;
       _audioName = result!.files.single.name;
       _status = '已選擇: $_audioName';
       _resultText = '';
+      _segments = [];
       _elapsed = null;
     });
   }
@@ -120,6 +144,7 @@ class _TranscribePocScreenState extends State<TranscribePocScreen> {
       setState(() {
         _elapsed = stopwatch.elapsed;
         _resultText = formatted;
+        _segments = segments ?? [];
         _status = '完成 (${_selectedModel.modelName})';
       });
     } catch (e, st) {
@@ -172,6 +197,25 @@ class _TranscribePocScreenState extends State<TranscribePocScreen> {
             const SizedBox(height: 12),
             Text(_status),
             if (_elapsed != null) Text('耗時: ${_elapsed!.inSeconds} 秒'),
+            if (_audioPath != null) ...[
+              const SizedBox(height: 8),
+              StreamBuilder<PlayerState>(
+                stream: _audioPlayer.playerStateStream,
+                builder: (context, snapshot) {
+                  final playing = snapshot.data?.playing ?? false;
+                  return Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(playing ? Icons.pause_circle : Icons.play_circle),
+                        iconSize: 36,
+                        onPressed: () => playing ? _audioPlayer.pause() : _audioPlayer.play(),
+                      ),
+                      const Text('點下方逐字稿可跳到對應時間點播放'),
+                    ],
+                  );
+                },
+              ),
+            ],
             const SizedBox(height: 12),
             Row(
               children: [
@@ -193,9 +237,23 @@ class _TranscribePocScreenState extends State<TranscribePocScreen> {
             ),
             const SizedBox(height: 8),
             Expanded(
-              child: SingleChildScrollView(
-                child: SelectableText(_resultText),
-              ),
+              child: _segments.isEmpty
+                  ? SingleChildScrollView(child: SelectableText(_resultText))
+                  : ListView.builder(
+                      itemCount: _segments.length,
+                      itemBuilder: (context, index) {
+                        final segment = _segments[index];
+                        return ListTile(
+                          dense: true,
+                          leading: Text(
+                            _formatTimestamp(segment.fromTs),
+                            style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()]),
+                          ),
+                          title: Text(segment.text.trim()),
+                          onTap: () => _seekAndPlay(segment.fromTs),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
