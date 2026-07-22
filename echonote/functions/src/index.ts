@@ -41,12 +41,12 @@ const outputSchema = {
             type: ["string", "null"],
             description: "逐字稿中提到的期限，無法判斷則 null",
           },
-          source_timestamp_ms: {
+          source_segment_index: {
             type: ["integer", "null"],
-            description: "對應逐字稿片段的起始時間（必須是輸入片段中出現過的 start_ms 值）",
+            description: "對應逐字稿片段的序號（輸入每句前面的 [數字]，從 0 開始，不是時間）",
           },
         },
-        required: ["task", "owner", "due_date", "source_timestamp_ms"],
+        required: ["task", "owner", "due_date", "source_segment_index"],
         additionalProperties: false,
       },
     },
@@ -67,12 +67,12 @@ const outputSchema = {
               topic: { type: "string" },
               discussion: { type: "string" },
               decisions: { type: "array", items: { type: "string" } },
-              source_timestamp_ms: {
+              source_segment_index: {
                 type: ["integer", "null"],
-                description: "對應逐字稿片段的起始時間（必須是輸入片段中出現過的 start_ms 值）",
+                description: "對應逐字稿片段的序號（輸入每句前面的 [數字]，從 0 開始，不是時間）",
               },
             },
-            required: ["topic", "discussion", "decisions", "source_timestamp_ms"],
+            required: ["topic", "discussion", "decisions", "source_segment_index"],
             additionalProperties: false,
           },
         },
@@ -85,17 +85,17 @@ const outputSchema = {
   additionalProperties: false,
 } as const;
 
-const SYSTEM_PROMPT = `你是會議記錄整理助手。使用者會提供一份中文會議逐字稿，每一句都標有起始時間（毫秒）。
+const SYSTEM_PROMPT = `你是會議記錄整理助手。使用者會提供一份中文會議逐字稿，每一句前面標有這句在逐字稿中的序號（從 0 開始，例如 [0]、[1]、[2]...），序號不是時間。
 請根據逐字稿內容產出摘要、待辦事項清單、結構化會議紀錄。
 
 規則：
 - 所有輸出文字必須是繁體中文（zh-Hant），不可使用簡體字。
-- todos 和 agenda_items 的 source_timestamp_ms 必須從輸入逐字稿中「已經出現過的」片段起始時間裡挑選，不可自行編造時間。
+- todos 和 agenda_items 的 source_segment_index 必須填「輸入逐字稿中實際出現過的序號」，該序號來自你要引用那句話前面的 [數字]，不可超出範圍、不可自行編造。
 - 逐字稿可能包含轉錄錯誤或多人交叉發言導致的破碎片段，遇到讀不通的內容時盡量根據上下文推斷語意，不要編造逐字稿中沒有的資訊。
 - attendees 和數值類欄位如果無法從逐字稿判斷，回傳空陣列或 null，不要猜測。`;
 
 function buildTranscriptText(segments: TranscriptSegment[]): string {
-  return segments.map((s) => `[${s.start_ms}] ${s.text.trim()}`).join("\n");
+  return segments.map((s, index) => `[${index}] ${s.text.trim()}`).join("\n");
 }
 
 export const analyzeMeeting = onCall(

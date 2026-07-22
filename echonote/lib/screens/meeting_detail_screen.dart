@@ -44,11 +44,20 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   }
 
   Future<void> _seekAndPlay(Duration position) async {
+    debugPrint('[Detail] seekAndPlay requested position=${position.inMilliseconds}ms');
     try {
       await _audioPlayer.seek(position);
       await _audioPlayer.play();
     } catch (e) {
       debugPrint('[Detail] seek/play failed: $e');
+    }
+  }
+
+  void _toggleManualPlayback(bool playing) {
+    if (playing) {
+      _audioPlayer.pause();
+    } else {
+      _audioPlayer.play();
     }
   }
 
@@ -133,7 +142,23 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(widget.recording.displayTitle),
+          actions: [
+            if (analysis != null)
+              IconButton(
+                icon: _isAnalyzing
+                    ? const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh),
+                tooltip: '重新分析',
+                onPressed: _isAnalyzing ? null : _runAnalysis,
+              ),
+          ],
           bottom: const TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
             tabs: [
               Tab(text: '摘要'),
               Tab(text: '待辦'),
@@ -142,15 +167,56 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
             ],
           ),
         ),
-        body: TabBarView(
+        body: Column(
           children: [
-            _buildSummaryTab(analysis),
-            _buildTodosTab(analysis),
-            _buildTranscriptTab(),
-            _buildMinutesTab(analysis),
+            _buildPlaybackBar(),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _buildSummaryTab(analysis),
+                  _buildTodosTab(analysis),
+                  _buildTranscriptTab(),
+                  _buildMinutesTab(analysis),
+                ],
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  /// Playback controls shown above every tab (not just 逐字稿) — tapping a
+  /// todo or agenda item to jump to its timestamp starts playback from
+  /// whichever tab is open, so the pause control needs to be reachable from
+  /// all of them, not just the transcript tab.
+  Widget _buildPlaybackBar() {
+    return StreamBuilder<PlayerState>(
+      stream: _audioPlayer.playerStateStream,
+      builder: (context, snapshot) {
+        final playing = snapshot.data?.playing ?? false;
+        return Material(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: Icon(playing ? Icons.pause_circle : Icons.play_circle),
+                  iconSize: 36,
+                  onPressed: () => _toggleManualPlayback(playing),
+                ),
+                const Expanded(
+                  child: Text(
+                    '點擊逐字稿／待辦／議程項目可跳轉播放，隨時可在此暫停',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -206,6 +272,8 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   Widget _buildTodosTab(MeetingAnalysis? analysis) {
     return _analysisGate(analysis, (a) {
       if (a.todos.isEmpty) return const Center(child: Text('沒有待辦事項'));
+      debugPrint('[Detail] todo timestamps: '
+          '${a.todos.map((t) => t.sourceTimestampMs).toList()}');
       return ListView.builder(
         itemCount: a.todos.length,
         itemBuilder: (context, index) {
@@ -254,47 +322,24 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
 
   Widget _buildTranscriptTab() {
     final segments = widget.recording.segments;
-    return Column(
-      children: [
-        StreamBuilder<PlayerState>(
-          stream: _audioPlayer.playerStateStream,
-          builder: (context, snapshot) {
-            final playing = snapshot.data?.playing ?? false;
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: Icon(playing ? Icons.pause_circle : Icons.play_circle),
-                    iconSize: 36,
-                    onPressed: () => playing ? _audioPlayer.pause() : _audioPlayer.play(),
-                  ),
-                  const Text('點下方逐字稿可跳到對應時間點播放'),
-                ],
-              ),
-            );
-          },
-        ),
-        Expanded(
-          child: ListView.builder(
-            itemCount: segments.length,
-            itemBuilder: (context, index) {
-              final segment = segments[index];
-              return ListTile(
-                dense: true,
-                leading: Text(formatMs(segment.startMs)),
-                title: Text(segment.text),
-                onTap: () => _seekAndPlay(Duration(milliseconds: segment.startMs)),
-              );
-            },
-          ),
-        ),
-      ],
+    return ListView.builder(
+      itemCount: segments.length,
+      itemBuilder: (context, index) {
+        final segment = segments[index];
+        return ListTile(
+          dense: true,
+          leading: Text(formatMs(segment.startMs)),
+          title: Text(segment.text),
+          onTap: () => _seekAndPlay(Duration(milliseconds: segment.startMs)),
+        );
+      },
     );
   }
 
   Widget _buildMinutesTab(MeetingAnalysis? analysis) {
     return _analysisGate(analysis, (a) {
+      debugPrint('[Detail] agenda item timestamps: '
+          '${a.agendaItems.map((i) => i.sourceTimestampMs).toList()}');
       return ListView(
         padding: const EdgeInsets.all(16),
         children: [
