@@ -88,6 +88,8 @@ PODS:
   - SDWebImage (5.21.7):
     - SDWebImage/Core (= 5.21.7)
   - SDWebImage/Core (5.21.7)
+  - share_plus (0.0.1):
+    - Flutter
   - SwiftyGif (5.4.5)
   - whisper_ggml (1.0.1):
     - Flutter
@@ -100,6 +102,7 @@ DEPENDENCIES:
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
   - Flutter (from `Flutter`)
   - just_audio (from `.symlinks/plugins/just_audio/darwin`)
+  - share_plus (from `.symlinks/plugins/share_plus/ios`)
   - whisper_ggml (from `.symlinks/plugins/whisper_ggml/ios`)
 
 SPEC REPOS:
@@ -135,6 +138,8 @@ EXTERNAL SOURCES:
     :path: Flutter
   just_audio:
     :path: ".symlinks/plugins/just_audio/darwin"
+  share_plus:
+    :path: ".symlinks/plugins/share_plus/ios"
   whisper_ggml:
     :path: ".symlinks/plugins/whisper_ggml/ios"
 
@@ -160,6 +165,7 @@ SPEC CHECKSUMS:
   GTMSessionFetcher: 127211aeec0b1e904fc49f4f6f895dcc535b0ecf
   just_audio: 4e391f57b79cad2b0674030a00453ca5ce817eed
   SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
+  share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
   SwiftyGif: 706c60cf65fa2bc5ee0313beece843c8eb8194d4
   whisper_ggml: e49d353bd4736293ca18f7a1e90accec56d9b57d
 

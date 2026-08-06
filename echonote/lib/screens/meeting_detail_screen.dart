@@ -1,6 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/recording.dart';
 import '../services/analysis_service.dart';
@@ -88,6 +92,28 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   void _copy(String text) {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已複製到剪貼簿')));
+  }
+
+  String get _transcriptText => widget.recording.segments
+      .map((s) => '[${formatMs(s.startMs)}] ${s.text}')
+      .join('\n');
+
+  /// Writes the transcript to a temp .txt file and hands it to the OS share
+  /// sheet — lets the user save it into Files, AirDrop it, send it via
+  /// LINE/Email, etc., without echonote needing its own file-destination UI.
+  Future<void> _exportTranscript() async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final safeName = widget.recording.displayTitle.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final file = File('${dir.path}/$safeName.txt');
+      await file.writeAsString(_transcriptText);
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(file.path)], fileNameOverrides: ['$safeName.txt']),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('匯出失敗: $e')));
+    }
   }
 
   Future<void> _editTodoTask(Todo todo) async {
@@ -322,17 +348,41 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
 
   Widget _buildTranscriptTab() {
     final segments = widget.recording.segments;
-    return ListView.builder(
-      itemCount: segments.length,
-      itemBuilder: (context, index) {
-        final segment = segments[index];
-        return ListTile(
-          dense: true,
-          leading: Text(formatMs(segment.startMs)),
-          title: Text(segment.text),
-          onTap: () => _seekAndPlay(Duration(milliseconds: segment.startMs)),
-        );
-      },
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.copy, size: 20),
+                tooltip: '複製全部逐字稿',
+                onPressed: segments.isEmpty ? null : () => _copy(_transcriptText),
+              ),
+              IconButton(
+                icon: const Icon(Icons.ios_share, size: 20),
+                tooltip: '匯出逐字稿',
+                onPressed: segments.isEmpty ? null : _exportTranscript,
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            itemCount: segments.length,
+            itemBuilder: (context, index) {
+              final segment = segments[index];
+              return ListTile(
+                dense: true,
+                leading: Text(formatMs(segment.startMs)),
+                title: Text(segment.text),
+                onTap: () => _seekAndPlay(Duration(milliseconds: segment.startMs)),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
