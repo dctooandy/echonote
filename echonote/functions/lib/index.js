@@ -95,19 +95,41 @@ exports.analyzeMeeting = (0, https_1.onCall)({ secrets: [anthropicApiKey], timeo
     }
     const client = new sdk_1.default({ apiKey: anthropicApiKey.value() });
     const transcriptText = buildTranscriptText(data.segments);
-    const response = await client.messages.create({
-        model: "claude-haiku-4-5",
-        max_tokens: 4096,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: transcriptText }],
-        output_config: {
-            format: { type: "json_schema", schema: outputSchema },
-        },
-    });
+    let response;
+    try {
+        response = await client.messages.create({
+            model: "claude-haiku-4-5",
+            max_tokens: 4096,
+            system: SYSTEM_PROMPT,
+            messages: [{ role: "user", content: transcriptText }],
+            output_config: {
+                format: { type: "json_schema", schema: outputSchema },
+            },
+        });
+    }
+    catch (err) {
+        console.error("Anthropic API call failed", err);
+        if (err instanceof sdk_1.default.AuthenticationError) {
+            throw new https_1.HttpsError("internal", "Claude API 金鑰無效或已過期，請檢查 Secret Manager 設定");
+        }
+        if (err instanceof sdk_1.default.RateLimitError) {
+            throw new https_1.HttpsError("resource-exhausted", "Claude API 額度已達上限，請稍後再試");
+        }
+        if (err instanceof sdk_1.default.APIError) {
+            throw new https_1.HttpsError("internal", `Claude API 呼叫失敗（狀態碼 ${err.status}）：${err.message}`);
+        }
+        throw new https_1.HttpsError("internal", `Claude API 呼叫失敗：${err instanceof Error ? err.message : String(err)}`);
+    }
     const textBlock = response.content.find((block) => block.type === "text");
     if (!textBlock) {
-        throw new https_1.HttpsError("internal", "Claude API did not return a text block");
+        throw new https_1.HttpsError("internal", "Claude API 沒有回傳文字內容");
     }
-    return JSON.parse(textBlock.text);
+    try {
+        return JSON.parse(textBlock.text);
+    }
+    catch (err) {
+        console.error("Failed to parse Claude response as JSON", textBlock.text);
+        throw new https_1.HttpsError("internal", "Claude API 回傳的內容不是合法 JSON，可能是輸出被截斷");
+    }
 });
 //# sourceMappingURL=index.js.map
