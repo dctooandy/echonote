@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../models/recording.dart';
 import '../services/recording_store.dart';
+import '../widgets/confirm_delete_dialog.dart';
 import 'import_screen.dart';
 import 'live_record_screen.dart';
 import 'meeting_detail_screen.dart';
@@ -93,27 +94,53 @@ class _HomeScreenState extends State<HomeScreen> {
             itemBuilder: (context, index) {
               final recording = recordings[index];
               final hasAnalysis = recording.analysis != null;
-              return ListTile(
-                leading: Icon(
-                  !recording.isTranscribed
-                      ? Icons.pending_outlined
-                      : hasAnalysis
-                      ? Icons.check_circle
-                      : Icons.description_outlined,
+              return Dismissible(
+                key: ValueKey(recording.id),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  color: Colors.red,
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: const Icon(Icons.delete, color: Colors.white),
                 ),
-                title: Text(recording.displayTitle),
-                subtitle: Text(
-                  '${recording.createdAt.toLocal()}'.split('.').first,
-                ),
-                trailing: Text(_statusLabel(recording)),
-                onTap: () async {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => MeetingDetailScreen(recording: recording),
-                    ),
-                  );
+                confirmDismiss: (_) => confirmDeleteRecording(context, recording),
+                onDismissed: (_) async {
+                  // Out of the list right away: a dismissed Dismissible must
+                  // leave the tree before the next frame.
+                  recordings.remove(recording);
+                  try {
+                    await _store.delete(recording);
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text('刪除失敗: $e')));
+                    }
+                  }
                   _reload();
                 },
+                child: ListTile(
+                  leading: Icon(
+                    !recording.isTranscribed
+                        ? Icons.pending_outlined
+                        : hasAnalysis
+                        ? Icons.check_circle
+                        : Icons.description_outlined,
+                  ),
+                  title: Text(recording.displayTitle),
+                  subtitle: Text(
+                    '${recording.createdAt.toLocal()}'.split('.').first,
+                  ),
+                  trailing: Text(_statusLabel(recording)),
+                  onTap: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => MeetingDetailScreen(recording: recording),
+                      ),
+                    );
+                    _reload();
+                  },
+                ),
               );
             },
           );

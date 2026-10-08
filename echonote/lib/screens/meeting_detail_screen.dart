@@ -11,6 +11,7 @@ import '../services/analysis_service.dart';
 import '../services/recording_store.dart';
 import '../services/recording_transcriber.dart';
 import '../utils/format.dart';
+import '../widgets/confirm_delete_dialog.dart';
 
 class MeetingDetailScreen extends StatefulWidget {
   const MeetingDetailScreen({super.key, required this.recording});
@@ -116,6 +117,20 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     }
   }
 
+  Future<void> _delete() async {
+    if (!await confirmDeleteRecording(context, widget.recording)) return;
+    // The player is disposed when this screen pops; no need to stop it first
+    // (and an unloaded player's stop() may never complete).
+    try {
+      await _store.delete(widget.recording);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('刪除失敗: $e')));
+      return;
+    }
+    if (mounted) Navigator.of(context).pop();
+  }
+
   void _copy(String text) {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已複製到剪貼簿')));
@@ -208,6 +223,23 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
                 tooltip: '重新分析',
                 onPressed: _isAnalyzing ? null : _runAnalysis,
               ),
+            PopupMenuButton<String>(
+              // Not while a transcription/analysis is about to write back
+              // into this recording.
+              enabled: !_isAnalyzing && !_isTranscribing,
+              onSelected: (value) {
+                if (value == 'delete') _delete();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'delete',
+                  child: ListTile(
+                    leading: Icon(Icons.delete_outline, color: Colors.red),
+                    title: Text('刪除', style: TextStyle(color: Colors.red)),
+                  ),
+                ),
+              ],
+            ),
           ],
           bottom: const TabBar(
             isScrollable: true,

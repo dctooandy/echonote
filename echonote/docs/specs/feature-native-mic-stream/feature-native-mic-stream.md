@@ -226,6 +226,7 @@ transcribing（離線轉錄，顯示進度百分比）
 - **紀錄名稱**：即時錄音的 `audioName` 為「即時錄音 YYYY-MM-DD HH:mm」（開始錄音的時間），分析後一樣由標題取代顯示。
 - **停止後**：同一個畫面切換成轉錄進度，跟 `ImportScreen` 的呈現一致。完成後用 `pushReplacement` 導向 `MeetingDetailScreen`。
 - **`HomeScreen`／`MeetingDetailScreen`**：新增未轉錄狀態的顯示，見上一節。
+- **刪除紀錄**（2026-10-08 使用者追加）：首頁清單往左滑、或詳細頁右上角選單的「刪除」，都先跳出確認對話框；確認後一併刪除紀錄 JSON 和音檔（`RecordingStore.delete`），不提供復原、不支援多選。詳細頁在轉錄或分析進行中時選單停用。
 
 ## 邊界案例與例外處理
 
