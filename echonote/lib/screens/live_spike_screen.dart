@@ -102,7 +102,29 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
         throw Exception('沒有麥克風權限（$permission），請到系統設定開啟');
       }
 
-      setState(() => _status = '下載／載入 ${_model.modelName} 模型…');
+      // T3.8: both models up front, with progress.
+      var lastLogged = -1;
+      await _service.ensureModels(
+        config: LivePreviewConfig(
+          model: _model,
+          threads: _threads,
+          stepSec: 3,
+          noFallback: true,
+          maxTokens: 64,
+        ),
+        onProgress: (model, received, total) {
+          final mb = received ~/ (1024 * 1024);
+          final pct = total == null ? '' : '（${received * 100 ~/ total}%）';
+          if (mb ~/ 10 != lastLogged) {
+            lastLogged = mb ~/ 10;
+            _log(
+              'download ${model.modelName} ${mb}MB${total == null ? '' : '/${total ~/ (1024 * 1024)}MB'}',
+            );
+          }
+          if (mounted) setState(() => _status = '下載 ${model.modelName} 模型 ${mb}MB$pct');
+        },
+      );
+      setState(() => _status = '載入 ${_model.modelName} 模型…');
       final wavPath = '${(await getTemporaryDirectory()).path}/spike.wav';
       // T3.4: the same service the real screen will use (mic → WAV + whisper).
       final rec = await _service.start(

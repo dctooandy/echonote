@@ -327,7 +327,8 @@ transcribing（離線轉錄，顯示進度百分比）
   - 程式已完成：落後超過 `lagHintSeconds`（6 秒）送出 `previewDelayed`，回到 6 秒內送出 `previewCaughtUp`；`partials` 出錯送出 `previewStopped`。
 - [ ] **T3.7** 寫入失敗處理：磁碟空間不足時停止錄音，盡量補寫 header 並存成未轉錄紀錄；補寫失敗就刪掉殘缺的檔案並回報錯誤。依賴：T3.1、T3.4。
   - `WavWriter.close()` 已經會在寫入失敗時，依實際寫入的 bytes 補寫 header 再丟出錯誤；剩下的是錄音流程端的處理（停止、存成未轉錄、補寫失敗時刪檔）。
-- [ ] **T3.8**（條件式）如果 T0.8 判定即時預覽用 `tiny`：在 `preparing` 階段同時確保 `tiny`（即時用）和 `base`（離線用）都已下載，並顯示下載進度。依賴：T0.8、T3.4。
+- [x] **T3.8**（條件式）如果 T0.8 判定即時預覽用 `tiny`：在 `preparing` 階段同時確保 `tiny`（即時用）和 `base`（離線用）都已下載，並顯示下載進度。依賴：T0.8、T3.4。
+  - 程式已完成：`LiveTranscriptionService.ensureModels(onProgress:)` 依序確保 `tiny`、`base`；內建 `whisper_ggml` 的 `downloadModel` 改成串流寫入 `.part` 檔、檢查 HTTP 狀態、回報進度（Mac 上實際下載 `tiny` 驗證過）。UI 端進度顯示在 T4.1。
 
 ### 階段 4：UI（暫定版，待正式設計）
 

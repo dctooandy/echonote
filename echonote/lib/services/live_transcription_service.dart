@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:whisper_ggml/whisper_ggml.dart';
 
 import 'mic_stream_service.dart';
+import 'transcription_service.dart';
 import 'wav_writer.dart';
 
 /// Live-preview decoding settings. See the spec's step-0 results: upstream
@@ -96,6 +97,24 @@ class LiveTranscriptionService {
 
   final MicStreamService _mic;
   final WhisperController _whisper;
+
+  /// Makes sure both models a live recording needs are on disk: the preview
+  /// model and the offline model used after stop ([kWhisperModel]). Only
+  /// downloads on first use (~75 MB + ~147 MB); reports which model is in
+  /// flight and its bytes (`total` null when unknown).
+  Future<void> ensureModels({
+    LivePreviewConfig config = kLivePreviewConfig,
+    void Function(WhisperModel model, int received, int? total)? onProgress,
+  }) async {
+    for (final model in {config.model, kWhisperModel}) {
+      await _whisper.downloadModel(
+        model,
+        onProgress: onProgress == null
+            ? null
+            : (received, total) => onProgress(model, received, total),
+      );
+    }
+  }
 
   /// Downloads (first use only) and loads the preview model, then starts the
   /// mic. Audio is written to [wavPath] as it arrives. On failure nothing is
