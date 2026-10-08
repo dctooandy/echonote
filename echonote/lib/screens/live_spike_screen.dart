@@ -30,6 +30,11 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
   /// T0.6 round 2: step 3 s, no temperature fallback, cap tokens per segment.
   /// Off = upstream defaults, for comparison.
   bool _tuned = true;
+
+  /// Live mode has no_context and no prompt, so output drifts into
+  /// Simplified Chinese; a Traditional prompt nudges the script.
+  bool _zhTwPrompt = true;
+  static const _zhTwPromptText = '以下是繁體中文的會議逐字稿。';
   _Phase _phase = _Phase.idle;
   String? _status;
   String? _error;
@@ -83,7 +88,10 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
       _runs.clear();
     });
     try {
-      _log('start model=${_model.modelName} threads=$_threads tuned=$_tuned');
+      _log(
+        'start model=${_model.modelName} threads=$_threads tuned=$_tuned '
+        'zhTwPrompt=$_zhTwPrompt',
+      );
       var permission = await _mic.permissionStatus();
       _log('permission=$permission');
       if (permission == MicPermission.undetermined) {
@@ -131,6 +139,7 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
           stepSec: _tuned ? 3.0 : 1.5,
           noFallback: _tuned,
           maxTokens: _tuned ? 64 : 0,
+          initialPrompt: _zhTwPrompt ? _zhTwPromptText : null,
         );
       } catch (e) {
         _log('transcribeLive failed: $e');
@@ -223,7 +232,8 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
         ? null
         : _runs.map((r) => r['lag_sec'] as double).reduce((a, b) => a > b ? a : b);
     _log(
-      'summary model=${_model.modelName} threads=$_threads tuned=$_tuned runs=${_runs.length} '
+      'summary model=${_model.modelName} threads=$_threads tuned=$_tuned '
+      'zhTwPrompt=$_zhTwPrompt runs=${_runs.length} '
       'median total=${med('total_ms')}ms enc=${med('encode_ms')}ms '
       'dec/tok=${med('decode_ms_per_token', 1)}ms tokens=${med('tokens')} '
       'maxLag=${maxLag?.toStringAsFixed(1) ?? '-'}s '
@@ -235,6 +245,7 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
 
   void _onSessionDone(String finalText) {
     _log('session done, final chars=${finalText.length}');
+    _log('final text: $finalText');
     // The session can end on its own (native whisper error, mic error); the
     // mic would otherwise keep running and block the next start.
     _mic.stop();
@@ -295,6 +306,12 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
               title: const Text('調校：3 秒重算、不重解碼、每段最多 64 token'),
               value: _tuned,
               onChanged: _phase == _Phase.idle ? (v) => setState(() => _tuned = v) : null,
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('繁體 prompt：「$_zhTwPromptText」'),
+              value: _zhTwPrompt,
+              onChanged: _phase == _Phase.idle ? (v) => setState(() => _zhTwPrompt = v) : null,
             ),
             FilledButton.icon(
               onPressed: switch (_phase) {
