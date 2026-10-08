@@ -316,8 +316,9 @@ transcribing（離線轉錄，顯示進度百分比）
 
 - [x] **T3.1** `lib/services/wav_writer.dart`：開檔寫入暫定 header → 持續 append PCM → 關閉時補寫 RIFF 和 data 的長度欄位。不能把整段音訊放在記憶體裡。
 - [x] **T3.2** WAV 寫入器的單元測試：header 欄位正確（16 kHz、mono、16-bit）、長度欄位正確、奇數 bytes 的處理。依賴：T3.1。
-- [ ] **T3.3** 抽出離線轉錄流程：把 `ImportScreen._run()` 裡「轉錄 → 存檔」的邏輯抽成可以對「已存在的 `Recording`」執行的函式，供匯入、即時錄音停止後、重新轉錄三處共用。轉錄成功就更新 `segments`、`elapsedSeconds`；沒有內容或失敗時紀錄維持未轉錄。依賴：T2.2。
+- [x] **T3.3** 抽出離線轉錄流程：把 `ImportScreen._run()` 裡「轉錄 → 存檔」的邏輯抽成可以對「已存在的 `Recording`」執行的函式，供匯入、即時錄音停止後、重新轉錄三處共用。轉錄成功就更新 `segments`、`elapsedSeconds`；沒有內容或失敗時紀錄維持未轉錄。依賴：T2.2。
   - ⚠️ 不要拿掉 `TranscriptionService._sanitizedAudioPath()` 的 workaround（`whisper_ggml` 的 ffmpeg 路徑沒加引號）。重構後匯入流程要用含空白的檔名回歸測試一次。
+  - 實作：`lib/services/recording_transcriber.dart`（`RecordingTranscriber`、`NoSpeechDetectedException`）；`ImportScreen` 已改用（等於同時完成 T4.7 的程式部分）。**含空白檔名的實機回歸測試尚未做。**
 - [ ] **T3.4** `lib/services/live_transcription_service.dart`：串接 `MicStreamService` → 分流（broadcast 或手動）→ `transcribeLive` 和 `WavWriter`；明確傳 `lang: 'zh'`；即時預覽的模型依照 T0.8 的判定。依賴：T0.4、T3.1。
 - [ ] **T3.5** 錄音上限：滿 1 小時 55 分時通知 UI，滿 2 小時自動停止。依賴：T3.4。
 - [ ] **T3.6** 「即時文字可能延遲」偵測：依 `session.metrics` 計算落後秒數（已送出音訊秒數 − `fed_sec`），超過 6 秒就發出提示狀態；`partials` 出錯時改發出「即時文字已停止」狀態，錄音與 WAV 寫入繼續。依賴：T3.4。
