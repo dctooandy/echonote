@@ -1,6 +1,6 @@
 # 原生麥克風串流＋即時逐字稿 規格
 
-分支：`feature/native-mic-stream`（尚未建立）
+分支：`feature/native-mic-stream`
 狀態：已確認（2026-10-08，17 項決定皆已確認；任務拆解的 2 項待確認事項也已決定）；即時預覽使用的模型待「第 0 步：技術驗證」的結果決定
 
 這份文件記錄「在 App 內直接錄音，並一邊錄一邊顯示逐字稿」的功能。做法是自己寫原生的 Platform Channel（iOS 用 `AVAudioEngine`），輸出 16 kHz、mono、PCM16 的音訊串流，交給 `whisper_ggml` 的 `WhisperController.transcribeLive()` 做裝置端即時辨識。錄音結束後，再用存下來的 WAV 跑一次既有的離線轉錄，產生正式的逐字稿。
@@ -265,8 +265,8 @@ transcribing（離線轉錄，顯示進度百分比）
 ### 階段 0：技術驗證（決定後續方向，必須最先完成）
 
 - [x] **T0.1** 建立分支 `feature/native-mic-stream`。
-- [ ] **T0.2** 在 `ios/Runner/Info.plist` 新增 `NSMicrophoneUsageDescription`（文字見「系統權限」）。
-- [ ] **T0.3** 實作 `ios/Runner/MicStreamChannel.swift`，只做正常路徑：`getPermissionStatus`、`requestPermission`、`start`、`stop`；`AVAudioSession` 設定；`installTap` 加上 `AVAudioConverter` 轉成 16 kHz mono Int16；每 100 ms 切回 main thread 送出一個 chunk。依賴：T0.2。
+- [x] **T0.2** 在 `ios/Runner/Info.plist` 新增 `NSMicrophoneUsageDescription`（文字見「系統權限」）。
+- [x] **T0.3** 實作 `ios/Runner/MicStreamChannel.swift`，只做正常路徑：`getPermissionStatus`、`requestPermission`、`start`、`stop`；`AVAudioSession` 設定；`installTap` 加上 `AVAudioConverter` 轉成 16 kHz mono Int16；每 100 ms 切回 main thread 送出一個 chunk。依賴：T0.2。
   - 註冊位置：`AppDelegate` 目前使用 `FlutterImplicitEngineDelegate`，channel 要在 `didInitializeImplicitFlutterEngine` 裡，透過 `engineBridge.pluginRegistry` 取得 registrar 的 messenger 來建立，不能沿用舊的 `window.rootViewController` 寫法。
 - [ ] **T0.4** 實作 `lib/services/mic_stream_service.dart`（`MicStreamService`），包含 `PlatformException` 轉成專案例外型別。依賴：T0.3。
 - [ ] **T0.5** 臨時測試畫面：開始／停止、即時文字，以及顯示 partial 更新間隔和已送出的音訊秒數。呼叫 `transcribeLive(lang: 'zh')`，模型可以切換 `base`／`tiny`。依賴：T0.4。
