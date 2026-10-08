@@ -269,7 +269,7 @@ transcribing（離線轉錄，顯示進度百分比）
 - [x] **T0.3** 實作 `ios/Runner/MicStreamChannel.swift`，只做正常路徑：`getPermissionStatus`、`requestPermission`、`start`、`stop`；`AVAudioSession` 設定；`installTap` 加上 `AVAudioConverter` 轉成 16 kHz mono Int16；每 100 ms 切回 main thread 送出一個 chunk。依賴：T0.2。
   - 註冊位置：`AppDelegate` 目前使用 `FlutterImplicitEngineDelegate`，channel 要在 `didInitializeImplicitFlutterEngine` 裡，透過 `engineBridge.pluginRegistry` 取得 registrar 的 messenger 來建立，不能沿用舊的 `window.rootViewController` 寫法。
 - [x] **T0.4** 實作 `lib/services/mic_stream_service.dart`（`MicStreamService`），包含 `PlatformException` 轉成專案例外型別。依賴：T0.3。
-- [ ] **T0.5** 臨時測試畫面：開始／停止、即時文字，以及顯示 partial 更新間隔和已送出的音訊秒數。呼叫 `transcribeLive(lang: 'zh')`，模型可以切換 `base`／`tiny`。依賴：T0.4。
+- [x] **T0.5** 臨時測試畫面：開始／停止、即時文字，以及顯示 partial 更新間隔和已送出的音訊秒數。呼叫 `transcribeLive(lang: 'zh')`，模型可以切換 `base`／`tiny`。依賴：T0.4。
 - [ ] **T0.6** 量測用的套件修改：在本機 fork 的 `whisper_ggml` 裡記錄每次 `stream_run_inference` 的耗時，用 `dependency_overrides` 或 `pubspec_overrides.yaml` 暫時指向 fork。依賴：T0.5。處置方式見待確認事項 #1（已決定）。
 - [ ] **T0.7** 在 iPhone 12 Pro Max 上用 `base`、`tiny` 各錄 5 分鐘連續講話，記錄單次辨識耗時（中位數）、落後秒數的趨勢、記憶體用量。**順便確認即時模式輸出的是繁體中文**（離線模式已確認過，但即時模式用 `no_context` 而且沒有 prompt，需要另外確認）。依賴：T0.6。
 - [ ] **T0.8** 把結果和判定寫回「第 0 步：技術驗證」，更新開頭的「狀態」；移除 T0.5 的臨時畫面和 T0.6 的套件修改。依賴：T0.7。

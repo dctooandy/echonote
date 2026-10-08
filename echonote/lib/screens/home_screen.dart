@@ -1,9 +1,11 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/recording.dart';
 import '../services/recording_store.dart';
 import 'import_screen.dart';
+import 'live_spike_screen.dart';
 import 'meeting_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -54,7 +56,20 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('echonote')),
+      appBar: AppBar(
+        title: const Text('echonote'),
+        actions: [
+          // TEMPORARY spike entry (T0.5); removed in T0.8.
+          if (kDebugMode)
+            IconButton(
+              tooltip: '即時辨識技術驗證',
+              icon: const Icon(Icons.bug_report_outlined),
+              onPressed: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const LiveSpikeScreen())),
+            ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _importRecording,
         tooltip: '匯入錄音',
