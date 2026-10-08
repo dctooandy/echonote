@@ -314,14 +314,15 @@ transcribing（離線轉錄，顯示進度百分比）
 
 ### 階段 3：Dart 服務層
 
-- [ ] **T3.1** `lib/services/wav_writer.dart`：開檔寫入暫定 header → 持續 append PCM → 關閉時補寫 RIFF 和 data 的長度欄位。不能把整段音訊放在記憶體裡。
-- [ ] **T3.2** WAV 寫入器的單元測試：header 欄位正確（16 kHz、mono、16-bit）、長度欄位正確、奇數 bytes 的處理。依賴：T3.1。
+- [x] **T3.1** `lib/services/wav_writer.dart`：開檔寫入暫定 header → 持續 append PCM → 關閉時補寫 RIFF 和 data 的長度欄位。不能把整段音訊放在記憶體裡。
+- [x] **T3.2** WAV 寫入器的單元測試：header 欄位正確（16 kHz、mono、16-bit）、長度欄位正確、奇數 bytes 的處理。依賴：T3.1。
 - [ ] **T3.3** 抽出離線轉錄流程：把 `ImportScreen._run()` 裡「轉錄 → 存檔」的邏輯抽成可以對「已存在的 `Recording`」執行的函式，供匯入、即時錄音停止後、重新轉錄三處共用。轉錄成功就更新 `segments`、`elapsedSeconds`；沒有內容或失敗時紀錄維持未轉錄。依賴：T2.2。
   - ⚠️ 不要拿掉 `TranscriptionService._sanitizedAudioPath()` 的 workaround（`whisper_ggml` 的 ffmpeg 路徑沒加引號）。重構後匯入流程要用含空白的檔名回歸測試一次。
 - [ ] **T3.4** `lib/services/live_transcription_service.dart`：串接 `MicStreamService` → 分流（broadcast 或手動）→ `transcribeLive` 和 `WavWriter`；明確傳 `lang: 'zh'`；即時預覽的模型依照 T0.8 的判定。依賴：T0.4、T3.1。
 - [ ] **T3.5** 錄音上限：滿 1 小時 55 分時通知 UI，滿 2 小時自動停止。依賴：T3.4。
 - [ ] **T3.6** 「即時文字可能延遲」偵測：依 `session.metrics` 計算落後秒數（已送出音訊秒數 − `fed_sec`），超過 6 秒就發出提示狀態；`partials` 出錯時改發出「即時文字已停止」狀態，錄音與 WAV 寫入繼續。依賴：T3.4。
 - [ ] **T3.7** 寫入失敗處理：磁碟空間不足時停止錄音，盡量補寫 header 並存成未轉錄紀錄；補寫失敗就刪掉殘缺的檔案並回報錯誤。依賴：T3.1、T3.4。
+  - `WavWriter.close()` 已經會在寫入失敗時，依實際寫入的 bytes 補寫 header 再丟出錯誤；剩下的是錄音流程端的處理（停止、存成未轉錄、補寫失敗時刪檔）。
 - [ ] **T3.8**（條件式）如果 T0.8 判定即時預覽用 `tiny`：在 `preparing` 階段同時確保 `tiny`（即時用）和 `base`（離線用）都已下載，並顯示下載進度。依賴：T0.8、T3.4。
 
 ### 階段 4：UI（暫定版，待正式設計）
