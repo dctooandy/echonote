@@ -326,13 +326,14 @@ transcribing（離線轉錄，顯示進度百分比）
 - [x] **T3.3** 抽出離線轉錄流程：把 `ImportScreen._run()` 裡「轉錄 → 存檔」的邏輯抽成可以對「已存在的 `Recording`」執行的函式，供匯入、即時錄音停止後、重新轉錄三處共用。轉錄成功就更新 `segments`、`elapsedSeconds`；沒有內容或失敗時紀錄維持未轉錄。依賴：T2.2。
   - ⚠️ 不要拿掉 `TranscriptionService._sanitizedAudioPath()` 的 workaround（`whisper_ggml` 的 ffmpeg 路徑沒加引號）。重構後匯入流程要用含空白的檔名回歸測試一次。
   - 實作：`lib/services/recording_transcriber.dart`（`RecordingTranscriber`、`NoSpeechDetectedException`）；`ImportScreen` 已改用（等於同時完成 T4.7 的程式部分）。**含空白檔名的實機回歸測試尚未做。**
-- [ ] **T3.4** `lib/services/live_transcription_service.dart`：串接 `MicStreamService` → 分流（broadcast 或手動）→ `transcribeLive` 和 `WavWriter`；明確傳 `lang: 'zh'`；即時預覽的模型依照 T0.8 的判定。依賴：T0.4、T3.1。
-  - 程式已完成（`kLivePreviewConfig`：tiny、4 threads、3 秒、no fallback、64 token；`initialPrompt` 為繁體 prompt）；實機驗證過 WAV 長度正確。寫入失敗時停止錄音並以 `writeFailed` 結束（T3.7 的服務端部分）。**實機驗證待做**：測試畫面已改用此服務。
+- [x] **T3.4** `lib/services/live_transcription_service.dart`：串接 `MicStreamService` → 分流（broadcast 或手動）→ `transcribeLive` 和 `WavWriter`；明確傳 `lang: 'zh'`；即時預覽的模型依照 T0.8 的判定。依賴：T0.4、T3.1。
+  - 程式已完成（`kLivePreviewConfig`：tiny、4 threads、3 秒、no fallback、64 token；`initialPrompt` 為繁體 prompt）；實機驗證過 WAV 長度正確。寫入失敗時停止錄音並以 `writeFailed` 結束（T3.7 的服務端部分）。實機驗證過（60.8 秒錄音的 WAV 大小與理論值完全一致）。
 - [x] **T3.5** 錄音上限：滿 1 小時 55 分時通知 UI，滿 2 小時自動停止。依賴：T3.4。
   - 程式已完成：`LiveRecording.maxDuration`／`limitWarningBefore`，送出 `LiveNotice.nearLimit`，滿 2 小時以 `LiveEndReason.limitReached` 結束。
 - [x] **T3.6** 「即時文字可能延遲」偵測：依 `session.metrics` 計算落後秒數（已送出音訊秒數 − `fed_sec`），超過 6 秒就發出提示狀態；`partials` 出錯時改發出「即時文字已停止」狀態，錄音與 WAV 寫入繼續。依賴：T3.4。
   - 程式已完成：落後超過 `lagHintSeconds`（6 秒）送出 `previewDelayed`，回到 6 秒內送出 `previewCaughtUp`；`partials` 出錯送出 `previewStopped`。
-- [ ] **T3.7** 寫入失敗處理：磁碟空間不足時停止錄音，盡量補寫 header 並存成未轉錄紀錄；補寫失敗就刪掉殘缺的檔案並回報錯誤。依賴：T3.1、T3.4。
+- [x] **T3.7** 寫入失敗處理：磁碟空間不足時停止錄音，盡量補寫 header 並存成未轉錄紀錄；補寫失敗就刪掉殘缺的檔案並回報錯誤。依賴：T3.1、T3.4。
+  - 已完成：寫入失敗時服務停止錄音並以 `writeFailed` 結束，`WavWriter.close()` 依實際寫入的 bytes 補寫 header；`LiveRecordScreen` 照常存成未轉錄紀錄並顯示原因，實際音訊不到 1 秒則刪檔不保存。磁碟寫滿難以模擬，**沒有實測**。
   - `WavWriter.close()` 已經會在寫入失敗時，依實際寫入的 bytes 補寫 header 再丟出錯誤；剩下的是錄音流程端的處理（停止、存成未轉錄、補寫失敗時刪檔）。
 - [x] **T3.8**（條件式）如果 T0.8 判定即時預覽用 `tiny`：在 `preparing` 階段同時確保 `tiny`（即時用）和 `base`（離線用）都已下載，並顯示下載進度。依賴：T0.8、T3.4。
   - 程式已完成：`LiveTranscriptionService.ensureModels(onProgress:)` 依序確保 `tiny`、`base`；內建 `whisper_ggml` 的 `downloadModel` 改成串流寫入 `.part` 檔、檢查 HTTP 狀態、回報進度（Mac 上實際下載 `tiny` 驗證過）。UI 端進度顯示在 T4.1。
