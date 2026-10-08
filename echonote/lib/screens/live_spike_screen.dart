@@ -122,6 +122,7 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
         ..reset()
         ..start();
       rec.metrics.listen(_onMetrics);
+      rec.notices.listen((n) => _log('notice ${n.name}'));
       rec.preview.listen(_onPartial, onError: (Object e) => _showError('即時辨識錯誤：$e'));
       unawaited(rec.done.then((r) => _onDone(r, wavPath)));
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) {

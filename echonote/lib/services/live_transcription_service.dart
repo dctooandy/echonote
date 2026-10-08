@@ -47,6 +47,25 @@ enum LiveEndReason {
   /// Writing the WAV failed (e.g. disk full); recording stopped there.
   writeFailed,
   micError,
+
+  /// Hit [LiveRecording.maxDuration].
+  limitReached,
+}
+
+/// Things the recording screen should tell the user about.
+enum LiveNotice {
+  /// The preview is more than [LiveRecording.lagHintSeconds] behind. Audio is
+  /// never dropped; only the preview lags.
+  previewDelayed,
+
+  /// Back within [LiveRecording.lagHintSeconds] after [previewDelayed].
+  previewCaughtUp,
+
+  /// The preview hit a native error and stopped; recording continues.
+  previewStopped,
+
+  /// [LiveRecording.limitWarningBefore] left until [LiveRecording.maxDuration].
+  nearLimit,
 }
 
 class LiveRecordingResult {
@@ -130,11 +149,14 @@ class LiveRecording {
         _preview.add(text);
       },
       // A native error ends the preview only; recording continues.
-      onError: _preview.addError,
+      onError: (Object e, StackTrace st) {
+        _preview.addError(e, st);
+        _notices.add(LiveNotice.previewStopped);
+      },
     );
     _session.metrics.listen((m) {
       final fedSec = (m['fed_sec'] as num?)?.toDouble();
-      if (fedSec != null) _lag.add(sentSeconds - fedSec);
+      if (fedSec != null) _onLag(sentSeconds - fedSec);
     });
     micStream.listen(_onChunk, onError: _onMicError, onDone: _finish);
   }
@@ -144,8 +166,20 @@ class LiveRecording {
   final WhisperLiveSession _session;
   final WavWriter _wav;
 
+  /// Decision #14: recordings stop at 2 hours, with a warning 5 minutes
+  /// before.
+  static const maxDuration = Duration(hours: 2);
+  static const limitWarningBefore = Duration(minutes: 5);
+
+  /// Decision #10: normal lag measured 0.7–2 s; 6 s is about two re-decode
+  /// cycles, so occasional slow runs don't trigger it.
+  static const lagHintSeconds = 6.0;
+
   final _preview = StreamController<String>.broadcast();
   final _lag = StreamController<double>.broadcast();
+  final _notices = StreamController<LiveNotice>.broadcast();
+  bool _previewDelayed = false;
+  bool _warnedNearLimit = false;
   final _done = Completer<LiveRecordingResult>();
   String _lastText = '';
   int _sentBytes = 0;
@@ -165,6 +199,8 @@ class LiveRecording {
   /// Audio handed to the recognizer and WAV writer so far.
   double get sentSeconds => _sentBytes / (MicStreamService.sampleRate * 2);
 
+  Stream<LiveNotice> get notices => _notices.stream;
+
   Future<LiveRecordingResult> get done => _done.future;
 
   Future<LiveRecordingResult> stop() async {
@@ -175,12 +211,33 @@ class LiveRecording {
   void _onChunk(Uint8List chunk) {
     _sentBytes += chunk.length;
     _pcm.add(chunk);
+    _checkLimit();
     _wav.add(chunk).catchError((Object e) {
       if (_error != null) return;
       _error = e;
       _reason ??= LiveEndReason.writeFailed;
       _mic.stop();
     });
+  }
+
+  void _checkLimit() {
+    final sent = Duration(microseconds: (sentSeconds * Duration.microsecondsPerSecond).round());
+    if (!_warnedNearLimit && sent >= maxDuration - limitWarningBefore) {
+      _warnedNearLimit = true;
+      _notices.add(LiveNotice.nearLimit);
+    }
+    if (sent >= maxDuration && _reason == null) {
+      _reason = LiveEndReason.limitReached;
+      _mic.stop();
+    }
+  }
+
+  void _onLag(double lag) {
+    _lag.add(lag);
+    final delayed = lag > lagHintSeconds;
+    if (delayed == _previewDelayed) return;
+    _previewDelayed = delayed;
+    _notices.add(delayed ? LiveNotice.previewDelayed : LiveNotice.previewCaughtUp);
   }
 
   void _onMicError(Object e) {
@@ -213,5 +270,6 @@ class LiveRecording {
     );
     await _preview.close();
     await _lag.close();
+    await _notices.close();
   }
 }
