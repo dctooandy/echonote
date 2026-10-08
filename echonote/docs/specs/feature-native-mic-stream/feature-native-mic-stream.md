@@ -84,8 +84,8 @@
 - **Android**：這個分支只做 iOS。Channel 介面寫成兩個平台共用，Android 的 `AudioRecord` 實作另外開分支（決定 #2）。
 - **背景錄音**：App 進入背景就自動停止並存檔（決定 #5）。
 - **中斷後自動恢復錄音**：來電等中斷一律結束並存檔（決定 #11）。
-- **提升辨識準確度**（換模型、調整 `initialPrompt`／gate 參數、改用 `.measurement` mode）：等功能做完再實測評估。例外：即時預覽要不要改用 `tiny`，由第 0 步的技術驗證決定，那是為了速度，不是準確度。
-- **修改 `whisper_ggml` 本身、在 FFI 層做 buffer 優化**：那是技能樹的第 2 項。
+- **提升辨識準確度**（換模型、調整 `initialPrompt`／gate 參數、改用 `.measurement` mode）：等功能做完再實測評估。例外（皆由第 0 步技術驗證決定，目的不是準確度）：即時預覽改用 `tiny` 並調整串流參數（為了速度）；即時預覽加上繁體 `initialPrompt`（為了避免簡體字）。
+- **在 FFI 層做 buffer 優化、縮小 `audio_ctx`**：那是技能樹的第 2 項。註：技術驗證後已將 `whisper_ggml` 內建到 `packages/whisper_ggml` 並做了必要修改（串流可調參數、每次推論的 `metrics`、模型下載改為串流並回報進度），見該資料夾的 `ECHONOTE.md`。
 - **錄音期間的即時摘要或分析**：避免 token 費用倍增，分析仍然在結束後由使用者手動觸發。
 - **說話者辨識（diarization）**。
 - **在 UI 上顯示 `source` 欄位**：先只存資料（決定 #4）。
@@ -104,7 +104,7 @@
 
 | method | 參數 | 回傳 | 說明 |
 | --- | --- | --- | --- |
-| `getPermissionStatus` | 無 | `String`：`granted`／`denied`／`permanentlyDenied`／`undetermined` | 查詢麥克風權限，不會跳出系統詢問 |
+| `getPermissionStatus` | 無 | `String`：`granted`／`denied`／`permanentlyDenied`／`undetermined` | 查詢麥克風權限，不會跳出系統詢問。iOS 被拒絕後不會再詢問，所以一律回 `permanentlyDenied`，不會回 `denied` |
 | `requestPermission` | 無 | `bool` | 跳出系統的權限詢問；權限已經被永久拒絕時直接回 `false` |
 | `start` | `{ "sampleRate": 16000, "chunkMs": 100 }` | `null` | 開始收音，PCM 從 EventChannel 送出。已經在錄時回傳錯誤 `ALREADY_RUNNING` |
 | `stop` | 無 | `null` | 停止收音並釋放原生資源，結束 EventChannel 的串流。沒在錄音時呼叫也不算錯誤（idempotent） |
@@ -135,7 +135,7 @@
   - category 用 `.playAndRecord`，mode 用 `.default`（保留系統的語音處理和降噪）。
   - 不開啟與其他 App 混音。
 - **收音**：在 `AVAudioEngine.inputNode` 上 `installTap`，取得硬體原生格式的音訊（通常是 48 kHz Float32），再用 `AVAudioConverter` 轉成 16 kHz、mono、Int16。
-- **路由改變**（`AVAudioSession.routeChangeNotification`）：硬體格式改變時，重建 converter 或重新安裝 tap，串流不中斷。
+- **硬體格式改變**（插拔耳機、藍牙連線或斷線）：監聽 `AVAudioEngineConfigurationChange`——硬體格式改變時 engine 會自行停止，只監聽 `routeChangeNotification` 接不回來。收到後重新安裝 tap（每個 tap 各自持有 converter 與暫存，避免與 audio thread 競爭）並重新啟動 engine，串流不中斷；切換瞬間最多遺失不到一個 chunk。
 - **中斷**（`AVAudioSession.interruptionNotification`）：收到 `.began` 就停止 engine，送出 `INTERRUPTED`，然後結束串流。
 - **進入背景**：收到 `UIApplication.didEnterBackgroundNotification` 就停止收音，送出 `BACKGROUNDED`，然後結束串流。
 - **檔案位置**：`ios/Runner/MicStreamChannel.swift`，在 `AppDelegate` 註冊。
@@ -149,8 +149,12 @@
 - **新增 `lib/services/mic_stream_service.dart`**：`MicStreamService`，包裝上述兩個 channel。
   - 對外提供 `Future<MicPermission> permissionStatus()`、`Future<bool> requestPermission()`、`Future<Stream<Uint8List>> start()`、`Future<void> stop()`。
   - 把 `PlatformException` 轉成專案自己的例外型別。
+  - 重複呼叫 `start` 在 Dart 端就擋下（`alreadyRunning`），不送到原生端：EventChannel 在原生端只有一個 sink，重複監聽會搶走正在錄的串流。
+  - 另有 `openSettings()`，對應 channel 的 `openSettings`。
 - **新增 `lib/services/live_transcription_service.dart`**：`LiveTranscriptionService`。
-  - 呼叫 `WhisperController.transcribeLive(model: kWhisperModel, lang: 'zh', pcm16Stream: ...)`。**`lang` 必須明確傳 `'zh'`**：套件預設是 `'en'`，而 `'auto'` 有已知 bug。
+  - 呼叫 `WhisperController.transcribeLive(lang: 'zh', ...)`，其餘參數來自 `kLivePreviewConfig`：`tiny`、4 threads、每 3 秒重算、關閉 temperature fallback、每段最多 64 token、繁體 `initialPrompt`「以下是繁體中文的會議逐字稿。」（依第 0 步技術驗證）。**`lang` 必須明確傳 `'zh'`**：套件預設是 `'en'`，而 `'auto'` 有已知 bug。
+  - `ensureModels()` 在錄音前依序確保 `tiny`（即時用）和 `base`（離線用）都已下載，並回報進度；套件的下載改為邊下載邊寫入 `.part` 檔、檢查 HTTP 狀態，完成才改名。
+  - `LiveRecording` 對外提供：`preview`（完整預覽文字）、`lagSeconds`（落後秒數 = 已送出的音訊秒數 − 套件 `metrics` 的 `fed_sec`）、`notices`（`previewDelayed`／`previewCaughtUp`／`previewStopped`／`nearLimit`）、`done`（結束原因、預覽文字、實際寫入的音訊長度、WAV 是否可用）。
   - 同一份 PCM 串流要同時送給 whisper 和 WAV 寫入器。因為 Dart 的單一訂閱 stream 不能被聽兩次，要用 broadcast stream 或手動分流。
 - **新增 WAV 寫入器**（例如 `lib/services/wav_writer.dart`）：錄音期間把 PCM 持續 append 到檔案，停止時補寫 WAV header 裡的長度欄位。不能把整段音訊放在記憶體裡。
 - **異動 `TranscriptionService`／`ImportScreen`**：讓離線轉錄流程可以對「已經存在的 `Recording`」執行，供即時錄音停止後和「重新轉錄」共用。
@@ -180,15 +184,16 @@
 ### 即時錄音的狀態機
 
 ```text
-idle
- └─(按開始)→ checkingPermission
-      ├─ 沒有權限且可以詢問 → requestingPermission ─ 允許 → preparing ／ 拒絕 → permissionDenied
+（從首頁「即時錄音」進入畫面就開始，不另外按開始）
+checkingPermission
+      ├─ 沒有權限且可以詢問 → 跳出系統詢問（仍在 checkingPermission）─ 允許 → preparing ／ 拒絕 → permissionDenied
       ├─ 永久拒絕 → permissionDenied（引導使用者到系統設定）
       └─ 已有權限 → preparing（下載或載入模型、啟動 WhisperLiveSession）
 preparing ─ 成功 → recording ／ 失敗 → error
 recording ─(按停止／達到 2 小時上限)→ finalizing
 recording ─(中斷／進入背景／原生錯誤)→ finalizing（保留已錄的內容）
 finalizing：stop 原生 → 等 session.stop() → 補寫 WAV header → 存成未轉錄的 Recording
+            （header 補寫失敗，或實際音訊不到 1 秒 → 刪除 WAV、不保存 → error）
 finalizing ─ 成功 → transcribing ／ 失敗 → error
 transcribing（離線轉錄，顯示進度百分比）
  ├─ 成功且有內容 → 更新 Recording 的 segments 與 elapsedSeconds → 導向 MeetingDetailScreen
@@ -211,13 +216,14 @@ transcribing（離線轉錄，顯示進度百分比）
 
 - **首頁入口**（決定 #9）：`HomeScreen` 的 FAB 改成展開式，展開後有「匯入錄音檔」和「即時錄音」兩個選項。
 - **新畫面 `LiveRecordScreen`**，需要顯示：
-  - 錄音狀態和已錄時間；
+  - 錄音狀態和已錄時間（時:分:秒，因為上限是 2 小時）；
   - 即時逐字稿預覽（全文持續更新，自動捲到最底）；
   - 停止按鈕；
   - 「即時文字可能延遲」提示（見邊界案例的辨識落後）；
   - 剩 5 分鐘到上限時的提示；
   - 權限被拒、模型下載中、錯誤等狀態的提示。
-- **錄音中按返回**（決定 #12）：跳出確認對話框，選項是「停止並存檔」和「繼續錄音」。
+- **錄音中按返回**（決定 #12）：跳出確認對話框，選項是「停止並存檔」和「繼續錄音」。保存中（`finalizing`）不能離開。
+- **紀錄名稱**：即時錄音的 `audioName` 為「即時錄音 YYYY-MM-DD HH:mm」（開始錄音的時間），分析後一樣由標題取代顯示。
 - **停止後**：同一個畫面切換成轉錄進度，跟 `ImportScreen` 的呈現一致。完成後用 `pushReplacement` 導向 `MeetingDetailScreen`。
 - **`HomeScreen`／`MeetingDetailScreen`**：新增未轉錄狀態的顯示，見上一節。
 
@@ -235,9 +241,10 @@ transcribing（離線轉錄，顯示進度百分比）
 | 即時辨識中途發生 native 錯誤 | 套件會在 `partials` 送出錯誤，並以最後一次的文字當作定稿。錄音和 WAV 寫入繼續進行，即時預覽顯示「即時文字已停止」。最終逐字稿不受影響 |
 | 離線轉錄沒有辨識出內容 | 紀錄維持未轉錄，**保留音檔**（決定 #13），提示「沒有辨識出任何內容」 |
 | 離線轉錄失敗 | 紀錄維持未轉錄，保留音檔，顯示錯誤，之後可以「重新轉錄」 |
-| 磁碟空間不足，寫入 WAV 失敗 | 停止錄音 → 盡量補寫 WAV header，把已寫入的部分存成未轉錄紀錄。補寫也失敗時顯示錯誤，刪除殘缺的檔案 |
+| 磁碟空間不足，寫入 WAV 失敗 | 停止錄音 → 盡量補寫 WAV header（依實際寫入的 bytes），把已寫入的部分存成未轉錄紀錄。補寫也失敗時（`wavUsable == false`）顯示錯誤，刪除殘缺的檔案 |
+| 錄音不到 1 秒（例如一開始就被中斷） | 刪除 WAV，不保存紀錄，顯示「錄音太短，沒有保存」 |
 | 錄音中按返回 | 跳出確認對話框（決定 #12） |
-| 重複按開始或停止 | 原生端的 `start` 回 `ALREADY_RUNNING`，`stop` 為 idempotent；UI 端也要防止連點 |
+| 重複按開始或停止 | 原生端的 `start` 回 `ALREADY_RUNNING`，`stop` 為 idempotent；Dart 端先擋重複 `start`；首頁「即時錄音」在錄音畫面開著時忽略再次點擊；停止按鈕只在 `recording` 狀態有作用 |
 
 ## 驗收情境
 
@@ -357,7 +364,8 @@ transcribing（離線轉錄，顯示進度百分比）
 
 ### 階段 5：驗收
 
-- [ ] **T5.1** 在實機上執行「驗收情境」的 5 個情境，可以先用 `/qa-checklist` 做成可勾選的驗收頁。依賴：階段 1–4 全部完成。
+- [x] **T5.1** 在實機上執行「驗收情境」的 5 個情境，可以先用 `/qa-checklist` 做成可勾選的驗收頁。依賴：階段 1–4 全部完成。
+  - 2026-10-08：使用者自行實測，回報無異常（未逐項記錄各情境的結果）。
 - [ ] **T5.2** 回歸測試：匯入既有錄音檔（含空白檔名）→ 轉錄 → 分析 → 播放，行為跟改動前一致；舊的歷史紀錄可以正常開啟。依賴：T4.7。
 - [ ] **T5.3** 用 `/spec-check` 核對規格與實作，用 `/devlog` 整理開發紀錄。依賴：T5.1、T5.2。
 
@@ -375,3 +383,18 @@ transcribing（離線轉錄，顯示進度百分比）
    - **決定**：採用建議，在同一個分支上做。
 2. **自動化測試的範圍？** 專案目前只有 Flutter 預設的 `test/widget_test.dart`。建議：只替純 Dart 的部分（`Recording` 的 JSON、`WavWriter`）補單元測試（T2.3、T3.2），原生層和 UI 用實機驗收。
    - **決定**：採用建議。
+
+## 驗收核對記錄
+
+### 2026-10-08（`/spec-check`，commit `fc900d1`）
+
+- **結論**：主體功能與規格一致（Platform Channel 契約、錯誤代碼、chunk 格式、資料模型、未轉錄流程、狀態機主線、上限與延遲提示都有對應程式碼）。有 6 項是**規格沒跟上實作**（技術驗證後的決定未回寫正文），1 項是**實作沒完全做到規格**（WAV header 補寫失敗時未刪檔）。
+- **落差**：
+  1. 路由改變：正文寫 `routeChangeNotification`，實作監聽 `AVAudioEngineConfigurationChange`。
+  2. `LiveTranscriptionService`：正文寫 `transcribeLive(model: kWhisperModel…)`，實作用 `kLivePreviewConfig`（`tiny`＋調校參數＋繁體 prompt）。
+  3. 「明確不做的事」寫不修改 `whisper_ggml`、不調整 `initialPrompt`，實際已內建並修改套件、即時預覽使用繁體 prompt。
+  4. 狀態機的 `idle →(按開始)` 與 `requestingPermission`：實作從首頁「即時錄音」進入就直接開始，系統權限詢問發生在 `checkingPermission` 內，沒有獨立狀態。
+  5. 磁碟空間不足：規格要求「補寫 header 也失敗時刪除殘缺檔案」，實作在補寫失敗時仍會保存（只有實際音訊不到 1 秒才刪檔）。
+  6. 驗收情境 1–5：使用者回報自行實測沒問題，尚未逐項記錄結果。
+- **規格未涵蓋**：Dart 端先擋重複 `start`、`openSettings`（API 表已補）、錄音不到 1 秒不保存、即時錄音的名稱格式、錄音時間顯示到小時、`metrics`／`lagSeconds`、模型下載改為串流＋進度、iOS 上 `getPermissionStatus` 不會回 `denied`。
+- **處理決定（同日，使用者）**：落差 1–4 改規格（已更新正文）；落差 5 改實作（`WavWriter.headerFinalized` → `LiveRecordingResult.wavUsable`，不可用時刪檔不保存）；落差 6 記為「使用者自測，回報無異常」並勾選 T5.1；「規格未涵蓋」8 項全部補進正文，其中首頁「即時錄音」連點同時在實作上擋掉。
