@@ -3,6 +3,7 @@
 #define DR_WAV_IMPLEMENTATION
 #include "whisper/examples/dr_wav.h"
 
+#include <chrono>
 #include <cmath>
 #include <fstream>
 #include <cstdio>
@@ -467,6 +468,11 @@ struct whisper_stream_state
     std::vector<float> pcmf32;   // samples of the current window
     size_t n_transcribed = 0;    // window samples covered by the last run
     size_t n_voiced = 0;         // end of the last chunk with speech energy
+    size_t n_fed_total = 0;      // [echonote] samples fed this session
+    // [echonote] tunables; defaults keep upstream behavior.
+    size_t step_samples = (size_t)(1.5 * WHISPER_SAMPLE_RATE);
+    bool no_fallback = false;    // temperature_inc = 0: no re-decode retries
+    int max_tokens = 0;          // per segment, 0 = no limit
     float noise_floor = 0.005f;  // adaptive ambient RMS estimate
     float gate_rms_min = 0.0015f;   // absolute minimum speech RMS
     float gate_ratio = 2.5f;        // voiced thold = ratio * noise_floor
@@ -483,7 +489,6 @@ struct whisper_stream_state
 
 static whisper_stream_state g_stream;
 
-static const size_t STREAM_STEP_SAMPLES   = (size_t)(1.5 * WHISPER_SAMPLE_RATE);
 static const size_t STREAM_COMMIT_SAMPLES = (size_t)(25.0 * WHISPER_SAMPLE_RATE);
 // Decode this much audio past the last voiced sample (trailing consonants).
 static const size_t STREAM_VOICE_PAD      = (size_t)(0.2 * WHISPER_SAMPLE_RATE);
@@ -502,6 +507,10 @@ static json stream_run_inference()
     wparams.language         = g_stream.language.c_str();
     wparams.n_threads        = g_stream.n_threads;
     wparams.no_context       = true;
+    if (g_stream.no_fallback) {
+        wparams.temperature_inc = 0.0f;
+    }
+    wparams.max_tokens = g_stream.max_tokens;
     wparams.suppress_nst = g_stream.suppress_nst;
     if (!g_stream.prompt.empty()) {
         wparams.initial_prompt = g_stream.prompt.c_str();
@@ -516,18 +525,43 @@ static json stream_run_inference()
         return result;
     }
 
+    // [echonote] per-run metrics; fed_sec lets the app compute real lag.
+    whisper_reset_timings(g_stream.ctx);
+    const auto t_start = std::chrono::steady_clock::now();
     if (whisper_full(g_stream.ctx, wparams, g_stream.pcmf32.data(),
                      (int)n_decode) != 0) {
         result["@type"] = "error";
         result["message"] = "failed to process audio";
         return result;
     }
+    const double total_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - t_start).count();
 
     std::string text;
+    int n_tokens = 0;
     const int n_segments = whisper_full_n_segments(g_stream.ctx);
     for (int i = 0; i < n_segments; ++i) {
         text += whisper_full_get_segment_text(g_stream.ctx, i);
+        n_tokens += whisper_full_n_tokens(g_stream.ctx, i);
     }
+
+    json metrics;
+    metrics["total_ms"] = total_ms;
+    metrics["window_sec"] = (double)n_decode / WHISPER_SAMPLE_RATE;
+    metrics["fed_sec"] = (double)g_stream.n_fed_total / WHISPER_SAMPLE_RATE;
+    metrics["tokens"] = n_tokens;
+    metrics["threads"] = g_stream.n_threads;
+    metrics["step_sec"] = (double)g_stream.step_samples / WHISPER_SAMPLE_RATE;
+    metrics["no_fallback"] = g_stream.no_fallback;
+    metrics["max_tokens"] = g_stream.max_tokens;
+    if (whisper_timings *t = whisper_get_timings(g_stream.ctx)) {
+        // Averages per call: one encode per run, decode is per token.
+        metrics["encode_ms"] = t->encode_ms;
+        metrics["decode_ms_per_token"] = t->decode_ms;
+        metrics["batchd_ms"] = t->batchd_ms;
+        delete t;
+    }
+    result["metrics"] = metrics;
 
     g_stream.last_text = text;
     g_stream.n_transcribed = n_decode;
@@ -568,6 +602,7 @@ extern "C"
         g_stream.pcmf32.clear();
         g_stream.n_transcribed = 0;
         g_stream.n_voiced = 0;
+        g_stream.n_fed_total = 0;
         g_stream.noise_floor = 0.005f;
         g_stream.committed.clear();
         g_stream.last_text.clear();
@@ -581,6 +616,10 @@ extern "C"
             g_stream.gate_rms_min   = (float)jsonBody.value("gate_rms_min", 0.0015);
             g_stream.gate_ratio     = (float)jsonBody.value("gate_voice_ratio", 2.5);
             g_stream.gate_floor_cap = (float)jsonBody.value("gate_floor_cap", 0.01);
+            g_stream.step_samples = (size_t)(
+                jsonBody.value("step_sec", 1.5) * WHISPER_SAMPLE_RATE);
+            g_stream.no_fallback = jsonBody.value("no_fallback", false);
+            g_stream.max_tokens  = jsonBody.value("max_tokens", 0);
             g_stream.prompt.clear();
             if (jsonBody.contains("initial_prompt") && jsonBody["initial_prompt"].is_string()) {
                 g_stream.prompt = jsonBody["initial_prompt"].get<std::string>();
@@ -624,6 +663,7 @@ extern "C"
                 sum2 += (double)pcm[i] * pcm[i];
             }
             g_stream.pcmf32.insert(g_stream.pcmf32.end(), pcm, pcm + n_samples);
+            g_stream.n_fed_total += n_samples;
 
             // Adaptive noise floor: falls quickly, rises slowly, so it
             // tracks room tone without absorbing speech. A chunk is
@@ -647,7 +687,7 @@ extern "C"
         // Run only when new *voiced* audio arrived — silence alone
         // never triggers a decode.
         if (g_stream.n_voiced > g_stream.n_transcribed &&
-            g_stream.pcmf32.size() - g_stream.n_transcribed >= STREAM_STEP_SAMPLES) {
+            g_stream.pcmf32.size() - g_stream.n_transcribed >= g_stream.step_samples) {
             return jsonToChar(stream_run_inference());
         }
 

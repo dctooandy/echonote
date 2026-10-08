@@ -32,6 +32,13 @@ class WhisperController {
   /// `max(gateVoiceRatio * noiseFloor, gateRmsMin)`, where the adaptive
   /// noise floor is capped at [gateNoiseFloorCap]. Raise the cap for loud
   /// environments; lower [gateRmsMin] for very quiet speakers.
+  ///
+  /// [echonote] [threads] is the native thread count; [stepSec] is how much
+  /// new audio triggers a re-decode; [noFallback] disables whisper's
+  /// temperature-fallback re-decodes; [maxTokens] caps tokens per segment
+  /// (0 = no limit). Defaults keep upstream behavior. On an iPhone 12 Pro Max
+  /// the upstream defaults fall behind real time within a minute; see
+  /// echonote's docs/specs/feature-native-mic-stream for measurements.
   Future<WhisperLiveSession> transcribeLive({
     required WhisperModel model,
     required Stream<Uint8List> pcm16Stream,
@@ -41,6 +48,10 @@ class WhisperController {
     double gateRmsMin = 0.0015,
     double gateVoiceRatio = 2.5,
     double gateNoiseFloorCap = 0.01,
+    int threads = 4,
+    double stepSec = 1.5,
+    bool noFallback = false,
+    int maxTokens = 0,
   }) async {
     await initModel(model);
 
@@ -52,6 +63,10 @@ class WhisperController {
       gateRmsMin: gateRmsMin,
       gateVoiceRatio: gateVoiceRatio,
       gateNoiseFloorCap: gateNoiseFloorCap,
+      threads: threads,
+      stepSec: stepSec,
+      noFallback: noFallback,
+      maxTokens: maxTokens,
     );
 
     pcm16Stream.listen(

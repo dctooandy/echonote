@@ -20,17 +20,25 @@ typedef _StreamStopNative = Pointer<Utf8> Function();
 /// for progressively refined transcripts while audio is being fed, and call
 /// [stop] to get the final text and release the native context.
 class WhisperLiveSession {
-  WhisperLiveSession._(this._worker, this._toWorker, this._partials);
+  WhisperLiveSession._(
+      this._worker, this._toWorker, this._partials, this._metrics);
 
   final Isolate _worker;
   final SendPort _toWorker;
   final StreamController<String> _partials;
+  final StreamController<Map<String, dynamic>> _metrics;
   final Completer<String> _final = Completer<String>();
   bool _stopped = false;
 
   /// Progressively refined transcripts of the audio fed so far. Each event
   /// replaces the previous one (it is the full text, not a delta).
   Stream<String> get partials => _partials.stream;
+
+  /// [echonote] One event per native inference run: total_ms, window_sec,
+  /// fed_sec (audio the native side had received), tokens, threads,
+  /// step_sec, no_fallback, max_tokens, encode_ms, decode_ms_per_token,
+  /// batchd_ms.
+  Stream<Map<String, dynamic>> get metrics => _metrics.stream;
 
   /// Feed 16 kHz mono PCM16 (little-endian) audio bytes.
   void feed(Uint8List pcm16Bytes) {
@@ -58,6 +66,9 @@ Future<WhisperLiveSession> startWhisperLiveSession({
   String? initialPrompt,
   bool suppressNonSpeechTokens = false,
   int threads = 4,
+  double stepSec = 1.5,
+  bool noFallback = false,
+  int maxTokens = 0,
   double gateRmsMin = 0.0015,
   double gateVoiceRatio = 2.5,
   double gateNoiseFloorCap = 0.01,
@@ -67,6 +78,8 @@ Future<WhisperLiveSession> startWhisperLiveSession({
       await Isolate.spawn(_liveWorker, fromWorker.sendPort);
 
   final StreamController<String> partials = StreamController<String>();
+  final StreamController<Map<String, dynamic>> metrics =
+      StreamController<Map<String, dynamic>>.broadcast();
   final Completer<SendPort> ready = Completer<SendPort>();
   final Completer<void> started = Completer<void>();
   late final WhisperLiveSession session;
@@ -83,8 +96,13 @@ Future<WhisperLiveSession> startWhisperLiveSession({
       case 'partial':
         lastText = msg[1] as String;
         if (!partials.isClosed) partials.add(lastText);
+      case 'metrics':
+        if (!metrics.isClosed) {
+          metrics.add(Map<String, dynamic>.from(msg[1] as Map));
+        }
       case 'final':
         if (!partials.isClosed) partials.close();
+        if (!metrics.isClosed) metrics.close();
         session._final.complete(msg[1] as String);
         fromWorker.close();
         session._worker.kill();
@@ -100,6 +118,7 @@ Future<WhisperLiveSession> startWhisperLiveSession({
               ..addError(error)
               ..close();
           }
+          if (!metrics.isClosed) metrics.close();
           session._final.complete(lastText);
           fromWorker.close();
           session._worker.kill();
@@ -108,7 +127,7 @@ Future<WhisperLiveSession> startWhisperLiveSession({
   });
 
   final SendPort toWorker = await ready.future;
-  session = WhisperLiveSession._(worker, toWorker, partials);
+  session = WhisperLiveSession._(worker, toWorker, partials, metrics);
 
   toWorker.send([
     'start',
@@ -121,6 +140,9 @@ Future<WhisperLiveSession> startWhisperLiveSession({
       'gate_rms_min': gateRmsMin,
       'gate_voice_ratio': gateVoiceRatio,
       'gate_floor_cap': gateNoiseFloorCap,
+      'step_sec': stepSec,
+      'no_fallback': noFallback,
+      'max_tokens': maxTokens,
       if (initialPrompt != null && initialPrompt.isNotEmpty)
         'initial_prompt': initialPrompt,
     }),
@@ -132,6 +154,7 @@ Future<WhisperLiveSession> startWhisperLiveSession({
     worker.kill(priority: Isolate.immediate);
     fromWorker.close();
     await partials.close();
+    await metrics.close();
     rethrow;
   }
   return session;
@@ -230,6 +253,9 @@ void _liveWorker(SendPort toMain) {
         if (result['@type'] == 'error') {
           toMain.send(['error', result['message']]);
         } else {
+          if (result['metrics'] != null) {
+            toMain.send(['metrics', result['metrics']]);
+          }
           final String text = result['text'] as String? ?? '';
           if (text != lastPartial) {
             lastPartial = text;
