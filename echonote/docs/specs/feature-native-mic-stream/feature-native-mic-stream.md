@@ -1,7 +1,7 @@
 # 原生麥克風串流＋即時逐字稿 規格
 
 分支：`feature/native-mic-stream`
-狀態：已確認（2026-10-08，17 項決定皆已確認；任務拆解的 2 項待確認事項也已決定）；即時預覽使用的模型待「第 0 步：技術驗證」的結果決定
+狀態：已確認（2026-10-08，17 項決定皆已確認；任務拆解的 2 項待確認事項也已決定）；技術驗證**有條件通過**：即時預覽用 `tiny`＋調校參數，離線用 `base`
 
 這份文件記錄「在 App 內直接錄音，並一邊錄一邊顯示逐字稿」的功能。做法是自己寫原生的 Platform Channel（iOS 用 `AVAudioEngine`），輸出 16 kHz、mono、PCM16 的音訊串流，交給 `whisper_ggml` 的 `WhisperController.transcribeLive()` 做裝置端即時辨識。錄音結束後，再用存下來的 WAV 跑一次既有的離線轉錄，產生正式的逐字稿。
 
@@ -50,6 +50,24 @@
 | `base` 和 `tiny` 都跟不上 | 不通過 | 暫停正式開發，回頭評估：(a) 修改 whisper.cpp，縮小 `audio_ctx`，讓短音訊不必補滿 30 秒（屬於技能樹第 2 項）；(b) 錄音中不顯示即時文字，只錄音，結束後再轉錄 |
 
 技術驗證的結果和決定要寫回這一節，並更新開頭的「狀態」欄位。
+
+### 結果（2026-10-08，iPhone 12 Pro Max，debug 模式）
+
+**判定：有條件通過。** 即時預覽用 `tiny`、4 threads，並調整串流參數；離線轉錄仍用 `base`。
+
+| 設定 | 單次辨識中位數 | 落後趨勢 | 結果 |
+| --- | --- | --- | --- |
+| `base`，原始參數，2／4 threads（約 31 秒） | 3333／2465 ms | 持續增加，停止時落後 13–17 秒 | 不通過 |
+| `tiny`，原始參數，4 threads（5 分鐘） | 約 1 秒，第 40 輪起暴增到 5–20 秒 | 約 50 秒後失控，停止時積壓 216 秒；手機很燙 | 不通過 |
+| `tiny`，調校後，4 threads（231 秒） | **898 ms** | 最大 2.0 秒，沒有上升趨勢；停止後 1.7 秒定稿；不燙 | **通過** |
+
+- **調校內容**：重算間隔 1.5 → 3 秒、關閉 temperature fallback（`temperature_inc = 0`）、每段最多 64 token。即時文字約每 3 秒更新一次。
+- **瓶頸分析**：encoder 固定補滿 30 秒，占單次耗時 70–90%；原始參數下失控的主因推測是 temperature fallback 的重解碼，發熱降頻（encoder 慢約 60%）是次因。
+- 記憶體 550–670 MB，長時間持平，沒有洩漏。
+- 4 threads 比 2 threads 快（encoder 較快，但每個 token 的 decode 較慢）。
+- **依賴**：調校參數和量測數據需要修改 `whisper_ggml`，已經內建在 `packages/whisper_ggml`（path 依賴，只放 iOS＋Dart）。修改內容見該資料夾的 `ECHONOTE.md` 和 commit `082105c`。
+- **繁體中文**：即時模式輸出夾雜不少簡體字（`no_context` 而且沒有 prompt）。正在驗證加上繁體 `initialPrompt` 的效果，不夠的話再加簡轉繁。最終逐字稿來自離線轉錄，不受影響。
+- 縮小 `audio_ctx` 目前不需要，留作之後的優化（技能樹第 2 項）。
 
 ## 目標與範圍
 
@@ -270,8 +288,9 @@ transcribing（離線轉錄，顯示進度百分比）
   - 註冊位置：`AppDelegate` 目前使用 `FlutterImplicitEngineDelegate`，channel 要在 `didInitializeImplicitFlutterEngine` 裡，透過 `engineBridge.pluginRegistry` 取得 registrar 的 messenger 來建立，不能沿用舊的 `window.rootViewController` 寫法。
 - [x] **T0.4** 實作 `lib/services/mic_stream_service.dart`（`MicStreamService`），包含 `PlatformException` 轉成專案例外型別。依賴：T0.3。
 - [x] **T0.5** 臨時測試畫面：開始／停止、即時文字，以及顯示 partial 更新間隔和已送出的音訊秒數。呼叫 `transcribeLive(lang: 'zh')`，模型可以切換 `base`／`tiny`。依賴：T0.4。
-- [ ] **T0.6** 量測用的套件修改：在本機 fork 的 `whisper_ggml` 裡記錄每次 `stream_run_inference` 的耗時，用 `dependency_overrides` 或 `pubspec_overrides.yaml` 暫時指向 fork。依賴：T0.5。處置方式見待確認事項 #1（已決定）。
-- [ ] **T0.7** 在 iPhone 12 Pro Max 上用 `base`、`tiny` 各錄 5 分鐘連續講話，記錄單次辨識耗時（中位數）、落後秒數的趨勢、記憶體用量。**順便確認即時模式輸出的是繁體中文**（離線模式已確認過，但即時模式用 `no_context` 而且沒有 prompt，需要另外確認）。依賴：T0.6。
+- [x] **T0.6** 量測用的套件修改：在本機 fork 的 `whisper_ggml` 裡記錄每次 `stream_run_inference` 的耗時，用 `dependency_overrides` 或 `pubspec_overrides.yaml` 暫時指向 fork。依賴：T0.5。處置方式見待確認事項 #1（已決定）。
+- [x] **T0.7** 在 iPhone 12 Pro Max 上用 `base`、`tiny` 各錄 5 分鐘連續講話，記錄單次辨識耗時（中位數）、落後秒數的趨勢、記憶體用量。**順便確認即時模式輸出的是繁體中文**（離線模式已確認過，但即時模式用 `no_context` 而且沒有 prompt，需要另外確認）。依賴：T0.6。
+  - 結果見「第 0 步：技術驗證」的結果；繁體中文輸出夾雜簡體字，用繁體 prompt 驗證中。
 - [ ] **T0.8** 把結果和判定寫回「第 0 步：技術驗證」，更新開頭的「狀態」；移除 T0.5 的臨時畫面和 T0.6 的套件修改。依賴：T0.7。
   - 判定為「不通過」時，**暫停以下所有階段**，回頭修改規格。
 
@@ -289,9 +308,9 @@ transcribing（離線轉錄，顯示進度百分比）
 
 可以跟階段 1 同時進行。
 
-- [ ] **T2.1** `Recording` 新增 `source` 欄位（`import`／`live`），`fromJson` 缺少時預設為 `import`；`ImportScreen` 建立紀錄時明確填 `import`。
-- [ ] **T2.2** `Recording` 支援「未轉錄」：新增 `isTranscribed` getter；`segments` 和 `elapsedSeconds` 目前是 `final`，要改成可以更新（改成非 final，或新增 `copyWith`），讓轉錄完成後能更新同一筆紀錄。
-- [ ] **T2.3** 單元測試：舊格式 JSON（沒有 `source`）讀取正常、空 `segments` 的序列化往返、`isTranscribed` 判斷。依賴：T2.1、T2.2。範圍見待確認事項 #2（已決定）。
+- [x] **T2.1** `Recording` 新增 `source` 欄位（`import`／`live`），`fromJson` 缺少時預設為 `import`；`ImportScreen` 建立紀錄時明確填 `import`。
+- [x] **T2.2** `Recording` 支援「未轉錄」：新增 `isTranscribed` getter；`segments` 和 `elapsedSeconds` 目前是 `final`，要改成可以更新（改成非 final，或新增 `copyWith`），讓轉錄完成後能更新同一筆紀錄。
+- [x] **T2.3** 單元測試：舊格式 JSON（沒有 `source`）讀取正常、空 `segments` 的序列化往返、`isTranscribed` 判斷。依賴：T2.1、T2.2。範圍見待確認事項 #2（已決定）。
 
 ### 階段 3：Dart 服務層
 
