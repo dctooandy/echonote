@@ -119,6 +119,20 @@ class MeetingAnalysis {
       };
 }
 
+/// How a recording entered the app. Stored as `import` / `live`.
+enum RecordingSource {
+  imported('import'),
+  live('live');
+
+  const RecordingSource(this.jsonValue);
+
+  final String jsonValue;
+
+  /// Entries written before this field existed are all imports.
+  static RecordingSource fromJson(String? value) =>
+      values.firstWhere((s) => s.jsonValue == value, orElse: () => imported);
+}
+
 class Recording {
   Recording({
     required this.id,
@@ -128,6 +142,7 @@ class Recording {
     required this.elapsedSeconds,
     required this.audioFileName,
     required this.segments,
+    this.source = RecordingSource.imported,
     this.analysis,
   });
 
@@ -135,14 +150,21 @@ class Recording {
   final String audioName;
   final DateTime createdAt;
   final String model;
-  final int elapsedSeconds;
+
+  /// Offline transcription time; 0 while untranscribed.
+  int elapsedSeconds;
 
   /// Filename only (e.g. `1721...m4a`), relative to [RecordingStore]'s
   /// recordings directory. Never store an absolute path here — see
   /// [RecordingStore.resolveAudioPath] for why.
   final String audioFileName;
-  final List<TranscriptSegment> segments;
+  /// Empty means "untranscribed": a live recording saved before (or
+  /// without) a successful offline transcription. Reassigned on retry.
+  List<TranscriptSegment> segments;
+  final RecordingSource source;
   MeetingAnalysis? analysis;
+
+  bool get isTranscribed => segments.isNotEmpty;
 
   String get displayTitle =>
       (analysis?.title.isNotEmpty ?? false) ? analysis!.title : audioName;
@@ -157,6 +179,7 @@ class Recording {
         segments: (json['segments'] as List<dynamic>)
             .map((s) => TranscriptSegment.fromJson(s as Map<String, dynamic>))
             .toList(),
+        source: RecordingSource.fromJson(json['source'] as String?),
         analysis: json['analysis'] != null
             ? MeetingAnalysis.fromJson(json['analysis'] as Map<String, dynamic>)
             : null,
@@ -170,6 +193,7 @@ class Recording {
         'elapsed_seconds': elapsedSeconds,
         'audio_file_name': audioFileName,
         'segments': segments.map((s) => s.toJson()).toList(),
+        'source': source.jsonValue,
         'analysis': analysis?.toJson(),
       };
 }

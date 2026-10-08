@@ -46,6 +46,11 @@ class TranscriptionService {
       audioPath: safeAudioPath,
       lang: 'zh',
       withSegments: true,
+      // Some recordings (e.g. 261009_與老師討論AHP.mp3) make whisper open
+      // every 30 s window with a non-speech tag like "(咖啡)" and skip the
+      // rest of the window, so the whole transcript is that one tag.
+      // Suppressing those tags restores the real speech.
+      suppressNonSpeechTokens: true,
       onProgress: onProgress,
     );
     stopwatch.stop();

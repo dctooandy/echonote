@@ -26,6 +26,15 @@ class RecordingStore {
     await file.writeAsString(jsonEncode(recording.toJson()));
   }
 
+  /// Removes [recording]'s history entry and its audio file. A missing
+  /// audio file (e.g. a failed earlier delete) is not an error.
+  Future<void> delete(Recording recording) async {
+    final audio = File(await resolveAudioPath(recording));
+    if (await audio.exists()) await audio.delete();
+    final entry = File('${(await _historyDir()).path}/${recording.id}.json');
+    if (await entry.exists()) await entry.delete();
+  }
+
   /// Resolves [recording]'s audio file to an absolute path under the
   /// *current* app container. Never store the absolute path itself — iOS
   /// relocates the sandbox container (a new UUID) across app reinstalls and

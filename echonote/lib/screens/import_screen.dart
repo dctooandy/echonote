@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/recording.dart';
 import '../services/recording_store.dart';
+import '../services/recording_transcriber.dart';
 import '../services/transcription_service.dart';
 import 'meeting_detail_screen.dart';
 
@@ -18,8 +19,8 @@ class ImportScreen extends StatefulWidget {
 }
 
 class _ImportScreenState extends State<ImportScreen> {
-  final _transcriptionService = TranscriptionService();
   final _store = RecordingStore();
+  late final _transcriber = RecordingTranscriber(store: _store);
 
   int _progress = 0;
   String? _error;
@@ -31,40 +32,42 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 
   Future<void> _run() async {
+    File? copiedAudio;
     try {
-      final result = await _transcriptionService.transcribe(
-        audioPath: widget.audioPath,
-        onProgress: (percent) {
-          if (mounted) setState(() => _progress = percent);
-        },
-      );
-
-      if (result.segments.isEmpty) {
-        throw Exception('沒有辨識出任何內容，請確認錄音檔案是否正常');
-      }
-
       final id = DateTime.now().millisecondsSinceEpoch.toString();
       final recDir = await _store.recordingsDir();
       final ext = widget.audioPath.split('.').last;
       final audioFileName = '$id.$ext';
-      await File(widget.audioPath).copy('${recDir.path}/$audioFileName');
+      copiedAudio = await File(widget.audioPath).copy('${recDir.path}/$audioFileName');
 
       final recording = Recording(
         id: id,
         audioName: widget.audioName,
         createdAt: DateTime.now(),
         model: kWhisperModel.modelName,
-        elapsedSeconds: result.elapsed.inSeconds,
+        elapsedSeconds: 0,
         audioFileName: audioFileName,
-        segments: result.segments,
+        segments: [],
+        source: RecordingSource.imported,
       );
-      await _store.save(recording);
+      // Saves the recording only once it has a transcript.
+      await _transcriber.transcribe(
+        recording,
+        onProgress: (percent) {
+          if (mounted) setState(() => _progress = percent);
+        },
+      );
 
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => MeetingDetailScreen(recording: recording)),
       );
     } catch (e) {
+      // A failed import leaves nothing behind (unlike a live recording, the
+      // original file is still wherever the user picked it from).
+      try {
+        await copiedAudio?.delete();
+      } catch (_) {}
       if (mounted) setState(() => _error = '$e');
     }
   }
