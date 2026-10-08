@@ -136,6 +136,56 @@
 | 11 | App 大小 | 記錄加入前後的大小 |
 | 12 | C 編譯參數 | C11、`-O3`、`-Wall -Wextra -Werror` |
 
+## 任務拆解
+
+> 2026-10-08 初版。依據本規格與目前程式碼現況拆解（`live_transcription_service.dart` 的 `_onChunk` 是每個 100 ms chunk 進來的位置；專案目前沒有 `integration_test`、沒有 `CLAUDE.md`）。所有任務都屬於「可獨立進行」，沒有需要外部團隊配合的項目。
+
+### 階段 0：可行性驗證（必須最先完成）
+
+- [ ] **T0.1** 記錄基準 App 大小：在加入 `echo_core` 之前，`flutter build ios --release --no-codesign`，記下 `Runner.app` 大小（決定 #11）。
+- [ ] **T0.2** 用 `flutter create --template=package_ffi echo_core` 在 `packages/` 建立套件；讀懂產生的 `hook/build.dart`、`ffigen.yaml`、`src/` 結構。設定 C11、`-O3`、`-Wall -Wextra -Werror`。依賴：無。
+- [ ] **T0.3** App 加上 `echo_core: path: packages/echo_core`，用範本自帶的範例函式驗證三處：`flutter test`（macOS 上真的呼叫 C）、`flutter build ios --simulator`、iOS 實機 debug 執行；確認原生產物最低版本為 15.6，且 `whisper_ggml`（podspec）照常運作。依賴：T0.2。
+- [ ] **T0.4**（條件式）T0.3 任一處失敗時：改用 podspec 編譯 `echo_core`，並另外為 `flutter test` 編 macOS dylib；回頭修改規格。依賴：T0.3。
+
+### 階段 1：C 實作
+
+依賴：T0.3 通過（或 T0.4 完成）。
+
+- [ ] **T1.1** `src/echo_core.h`：依規格定義 4 類函式與 `ec_vad_config`，寫清楚「不配置記憶體、不保留指標、`n ≤ 0` 的行為、VAD 非 thread-safe」等約定的註解。
+- [ ] **T1.2** 實作 `ec_pcm16_to_float`、`ec_rms_pcm16`、`ec_waveform_downsample`，含 `n ≤ 0`、`buckets ≤ 0`、`buckets > n`、-32768 等邊界。依賴：T1.1。
+- [ ] **T1.3** 實作 `ec_vad_create`／`process`／`reset`／`destroy`，演算法與 `whisper_flutter_plus.cpp` 的 `stream_feed` 門檻一致（快降慢升的雜訊底、上限、門檻 = max(ratio × 雜訊底, 下限)）。依賴：T1.1。
+- [ ] **T1.4** 用 `ffigen` 產生綁定：無狀態函式與 `ec_vad_process` 標 `isLeaf: true`；`ec_vad_destroy` 要能取得函式指標給 `NativeFinalizer` 用。依賴：T1.2、T1.3。
+
+### 階段 2：Dart 包裝與測試
+
+- [ ] **T2.1** 純 Dart 參考實作（`pcm16ToFloat`、`rms`、`waveform`、VAD），跟 C 版本的公式逐行對應。依賴：無（可與階段 1 同時做）。
+- [ ] **T2.2** 零複製路徑：直接把 `Int16List`／`Float32List` 的 `.address` 交給 leaf 函式；空輸入直接回傳、不呼叫 C。依賴：T1.4。
+- [ ] **T2.3** native buffer 路徑：持有 buffer 的物件，預先 `malloc`、`asTypedList` 複製後呼叫；不夠大時重新配置；`NativeFinalizer` 釋放。依賴：T1.4。
+- [ ] **T2.4** `EchoVad`：建構時 `ec_vad_create`（`NULL` 時丟例外）並綁 `NativeFinalizer`；`dispose()` 先解除 finalizer 再釋放、第二次呼叫不做事；釋放後呼叫其他方法丟 `StateError`。依賴：T1.4。
+- [ ] **T2.5** 測試（macOS 上 `flutter test`，真的呼叫 C）：C 與參考實作比對（轉 float 完全相同，RMS／峰值 1e-6 相對誤差）、兩條路徑結果一致、邊界案例表逐項、VAD 生命週期、buffer 重新配置。依賴：T2.1–T2.4。
+
+### 階段 3：效能比較
+
+- [ ] **T3.1** 合成訊號產生器：固定亂數種子的正弦波加雜訊，2 小時、16 kHz mono PCM16，分成 100 ms chunk 餵入（跟實際錄音的呼叫粒度一致）。依賴：無。
+- [ ] **T3.2** Mac 上的效能比較：純 Dart／C 零複製／C 加 native buffer 三方，量各函式的總耗時；記憶體配置次數依設計列出（不量測）。依賴：T2.5、T3.1。
+- [ ] **T3.3** iPhone 12 Pro Max 上跑同一組比較：新增 `integration_test`，用 `flutter drive --profile` 執行（debug 模式的 Dart 是 JIT，數字不可用），結果印到 console。依賴：T3.2。
+- [ ] **T3.4** 把兩台裝置的結果、量測方法、App 大小前後差異寫進 `packages/echo_core/README.md`。依賴：T0.1、T3.3、T4.1。
+
+### 階段 4：接進 App
+
+- [ ] **T4.1** `LiveRecording` 新增 `Stream<double> level`：在 `_onChunk` 用 `echo_core` 的零複製 `rms` 算每個 chunk 的音量。chunk 的 `Uint8List` 若 `offsetInBytes` 是奇數，無法直接當成 `Int16List`，要先複製一份。依賴：T2.2。
+- [ ] **T4.2** `LiveRecordScreen` 錄音中在已錄時間下方顯示 `LinearProgressIndicator` 音量條（暫定視覺）；音量到進度條的對應方式在實機上調整。依賴：T4.1。
+- [ ] **T4.3** 實機驗證：錄音時說話音量條會動、安靜時接近 0；即時預覽與 WAV 寫入不受影響。依賴：T4.2。
+
+### 階段 5：收尾
+
+- [ ] **T5.1** 用 `/spec-check` 核對規格與實作，用 `/devlog` 整理開發紀錄。依賴：階段 0–4 全部完成。
+
+### 任務摘要
+
+- 共 21 項，全部「可獨立進行」；其中 T0.4 是條件式任務，只在 T0.3 失敗時才做。
+- 關鍵路徑：T0.2 → T0.3 → 階段 1 → T2.2 → T4.1 → T4.2 → T4.3。T2.1、T3.1 可以提前同時做。
+
 ## 待確認事項
 
-目前無。
+目前無。拆解任務時的 2 項已於 2026-10-08 採用建議：(1) iPhone 效能比較用 `integration_test`＋`flutter drive --profile`；(2) 記憶體配置次數依設計列出，實際只量耗時。
