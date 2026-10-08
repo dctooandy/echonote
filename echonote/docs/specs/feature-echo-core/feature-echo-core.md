@@ -177,8 +177,9 @@
   - **公平性修正**：純 Dart 的 `rms`／VAD 原本用 `for-in`，AOT 下慢約 4 倍，改成索引迴圈；兩邊再一起改成**整數累加平方和**（結果精確、逐位元相同，且讓 C 可以向量化）。最終 Mac（M2 Pro）：`rms` 8.4×、`vad` 8.3×、`pcm16ToFloat` 4.3×、`waveform` 23.5×（C 零複製相對純 Dart）。
   - debug 模式（JIT）的 Dart 數值迴圈快很多，數字不可用；iPhone 量測必須用 profile（Xcode：Edit Scheme → Run → Build Configuration = Profile）。
   - 觀察待確認：舊版 iPhone profile 數據中，`pcm16ToFloat` 的零複製（0.87 µs）慢於 native buffer（0.60 µs），與 Mac 相反，等新一輪 iPhone 數據再看是否重現。
-- [ ] **T3.3** iPhone 12 Pro Max 上跑同一組比較：新增 `integration_test`，用 `flutter drive --profile` 執行（debug 模式的 Dart 是 JIT，數字不可用），結果印到 console。依賴：T3.2。
-- [ ] **T3.4** 把兩台裝置的結果、量測方法、App 大小前後差異寫進 `packages/echo_core/README.md`。依賴：T0.1、T3.3、T4.1。
+- [x] **T3.3** iPhone 12 Pro Max 上跑同一組比較：新增 `integration_test`，用 `flutter drive --profile` 執行（debug 模式的 Dart 是 JIT，數字不可用），結果印到 console。依賴：T3.2。
+- [x] **T3.4** 把兩台裝置的結果、量測方法、App 大小前後差異寫進 `packages/echo_core/README.md`。依賴：T0.1、T3.3、T4.1。
+  - 2026-10-08：iPhone 12 Pro Max profile 模式量測完成（使用者用 Xcode Profile 設定執行；無線 `flutter drive` 找不到 VM Service 而失敗）。結果、方法、記憶體配置表、App 大小（41.0 → 41.2 MB，framework 108 KB）寫入 `packages/echo_core/README.md`。iPhone 上 `pcm16ToFloat` 零複製慢於 native buffer 的現象兩次重現，原因未查明，記於 README。App 大小在 T4 完成後若有變化再更新。
 
 ### 階段 4：接進 App
 
