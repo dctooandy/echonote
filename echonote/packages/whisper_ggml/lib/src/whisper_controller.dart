@@ -168,20 +168,56 @@ class WhisperController {
   }
 
   /// Download [model] to [destinationPath]
-  Future<String> downloadModel(WhisperModel model) async {
-    if (!File(await getPath(model)).existsSync()) {
-      final request = await HttpClient().getUrl(model.modelUri);
+  ///
+  /// [echonote] Streams to a `.part` file and renames it when complete, so an
+  /// interrupted download never leaves a truncated model behind; rejects
+  /// non-200 responses instead of saving the error body as a model; reports
+  /// [onProgress] (`total` is null when the server sends no length).
+  Future<String> downloadModel(
+    WhisperModel model, {
+    void Function(int received, int? total)? onProgress,
+  }) async {
+    final String path = await getPath(model);
+    if (File(path).existsSync()) return path;
 
-      final response = await request.close();
-
-      final bytes = await consolidateHttpClientResponseBytes(response);
-
-      final File file = File(await getPath(model));
-      await file.writeAsBytes(bytes);
-
-      return file.path;
-    } else {
-      return await getPath(model);
+    final HttpClient client = HttpClient();
+    final File part = File('$path.part');
+    try {
+      final HttpClientRequest request = await client.getUrl(model.modelUri);
+      final HttpClientResponse response = await request.close();
+      if (response.statusCode != HttpStatus.ok) {
+        await response.drain<void>();
+        throw HttpException(
+          'Model download failed: HTTP ${response.statusCode}',
+          uri: model.modelUri,
+        );
+      }
+      final int? total =
+          response.contentLength >= 0 ? response.contentLength : null;
+      final IOSink sink = part.openWrite();
+      int received = 0;
+      try {
+        await for (final List<int> chunk in response) {
+          sink.add(chunk);
+          received += chunk.length;
+          onProgress?.call(received, total);
+        }
+      } finally {
+        await sink.close();
+      }
+      if (total != null && received != total) {
+        throw HttpException(
+          'Model download incomplete: $received of $total bytes',
+          uri: model.modelUri,
+        );
+      }
+      await part.rename(path);
+      return path;
+    } catch (_) {
+      if (part.existsSync()) await part.delete();
+      rethrow;
+    } finally {
+      client.close();
     }
   }
 }
