@@ -1,7 +1,7 @@
 # echo_core 第 1 週：跨平台 C 音訊核心骨架 規格
 
 分支：`feature/echo-core`
-狀態：已確認（2026-10-08，12 項待確認事項皆採用建議，見「決定紀錄」）
+狀態：已完成（2026-10-08；12 項待確認事項皆採用建議，見「決定紀錄」）
 
 建立 echonote 自己的 C 音訊核心 `echo_core`，自己設計 C 介面、自己寫 `dart:ffi` 綁定、自己管理 Dart 與 C 之間的記憶體。這是四週計畫的第 1 週（計畫頁：<https://claude.ai/artifact/9j2LTabW7yRuLDZ1YU12KR>）：先把骨架、第一批 C 函式、測試與效能比較做出來，第 2 週再用它改寫 whisper 串流的餵資料介面，第 3 週搬到 Android。
 
@@ -9,7 +9,7 @@
 
 ## 目標與範圍
 
-- 新增套件 `echonote/packages/echo_core`，用 `flutter create --template=package_ffi` 建立（`plugin_ffi` 已被 Flutter 標為 deprecated）。C 原始碼由套件的 build hook（`hook/build.dart`＋`native_toolchain_c`）在建置時編譯，iOS 實機／模擬器與 macOS（`flutter test` 用）都由同一份 C 產生。編譯參數：C11、`-O3`、`-Wall -Wextra -Werror`（決定 #12）；原生產物最低 iOS 版本沿用 Flutter 傳入的預設值（決定 #10）。
+- 新增套件 `echonote/packages/echo_core`，用 `flutter create --template=package_ffi` 建立（`plugin_ffi` 已被 Flutter 標為 deprecated）。C 原始碼由套件的 build hook（`hook/build.dart`＋`native_toolchain_c`）在建置時編譯，iOS 實機／模擬器與 macOS（`flutter test` 用）都由同一份 C 產生。編譯參數：C11、`-O3`、`-Wall -Wextra -Werror`（決定 #12），另加 `-ffp-contract=off`（關閉乘加合併，讓 C 與純 Dart、各平台結果逐位元相同）；原生產物最低 iOS 版本沿用 Flutter 傳入的預設值（決定 #10）。
 - **第一個任務先驗證**：`package_ffi` 的 build hooks 在 iOS 實機、iOS 模擬器、macOS（`flutter test`）都編得過，且能跟用 podspec 的 `whisper_ggml` 並存。不行就退回 podspec，並另外為測試編 macOS dylib（決定 #3）。
 - 用 `ffigen` 從 `src/echo_core.h` 產生 Dart 綁定（`@Native` 外部函式），不手寫 `lookupFunction`。
 - 第一批 C 函式（見「API 異動」）：
@@ -19,10 +19,10 @@
   - `ec_waveform_downsample`：把一段 PCM16 壓成固定數量的峰值，給畫面畫波形。
 - Dart 包裝層：對外只露出 Dart 型別（`Int16List`、`Float32List`、`double`），內部負責 native 記憶體。資料交給 C 有兩條路徑都要做（決定 #2）：**零複製**（直接傳 Dart 陣列的 `.address` 給 `isLeaf: true` 的 `@Native` 函式）與**重複使用的 native buffer**（預先 `malloc`、`asTypedList` 複製後呼叫，`NativeFinalizer` 釋放）。有狀態的 VAD 用 `NativeFinalizer` 確保釋放，也提供明確的 `dispose()`。
 - 正確性：每個 C 函式都有一個純 Dart 的參考實作，測試比對兩者結果。容許誤差：`pcm16ToFloat` 必須完全相同；RMS 與峰值容許 1e-6 相對誤差（決定 #9）。
-- 效能比較：用**合成訊號**（正弦波加雜訊，2 小時、16 kHz mono PCM16，由程式產生，可放進 repo、別人可重現）分三種方式處理：純 Dart、C 零複製、C 加 native buffer；記錄耗時與配置次數。**Mac 與 iPhone 12 Pro Max 都要量**，結果寫在 `packages/echo_core/README.md`（決定 #6、#7、#8）。
+- 效能比較：用**合成訊號**（固定種子的正弦波加雜訊，由程式產生，別人可重現）。產生 60 秒、以 100 ms chunk 循環餵入，總共 2 小時份量（72,000 次呼叫），避免 230 MB 記憶體與產生時間混入量測。分三種方式處理：純 Dart、C 零複製、C 加 native buffer；量耗時，配置次數依設計列出。必須用 AOT 編譯量測（Mac：`dart build cli`；iPhone：profile 模式），純 Dart 參考實作要寫得合理（索引迴圈）才公平。**Mac 與 iPhone 12 Pro Max 都要量**，結果寫在 `packages/echo_core/README.md`（決定 #6、#7、#8）。
 - 錄音畫面加上**即時音量條**，用 `rms` 計算，證明 `echo_core` 真的在 iOS 上執行（決定 #4）。
 - 記錄加入 `echo_core` 前後的 App 大小（決定 #11）。
-- 測試在 macOS 上用 `flutter test` 執行，真的呼叫 C（透過 build hook 編出的 macOS 動態函式庫），不 mock。
+- 測試在 macOS 上用 `dart test` 執行（`echo_core` 是純 Dart 套件），真的呼叫 C（透過 build hook 編出的 macOS 動態函式庫），不 mock。App 端另有 `integration_test`：冒煙測試確認原生程式碼在 iOS 上能執行，效能比較在 iPhone 上執行（`test_driver`＋`flutter_driver`）。
 
 **明確不做的事**：
 
@@ -51,6 +51,7 @@
 | --- | --- | --- |
 | `ec_pcm16_to_float` | `void ec_pcm16_to_float(const int16_t* in, float* out, int32_t n)` | `out[i] = in[i] / 32768.0f`，範圍 [-1, 1)；與 whisper 套件現有的轉換公式一致 |
 | `ec_rms_pcm16` | `float ec_rms_pcm16(const int16_t* in, int32_t n)` | 回傳正規化 RMS（0～1，以 32768 為滿刻度）；`n ≤ 0` 回傳 0 |
+| `ec_vad_default_config` | `ec_vad_config ec_vad_default_config(void)` | 回傳下表的預設值，讓 C 的預設值只有一份 |
 | `ec_vad_create` | `ec_vad* ec_vad_create(ec_vad_config config)` | 建立 VAD 狀態；配置失敗回傳 `NULL` |
 | `ec_vad_process` | `int32_t ec_vad_process(ec_vad* vad, const int16_t* in, int32_t n)` | 以整段為一個單位更新雜訊底並判斷：有人聲回 1、沒有回 0；`n ≤ 0` 回 0 且不更新狀態 |
 | `ec_vad_reset` | `void ec_vad_reset(ec_vad* vad)` | 雜訊底回到初始值 |
@@ -71,14 +72,18 @@
 
 - `Float32List pcm16ToFloat(Int16List samples)`
 - `double rms(Int16List samples)`
-- `List<double> waveform(Int16List samples, int buckets)`
-- `class EchoVad`：`EchoVad({EchoVadConfig config})`、`bool process(Int16List samples)`、`void reset()`、`void dispose()`。用 `NativeFinalizer` 綁定 `ec_vad_destroy`；`dispose()` 會先解除 finalizer 再釋放，避免重複釋放；`dispose()` 之後再呼叫其他方法丟 `StateError`。
-- 每個無狀態函式在 Dart 端有兩種實作路徑（零複製／native buffer），效能比較用；App 使用零複製路徑。native buffer 路徑由一個持有 buffer 的物件管理，`NativeFinalizer` 負責釋放，buffer 不夠大時重新配置。
+- `Float32List waveform(Int16List samples, int buckets)`
+- `class EchoVad`：`EchoVad([EchoVadConfig config = const EchoVadConfig()])`、`bool process(Int16List samples)`、`void reset()`、`void dispose()`。用 `NativeFinalizer` 綁定 `ec_vad_destroy`；`dispose()` 會先解除 finalizer 再釋放，避免重複釋放；`dispose()` 之後再呼叫其他方法丟 `StateError`。
+- 每個無狀態函式在 Dart 端有兩種實作路徑（零複製／native buffer），效能比較用；App 使用零複製路徑。native buffer 路徑由 `EchoBufferedCore` 管理，`NativeFinalizer` 負責釋放，buffer 不夠大時重新配置；`allocations` 記錄重新配置次數。
+- `nativeDefaultVadConfig()`：讀 C 的預設值，測試用來確認與 Dart 的 `EchoVadConfig` 一致。
+- `DartReference`／`DartReferenceVad`：純 Dart 參考實作，`rms`／VAD 與 C 一樣用整數累加平方和（結果精確、可向量化）。
+- `package:echo_core/benchmark.dart`：Mac CLI（`bin/benchmark.dart`）與 iPhone `integration_test` 共用的效能比較程式。
 
 ### App 端
 
 - `pubspec.yaml` 新增 `echo_core: path: packages/echo_core`。
-- `LiveRecordScreen` 錄音中依每個 chunk 的 `rms` 顯示音量條（見 UI）。
+- `LiveRecording.level`：每個 chunk 用零複製 `rms` 計算；chunk 沒有對齊 2 bytes 時先複製（`_asSamples`），結尾單一 byte 略過。
+- `LiveRecordScreen` 錄音中依 `level` 顯示音量條（見 UI）。
 
 ## 資料表異動
 
@@ -191,7 +196,7 @@
 
 ### 階段 5：收尾
 
-- [ ] **T5.1** 用 `/spec-check` 核對規格與實作，用 `/devlog` 整理開發紀錄。依賴：階段 0–4 全部完成。
+- [x] **T5.1** 用 `/spec-check` 核對規格與實作，用 `/devlog` 整理開發紀錄。依賴：階段 0–4 全部完成。
 
 ### 任務摘要
 
@@ -201,3 +206,18 @@
 ## 待確認事項
 
 目前無。拆解任務時的 2 項已於 2026-10-08 採用建議：(1) iPhone 效能比較用 `integration_test`＋`flutter drive --profile`；(2) 記憶體配置次數依設計列出，實際只量耗時。
+
+## 驗收核對記錄
+
+### 2026-10-08（`/spec-check`，commit `914015f`）
+
+- **結論**：功能與規格一致。C 介面、兩條呼叫路徑、`NativeFinalizer`、邊界案例、效能比較、音量條、App 大小都有對應程式碼或文件；實機上錄音、即時預覽、轉錄、播放皆正常（使用者回報）。落差全部是**規格正文沒跟上實作細節**，沒有實作做不到規格的項目。
+- **落差**：
+  1. `EchoVad` 建構子：規格寫具名參數 `EchoVad({EchoVadConfig config})`，實作是選擇性位置參數 `EchoVad([config])`。
+  2. `waveform` 回傳型別：規格寫 `List<double>`，實作回傳 `Float32List`（仍是 `List<double>`）。
+  3. 測試指令：規格寫 `flutter test`，`echo_core` 是純 Dart 套件，實際用 `dart test`。
+  4. 編譯參數：正文只列 C11、`-O3`、`-Wall -Wextra -Werror`，實作另加 `-ffp-contract=off`。
+  5. 效能比較的訊號：規格寫「產生 2 小時合成訊號」，實作產生 60 秒並循環餵滿 2 小時的呼叫量（避免 230 MB 記憶體與產生時間混入量測）。
+- **規格未涵蓋**：`ec_vad_default_config()` 與 `nativeDefaultVadConfig()`；`EchoBufferedCore.allocations`；公開的 `package:echo_core/benchmark.dart`、`bin/benchmark.dart`（`dart build cli` AOT）、App 的 `integration_test`＋`test_driver`＋`flutter_driver`；純 Dart 參考實作改用索引迴圈與整數累加（公平性修正）；`LiveRecording._asSamples` 處理未對齊的 chunk。
+- **待辦（使用者決定，不在第 1 週）**：音量條與 VAD 目前會對電視等背景聲音反應（能量門檻的本質）。是否改成只對人聲反應（例如頻譜特徵型 VAD），留到第 2 週改寫 whisper 介面時一起評估。
+- **處理決定（同日，使用者）**：5 項落差全部改規格、「規格未涵蓋」5 項全部補進正文（已更新）。
