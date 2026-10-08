@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:whisper_ggml/whisper_ggml.dart';
 
+import '../services/live_transcription_service.dart';
 import '../services/mic_stream_service.dart';
 
 /// TEMPORARY (spec step 0, T0.5): measures whether live transcription keeps
@@ -21,7 +22,7 @@ enum _Phase { idle, preparing, recording, finalizing }
 
 class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
   final _mic = MicStreamService();
-  final _whisper = WhisperController();
+  final _service = LiveTranscriptionService();
   final _scroll = ScrollController();
 
   WhisperModel _model = WhisperModel.tiny;
@@ -39,10 +40,9 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
   String? _status;
   String? _error;
 
-  WhisperLiveSession? _session;
+  LiveRecording? _rec;
   final _clock = Stopwatch();
   Timer? _ticker;
-  int _audioBytes = 0;
   String _text = '';
   Duration? _lastPartialAt;
   final _intervals = <double>[];
@@ -51,7 +51,7 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
   /// T0.6: one entry per native inference run (fork metrics + `lag_sec`).
   final _runs = <Map<String, dynamic>>[];
 
-  double get _audioSeconds => _audioBytes / (MicStreamService.sampleRate * 2);
+  double get _audioSeconds => _rec?.sentSeconds ?? 0;
 
   double? get _medianInterval => _median(_intervals);
 
@@ -70,7 +70,7 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
   @override
   void dispose() {
     _ticker?.cancel();
-    if (_phase == _Phase.recording) _mic.stop();
+    if (_phase == _Phase.recording) _rec?.stop();
     _scroll.dispose();
     super.dispose();
   }
@@ -81,7 +81,7 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
       _status = '檢查權限…';
       _error = null;
       _text = '';
-      _audioBytes = 0;
+      _rec = null;
       _intervals.clear();
       _lastPartialAt = null;
       _finalizeWait = null;
@@ -102,64 +102,28 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
         throw Exception('沒有麥克風權限（$permission），請到系統設定開啟');
       }
 
-      setState(() => _status = '下載／確認 ${_model.modelName} 模型…');
-      final modelPath = await _whisper.downloadModel(_model);
-      _log('model ready: $modelPath');
-
-      setState(() => _status = '載入模型…');
-      final pcm = await _mic.start();
-      _log('mic started');
-      // Count bytes as whisper consumes them; surface mic errors
-      // (interrupted / backgrounded) before transcribeLive swallows them.
-      final counted = pcm.transform(
-        StreamTransformer<Uint8List, Uint8List>.fromHandlers(
-          handleData: (chunk, sink) {
-            if (_audioBytes == 0) _log('first mic chunk: ${chunk.length} bytes');
-            _audioBytes += chunk.length;
-            sink.add(chunk);
-          },
-          handleError: (e, st, sink) {
-            _showError('麥克風串流錯誤：$e');
-            sink.addError(e, st);
-          },
-          handleDone: (sink) {
-            _log('mic stream done, audio=${_audioSeconds.toStringAsFixed(1)}s');
-            sink.close();
-          },
-        ),
-      );
-
-      final WhisperLiveSession session;
-      try {
-        session = await _whisper.transcribeLive(
+      setState(() => _status = '下載／載入 ${_model.modelName} 模型…');
+      final wavPath = '${(await getTemporaryDirectory()).path}/spike.wav';
+      // T3.4: the same service the real screen will use (mic → WAV + whisper).
+      final rec = await _service.start(
+        wavPath: wavPath,
+        config: LivePreviewConfig(
           model: _model,
-          pcm16Stream: counted,
-          lang: 'zh',
           threads: _threads,
           stepSec: _tuned ? 3.0 : 1.5,
           noFallback: _tuned,
           maxTokens: _tuned ? 64 : 0,
           initialPrompt: _zhTwPrompt ? _zhTwPromptText : null,
-        );
-      } catch (e) {
-        _log('transcribeLive failed: $e');
-        await _mic.stop();
-        rethrow;
-      }
-      _log('live session started');
-      _session = session;
+        ),
+      );
+      _log('live recording started, wav=$wavPath');
+      _rec = rec;
       _clock
         ..reset()
         ..start();
-      // `partials` closes once the session has finalized — by our stop, a
-      // system stop (interruption, backgrounding) or a native error. Don't
-      // use session.stop() to wait for that: calling it *ends* the session.
-      session.metrics.listen(_onMetrics);
-      session.partials.listen(
-        _onPartial,
-        onError: (Object e) => _showError('即時辨識錯誤：$e'),
-        onDone: () async => _onSessionDone(await session.stop()),
-      );
+      rec.metrics.listen(_onMetrics);
+      rec.preview.listen(_onPartial, onError: (Object e) => _showError('即時辨識錯誤：$e'));
+      unawaited(rec.done.then((r) => _onDone(r, wavPath)));
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
         if (mounted) setState(() {});
       });
@@ -219,8 +183,7 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
     setState(() => _phase = _Phase.finalizing);
     _clock.stop();
     final stoppedAt = DateTime.now();
-    await _mic.stop();
-    await _session!.stop();
+    await _rec!.stop();
     _finalizeWait = DateTime.now().difference(stoppedAt);
     debugPrint(
       '[spike] stop model=${_model.modelName} audio=${_audioSeconds.toStringAsFixed(1)}s '
@@ -243,18 +206,20 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
     if (mounted) setState(() {});
   }
 
-  void _onSessionDone(String finalText) {
-    _log('session done, final chars=${finalText.length}');
-    _log('final text: $finalText');
-    // The session can end on its own (native whisper error, mic error); the
-    // mic would otherwise keep running and block the next start.
-    _mic.stop();
+  void _onDone(LiveRecordingResult r, String wavPath) {
+    final file = File(wavPath);
+    _log(
+      'done reason=${r.reason.name} audio=${_secs(r.audioDuration)} '
+      'wavBytes=${file.existsSync() ? file.lengthSync() : -1} error=${r.error}',
+    );
+    _log('final text: ${r.previewText}');
     _ticker?.cancel();
     _clock.stop();
     if (!mounted) return;
     setState(() {
       _phase = _Phase.idle;
-      _text = finalText;
+      _text = r.previewText;
+      if (r.reason != LiveEndReason.stopped) _error = '錄音結束：${r.reason.name} ${r.error ?? ''}';
     });
   }
 
