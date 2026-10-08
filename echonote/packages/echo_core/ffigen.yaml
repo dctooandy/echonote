@@ -1,0 +1,30 @@
+# Run with `dart run ffigen --config ffigen.yaml`.
+name: EchoCoreBindings
+description: |
+  Bindings for `src/echo_core.h`.
+
+  Regenerate bindings with `dart run ffigen --config ffigen.yaml`.
+output: 'lib/src/echo_core_bindings_generated.dart'
+headers:
+  entry-points:
+    - 'src/echo_core.h'
+  include-directives:
+    - 'src/echo_core.h'
+# @Native external functions resolved through the build hook's code asset.
+ffi-native:
+  asset-id: 'package:echo_core/echo_core_bindings_generated.dart'
+functions:
+  include:
+    - 'ec_.*'
+  # Every function is short and never calls back into Dart (see the header),
+  # so leaf calls are safe and allow passing TypedData .address directly.
+  leaf:
+    include:
+      - 'ec_.*'
+  # NativeFinalizer needs the destroy function's address.
+  symbol-address:
+    include:
+      - 'ec_vad_destroy'
+comments:
+  style: any
+  length: full
