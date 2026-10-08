@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import '../models/recording.dart';
 import '../services/analysis_service.dart';
 import '../services/recording_store.dart';
+import '../services/recording_transcriber.dart';
 import '../utils/format.dart';
 
 class MeetingDetailScreen extends StatefulWidget {
@@ -24,7 +25,10 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   final _audioPlayer = AudioPlayer();
   final _analysisService = AnalysisService();
   final _store = RecordingStore();
+  late final _transcriber = RecordingTranscriber(store: _store);
   bool _isAnalyzing = false;
+  bool _isTranscribing = false;
+  int _transcribeProgress = 0;
 
   @override
   void initState() {
@@ -86,6 +90,29 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('分析失敗: $e')));
     } finally {
       if (mounted) setState(() => _isAnalyzing = false);
+    }
+  }
+
+  /// For a recording saved without a transcript (live recording whose
+  /// offline pass failed or found nothing, or was cut short by backgrounding).
+  Future<void> _retranscribe() async {
+    if (_isTranscribing) return;
+    setState(() {
+      _isTranscribing = true;
+      _transcribeProgress = 0;
+    });
+    try {
+      await _transcriber.transcribe(
+        widget.recording,
+        onProgress: (percent) {
+          if (mounted) setState(() => _transcribeProgress = percent);
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('轉錄失敗: $e')));
+    } finally {
+      if (mounted) setState(() => _isTranscribing = false);
     }
   }
 
@@ -169,7 +196,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
         appBar: AppBar(
           title: Text(widget.recording.displayTitle),
           actions: [
-            if (analysis != null)
+            if (analysis != null && widget.recording.isTranscribed)
               IconButton(
                 icon: _isAnalyzing
                     ? const SizedBox(
@@ -246,7 +273,43 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     );
   }
 
+  Widget _buildUntranscribed() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('尚未轉錄'),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _isTranscribing ? null : _retranscribe,
+              icon: _isTranscribing
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.subtitles_outlined),
+              label: Text(
+                _isTranscribing
+                    ? (_transcribeProgress > 0 ? '轉錄中… $_transcribeProgress%' : '準備中…')
+                    : '重新轉錄',
+              ),
+            ),
+            if (_isTranscribing) ...[
+              const SizedBox(height: 8),
+              const Text('請保持 App 開啟直到轉錄完成', style: TextStyle(color: Colors.grey)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _analysisGate(MeetingAnalysis? analysis, Widget Function(MeetingAnalysis) builder) {
+    // Analysis needs a transcript; offer transcription first.
+    if (!widget.recording.isTranscribed) return _buildUntranscribed();
     if (analysis != null) return builder(analysis);
     return Center(
       child: Padding(
@@ -348,6 +411,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
 
   Widget _buildTranscriptTab() {
     final segments = widget.recording.segments;
+    if (!widget.recording.isTranscribed) return _buildUntranscribed();
     return Column(
       children: [
         Padding(
