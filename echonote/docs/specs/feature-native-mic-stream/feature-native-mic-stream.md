@@ -66,7 +66,7 @@
 - 記憶體 550–670 MB，長時間持平，沒有洩漏。
 - 4 threads 比 2 threads 快（encoder 較快，但每個 token 的 decode 較慢）。
 - **依賴**：調校參數和量測數據需要修改 `whisper_ggml`，已經內建在 `packages/whisper_ggml`（path 依賴，只放 iOS＋Dart）。修改內容見該資料夾的 `ECHONOTE.md` 和 commit `082105c`。
-- **繁體中文**：即時模式輸出夾雜不少簡體字（`no_context` 而且沒有 prompt）。正在驗證加上繁體 `initialPrompt` 的效果，不夠的話再加簡轉繁。最終逐字稿來自離線轉錄，不受影響。
+- **繁體中文**：即時模式沒有 prompt 時夾雜不少簡體字（`no_context`）。加上 `initialPrompt`「以下是繁體中文的會議逐字稿。」後，1 分鐘實測全部是繁體，prompt 也沒有混進輸出 → 設為 `kLivePreviewConfig` 的預設值，不需要簡轉繁。
 - 縮小 `audio_ctx` 目前不需要，留作之後的優化（技能樹第 2 項）。
 
 ## 目標與範圍
@@ -290,7 +290,7 @@ transcribing（離線轉錄，顯示進度百分比）
 - [x] **T0.5** 臨時測試畫面：開始／停止、即時文字，以及顯示 partial 更新間隔和已送出的音訊秒數。呼叫 `transcribeLive(lang: 'zh')`，模型可以切換 `base`／`tiny`。依賴：T0.4。
 - [x] **T0.6** 量測用的套件修改：在本機 fork 的 `whisper_ggml` 裡記錄每次 `stream_run_inference` 的耗時，用 `dependency_overrides` 或 `pubspec_overrides.yaml` 暫時指向 fork。依賴：T0.5。處置方式見待確認事項 #1（已決定）。
 - [x] **T0.7** 在 iPhone 12 Pro Max 上用 `base`、`tiny` 各錄 5 分鐘連續講話，記錄單次辨識耗時（中位數）、落後秒數的趨勢、記憶體用量。**順便確認即時模式輸出的是繁體中文**（離線模式已確認過，但即時模式用 `no_context` 而且沒有 prompt，需要另外確認）。依賴：T0.6。
-  - 結果見「第 0 步：技術驗證」的結果；繁體中文輸出夾雜簡體字，用繁體 prompt 驗證中。
+  - 結果見「第 0 步：技術驗證」的結果；繁體中文靠 `initialPrompt` 解決。
 - [ ] **T0.8** 把結果和判定寫回「第 0 步：技術驗證」，更新開頭的「狀態」；移除 T0.5 的臨時畫面和 T0.6 的套件修改。依賴：T0.7。
   - 判定為「不通過」時，**暫停以下所有階段**，回頭修改規格。
 
@@ -320,7 +320,7 @@ transcribing（離線轉錄，顯示進度百分比）
   - ⚠️ 不要拿掉 `TranscriptionService._sanitizedAudioPath()` 的 workaround（`whisper_ggml` 的 ffmpeg 路徑沒加引號）。重構後匯入流程要用含空白的檔名回歸測試一次。
   - 實作：`lib/services/recording_transcriber.dart`（`RecordingTranscriber`、`NoSpeechDetectedException`）；`ImportScreen` 已改用（等於同時完成 T4.7 的程式部分）。**含空白檔名的實機回歸測試尚未做。**
 - [ ] **T3.4** `lib/services/live_transcription_service.dart`：串接 `MicStreamService` → 分流（broadcast 或手動）→ `transcribeLive` 和 `WavWriter`；明確傳 `lang: 'zh'`；即時預覽的模型依照 T0.8 的判定。依賴：T0.4、T3.1。
-  - 程式已完成（`kLivePreviewConfig`：tiny、4 threads、3 秒、no fallback、64 token；`initialPrompt` 預設待繁體測試結果）。寫入失敗時停止錄音並以 `writeFailed` 結束（T3.7 的服務端部分）。**實機驗證待做**：測試畫面已改用此服務。
+  - 程式已完成（`kLivePreviewConfig`：tiny、4 threads、3 秒、no fallback、64 token；`initialPrompt` 為繁體 prompt）；實機驗證過 WAV 長度正確。寫入失敗時停止錄音並以 `writeFailed` 結束（T3.7 的服務端部分）。**實機驗證待做**：測試畫面已改用此服務。
 - [x] **T3.5** 錄音上限：滿 1 小時 55 分時通知 UI，滿 2 小時自動停止。依賴：T3.4。
   - 程式已完成：`LiveRecording.maxDuration`／`limitWarningBefore`，送出 `LiveNotice.nearLimit`，滿 2 小時以 `LiveEndReason.limitReached` 結束。
 - [x] **T3.6** 「即時文字可能延遲」偵測：依 `session.metrics` 計算落後秒數（已送出音訊秒數 − `fed_sec`），超過 6 秒就發出提示狀態；`partials` 出錯時改發出「即時文字已停止」狀態，錄音與 WAV 寫入繼續。依賴：T3.4。

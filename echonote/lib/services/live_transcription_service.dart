@@ -29,14 +29,16 @@ class LivePreviewConfig {
 }
 
 /// `tiny` keeps up where `base` doesn't; the final transcript still comes
-/// from the offline `base` pass. The default prompt is pending the
-/// Traditional-Chinese test (live mode drifts into Simplified without one).
+/// from the offline `base` pass. Live mode decodes with no_context, so
+/// without a prompt it drifts into Simplified Chinese; this prompt fixed
+/// that on device (2026-10-08).
 const kLivePreviewConfig = LivePreviewConfig(
   model: WhisperModel.tiny,
   threads: 4,
   stepSec: 3,
   noFallback: true,
   maxTokens: 64,
+  initialPrompt: '以下是繁體中文的會議逐字稿。',
 );
 
 enum LiveEndReason {
