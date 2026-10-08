@@ -183,9 +183,11 @@
 
 ### 階段 4：接進 App
 
-- [ ] **T4.1** `LiveRecording` 新增 `Stream<double> level`：在 `_onChunk` 用 `echo_core` 的零複製 `rms` 算每個 chunk 的音量。chunk 的 `Uint8List` 若 `offsetInBytes` 是奇數，無法直接當成 `Int16List`，要先複製一份。依賴：T2.2。
-- [ ] **T4.2** `LiveRecordScreen` 錄音中在已錄時間下方顯示 `LinearProgressIndicator` 音量條（暫定視覺）；音量到進度條的對應方式在實機上調整。依賴：T4.1。
-- [ ] **T4.3** 實機驗證：錄音時說話音量條會動、安靜時接近 0；即時預覽與 WAV 寫入不受影響。依賴：T4.2。
+- [x] **T4.1** `LiveRecording` 新增 `Stream<double> level`：在 `_onChunk` 用 `echo_core` 的零複製 `rms` 算每個 chunk 的音量。chunk 的 `Uint8List` 若 `offsetInBytes` 是奇數，無法直接當成 `Int16List`，要先複製一份。依賴：T2.2。
+- [x] **T4.2** `LiveRecordScreen` 錄音中在已錄時間下方顯示 `LinearProgressIndicator` 音量條（暫定視覺）；音量到進度條的對應方式在實機上調整。依賴：T4.1。
+  - 2026-10-08：`LiveRecording.level`（零複製 `rms`，chunk 未對齊 2 bytes 時才複製）；錄音畫面在已錄時間下方用 `StreamBuilder` 只重繪音量條。對應方式先用 dB：-60 dBFS → 0、0 dBFS → 滿（說話約 -35～-15 dBFS，線性對應幾乎不會動），實機上再調。
+- [x] **T4.3** 實機驗證：錄音時說話音量條會動、安靜時接近 0；即時預覽與 WAV 寫入不受影響。依賴：T4.2。
+  - 2026-10-08：使用者實機確認音量條反應合理，說話時約到一半（dB 範圍維持 -60～0 dBFS）；這同時補上 T0.3 延後的「`echo_core` 在 iPhone 實機執行」驗證。音量條也會反映電視等背景聲音，這是 RMS 的本質（量的是所有聲音的能量，不分人聲），不是錯誤。
 
 ### 階段 5：收尾
 

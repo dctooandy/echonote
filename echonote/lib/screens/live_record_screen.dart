@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -300,6 +301,15 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
     return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
   }
 
+  /// Maps normalized RMS to the bar on a dB scale: -60 dBFS (room tone)
+  /// → empty, 0 dBFS → full. Speech sits around -35 to -15 dBFS, so a linear
+  /// scale would barely move. Range is provisional, tuned on device.
+  static double _levelToBar(double rms) {
+    if (rms <= 0) return 0;
+    final db = 20 * math.log(rms) / math.ln10;
+    return ((db + 60) / 60).clamp(0.0, 1.0);
+  }
+
   static String _formatElapsed(Duration d) {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(d.inHours)}:${two(d.inMinutes.remainder(60))}:${two(d.inSeconds.remainder(60))}';
@@ -382,6 +392,16 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
             const SizedBox(width: 8),
             Text(_formatElapsed(elapsed), style: theme.textTheme.headlineMedium),
           ],
+        ),
+        const SizedBox(height: 8),
+        // Input level (echo_core RMS per 100 ms chunk). Visual is provisional.
+        StreamBuilder<double>(
+          stream: _rec?.level,
+          builder: (context, snapshot) => LinearProgressIndicator(
+            value: _levelToBar(snapshot.data ?? 0),
+            minHeight: 6,
+            semanticsLabel: '輸入音量',
+          ),
         ),
         if (_nearLimit) _notice(Icons.timer_outlined, '即將達到 2 小時上限，屆時會自動停止'),
         if (_previewStopped)

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:echo_core/echo_core.dart' as echo;
 import 'package:whisper_ggml/whisper_ggml.dart';
 
 import 'mic_stream_service.dart';
@@ -203,6 +204,7 @@ class LiveRecording {
 
   final _preview = StreamController<String>.broadcast();
   final _lag = StreamController<double>.broadcast();
+  final _level = StreamController<double>.broadcast();
   final _notices = StreamController<LiveNotice>.broadcast();
   bool _previewDelayed = false;
   bool _warnedNearLimit = false;
@@ -227,6 +229,10 @@ class LiveRecording {
 
   Stream<LiveNotice> get notices => _notices.stream;
 
+  /// Input level (normalized RMS, 0..1) of each 100 ms chunk, computed by
+  /// echo_core in C.
+  Stream<double> get level => _level.stream;
+
   Future<LiveRecordingResult> get done => _done.future;
 
   Future<LiveRecordingResult> stop() async {
@@ -237,6 +243,7 @@ class LiveRecording {
   void _onChunk(Uint8List chunk) {
     _sentBytes += chunk.length;
     _pcm.add(chunk);
+    _level.add(echo.rms(_asSamples(chunk)));
     _checkLimit();
     _wav.add(chunk).catchError((Object e) {
       if (_error != null) return;
@@ -244,6 +251,14 @@ class LiveRecording {
       _reason ??= LiveEndReason.writeFailed;
       _mic.stop();
     });
+  }
+
+  /// Views [chunk] as PCM16 without copying when it is 2-byte aligned (the
+  /// normal case for channel data); copies otherwise. A trailing odd byte is
+  /// left out — fine for a level reading.
+  static Int16List _asSamples(Uint8List chunk) {
+    final bytes = chunk.offsetInBytes.isEven ? chunk : Uint8List.fromList(chunk);
+    return Int16List.view(bytes.buffer, bytes.offsetInBytes, bytes.lengthInBytes ~/ 2);
   }
 
   void _checkLimit() {
@@ -297,6 +312,7 @@ class LiveRecording {
     );
     await _preview.close();
     await _lag.close();
+    await _level.close();
     await _notices.close();
   }
 }
