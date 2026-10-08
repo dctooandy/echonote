@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -23,7 +24,12 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
   final _whisper = WhisperController();
   final _scroll = ScrollController();
 
-  WhisperModel _model = WhisperModel.base;
+  WhisperModel _model = WhisperModel.tiny;
+  int _threads = 4;
+
+  /// T0.6 round 2: step 3 s, no temperature fallback, cap tokens per segment.
+  /// Off = upstream defaults, for comparison.
+  bool _tuned = true;
   _Phase _phase = _Phase.idle;
   String? _status;
   String? _error;
@@ -37,11 +43,21 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
   final _intervals = <double>[];
   Duration? _finalizeWait;
 
+  /// T0.6: one entry per native inference run (fork metrics + `lag_sec`).
+  final _runs = <Map<String, dynamic>>[];
+
   double get _audioSeconds => _audioBytes / (MicStreamService.sampleRate * 2);
 
-  double? get _medianInterval {
-    if (_intervals.isEmpty) return null;
-    final sorted = [..._intervals]..sort();
+  double? get _medianInterval => _median(_intervals);
+
+  double? _medianRun(String key) => _median([
+    for (final r in _runs)
+      if (r[key] is num) (r[key] as num).toDouble(),
+  ]);
+
+  static double? _median(List<double> values) {
+    if (values.isEmpty) return null;
+    final sorted = [...values]..sort();
     final mid = sorted.length ~/ 2;
     return sorted.length.isOdd ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
   }
@@ -64,9 +80,10 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
       _intervals.clear();
       _lastPartialAt = null;
       _finalizeWait = null;
+      _runs.clear();
     });
     try {
-      _log('start model=${_model.modelName}');
+      _log('start model=${_model.modelName} threads=$_threads tuned=$_tuned');
       var permission = await _mic.permissionStatus();
       _log('permission=$permission');
       if (permission == MicPermission.undetermined) {
@@ -106,7 +123,15 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
 
       final WhisperLiveSession session;
       try {
-        session = await _whisper.transcribeLive(model: _model, pcm16Stream: counted, lang: 'zh');
+        session = await _whisper.transcribeLive(
+          model: _model,
+          pcm16Stream: counted,
+          lang: 'zh',
+          threads: _threads,
+          stepSec: _tuned ? 3.0 : 1.5,
+          noFallback: _tuned,
+          maxTokens: _tuned ? 64 : 0,
+        );
       } catch (e) {
         _log('transcribeLive failed: $e');
         await _mic.stop();
@@ -120,6 +145,7 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
       // `partials` closes once the session has finalized — by our stop, a
       // system stop (interruption, backgrounding) or a native error. Don't
       // use session.stop() to wait for that: calling it *ends* the session.
+      session.metrics.listen(_onMetrics);
       session.partials.listen(
         _onPartial,
         onError: (Object e) => _showError('即時辨識錯誤：$e'),
@@ -163,6 +189,22 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
     });
   }
 
+  void _onMetrics(Map<String, dynamic> m) {
+    // Audio already sent to whisper minus audio the native side had received
+    // when this run started: how far the worker's mailbox is behind.
+    final lag = _audioSeconds - (m['fed_sec'] as num).toDouble();
+    final run = {...m, 'lag_sec': lag, 'rss_mb': ProcessInfo.currentRss / (1024 * 1024)};
+    _runs.add(run);
+    String f(String key, [int digits = 0]) => (run[key] as num?)?.toStringAsFixed(digits) ?? '-';
+    _log(
+      'run #${_runs.length} model=${_model.modelName} threads=${run['threads']} '
+      'total=${f('total_ms')}ms enc=${f('encode_ms')}ms dec/tok=${f('decode_ms_per_token', 1)}ms '
+      'tokens=${run['tokens']} window=${f('window_sec', 1)}s fed=${f('fed_sec', 1)}s '
+      'lag=${f('lag_sec', 1)}s rss=${f('rss_mb')}MB',
+    );
+    if (mounted) setState(() {});
+  }
+
   Future<void> _stop() async {
     if (_phase != _Phase.recording) return;
     setState(() => _phase = _Phase.finalizing);
@@ -175,6 +217,18 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
       '[spike] stop model=${_model.modelName} audio=${_audioSeconds.toStringAsFixed(1)}s '
       'partials=${_intervals.length + 1} median=${_medianInterval?.toStringAsFixed(2)}s '
       'finalizeWait=${_secs(_finalizeWait!)}',
+    );
+    String med(String key, [int digits = 0]) => _medianRun(key)?.toStringAsFixed(digits) ?? '-';
+    final maxLag = _runs.isEmpty
+        ? null
+        : _runs.map((r) => r['lag_sec'] as double).reduce((a, b) => a > b ? a : b);
+    _log(
+      'summary model=${_model.modelName} threads=$_threads tuned=$_tuned runs=${_runs.length} '
+      'median total=${med('total_ms')}ms enc=${med('encode_ms')}ms '
+      'dec/tok=${med('decode_ms_per_token', 1)}ms tokens=${med('tokens')} '
+      'maxLag=${maxLag?.toStringAsFixed(1) ?? '-'}s '
+      'rss first=${(_runs.firstOrNull?['rss_mb'] as num?)?.toStringAsFixed(0) ?? '-'}MB '
+      'last=${(_runs.lastOrNull?['rss_mb'] as num?)?.toStringAsFixed(0) ?? '-'}MB',
     );
     if (mounted) setState(() {});
   }
@@ -225,7 +279,23 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
                   ? (s) => setState(() => _model = s.single)
                   : null,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
+            SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(value: 2, label: Text('2 threads')),
+                ButtonSegment(value: 4, label: Text('4 threads')),
+              ],
+              selected: {_threads},
+              onSelectionChanged: _phase == _Phase.idle
+                  ? (s) => setState(() => _threads = s.single)
+                  : null,
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('調校：3 秒重算、不重解碼、每段最多 64 token'),
+              value: _tuned,
+              onChanged: _phase == _Phase.idle ? (v) => setState(() => _tuned = v) : null,
+            ),
             FilledButton.icon(
               onPressed: switch (_phase) {
                 _Phase.idle => _start,
@@ -257,6 +327,24 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
                   ),
                   Text('距上次 partial：${sinceLast == null ? '-' : _secs(sinceLast)}'),
                   if (_finalizeWait != null) Text('停止後等待定稿：${_secs(_finalizeWait!)}'),
+                  if (_runs.isNotEmpty) ...[
+                    Text(
+                      '辨識次數：${_runs.length}／單次耗時 上次 '
+                      '${(_runs.last['total_ms'] as num).toStringAsFixed(0)}ms'
+                      '／中位數 ${_medianRun('total_ms')!.toStringAsFixed(0)}ms',
+                    ),
+                    Text(
+                      'encode ${(_runs.last['encode_ms'] as num?)?.toStringAsFixed(0) ?? '-'}ms'
+                      '／decode 每 token '
+                      '${(_runs.last['decode_ms_per_token'] as num?)?.toStringAsFixed(1) ?? '-'}ms'
+                      '／tokens ${_runs.last['tokens']}'
+                      '／視窗 ${(_runs.last['window_sec'] as num).toStringAsFixed(1)}s',
+                    ),
+                    Text(
+                      '落後：${(_runs.last['lag_sec'] as double).toStringAsFixed(1)}s'
+                      '／記憶體 ${(_runs.last['rss_mb'] as num).toStringAsFixed(0)}MB',
+                    ),
+                  ],
                 ],
               ),
             ),
