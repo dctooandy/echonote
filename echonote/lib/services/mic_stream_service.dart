@@ -55,6 +55,9 @@ class MicStreamService {
   /// Non-null while a stream from [start] is open.
   StreamController<Uint8List>? _controller;
 
+  /// Ends the open stream on the Dart side without waiting for native.
+  void Function()? _closeLocally;
+
   Future<MicPermission> permissionStatus() async {
     final status = await _invoke<String>('getPermissionStatus');
     return MicPermission.values.asNameMap()[status] ?? MicPermission.undetermined;
@@ -76,7 +79,10 @@ class MicStreamService {
     }
     final controller = _controller = StreamController<Uint8List>();
     void release() {
-      if (identical(_controller, controller)) _controller = null;
+      if (identical(_controller, controller)) {
+        _controller = null;
+        _closeLocally = null;
+      }
     }
 
     // Listen before `start` so the native event sink is attached by the time
@@ -95,6 +101,12 @@ class MicStreamService {
       release();
       return subscription.cancel();
     };
+    _closeLocally = () {
+      release();
+      subscription.cancel();
+      // Not awaited: close() on a never-listened controller never completes.
+      unawaited(controller.close());
+    };
 
     try {
       await _invoke<void>('start', {'sampleRate': sampleRate, 'chunkMs': chunkMs});
@@ -110,7 +122,16 @@ class MicStreamService {
 
   /// Stops capturing; the stream from [start] then completes. Safe to call
   /// when not running.
-  Future<void> stop() => _invoke<void>('stop');
+  Future<void> stop() async {
+    try {
+      await _invoke<void>('stop');
+    } finally {
+      // Native normally ends the stream itself (endOfStream before replying).
+      // If it was no longer running it sends nothing, and the stream would
+      // stay open forever, blocking every later start() with alreadyRunning.
+      _closeLocally?.call();
+    }
+  }
 
   Future<T?> _invoke<T>(String method, [Object? arguments]) async {
     try {
