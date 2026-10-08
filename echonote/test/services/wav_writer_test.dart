@@ -26,7 +26,9 @@ void main() {
     final writer = await WavWriter.open(path);
     await writer.add(Uint8List(3200)); // 100 ms
     await writer.add(Uint8List(3200));
+    expect(writer.headerFinalized, isFalse);
     await writer.close();
+    expect(writer.headerFinalized, isTrue);
 
     final h = readHeader();
     expect(ascii(h, 0), 'RIFF');

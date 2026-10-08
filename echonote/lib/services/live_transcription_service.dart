@@ -76,6 +76,7 @@ class LiveRecordingResult {
     required this.reason,
     required this.previewText,
     required this.audioDuration,
+    required this.wavUsable,
     this.error,
   });
 
@@ -87,6 +88,10 @@ class LiveRecordingResult {
 
   /// Audio that actually reached the WAV file.
   final Duration audioDuration;
+
+  /// False when the WAV header couldn't be finalized (e.g. disk full while
+  /// patching it): the file is broken and should be deleted, not saved.
+  final bool wavUsable;
 
   /// The mic or write error behind [reason], if any.
   final Object? error;
@@ -286,6 +291,7 @@ class LiveRecording {
         reason: _reason ?? LiveEndReason.stopped,
         previewText: previewText,
         audioDuration: _wav.duration,
+        wavUsable: _wav.headerFinalized,
         error: _error,
       ),
     );

@@ -47,8 +47,20 @@ class _HomeScreenState extends State<HomeScreen> {
     _reload();
   }
 
+  bool _openingLive = false;
+
   Future<void> _startLiveRecording() async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LiveRecordScreen()));
+    // A double tap would open a second screen whose start fails with
+    // alreadyRunning; ignore taps while one is open.
+    if (_openingLive) return;
+    _openingLive = true;
+    try {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const LiveRecordScreen()),
+      );
+    } finally {
+      _openingLive = false;
+    }
     _reload();
   }
 

@@ -22,6 +22,7 @@ class WavWriter {
   /// sample is never split (which would shift every following sample).
   int? _carry;
   bool _closed = false;
+  bool _headerFinalized = false;
 
   static Future<WavWriter> open(String path, {int sampleRate = 16000}) async {
     final file = await File(path).open(mode: FileMode.write);
@@ -33,6 +34,10 @@ class WavWriter {
     }
     return WavWriter._(file, sampleRate);
   }
+
+  /// Whether [close] wrote the final header lengths. False after a failed
+  /// patch: the file then claims zero audio and isn't worth keeping.
+  bool get headerFinalized => _headerFinalized;
 
   /// PCM bytes actually written to disk so far.
   int get dataBytes => _writtenBytes;
@@ -72,6 +77,7 @@ class WavWriter {
     try {
       await _file.setPosition(0);
       await _file.writeFrom(_header(sampleRate: sampleRate, dataBytes: _writtenBytes));
+      _headerFinalized = true;
     } finally {
       await _file.close();
     }

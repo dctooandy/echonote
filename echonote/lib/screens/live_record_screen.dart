@@ -196,12 +196,15 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
     };
     _setPhase(_Phase.finalizing);
 
-    if (result.audioDuration < const Duration(seconds: 1)) {
+    if (!result.wavUsable || result.audioDuration < const Duration(seconds: 1)) {
       await _deleteQuietly(wavPath);
       if (!mounted) return;
       setState(() {
         _phase = _Phase.error;
-        _error = [?_endNote, '錄音太短，沒有保存'].join('\n');
+        _error = [
+          ?_endNote,
+          result.wavUsable ? '錄音太短，沒有保存' : '錄音檔無法完成寫入，已刪除殘缺的檔案',
+        ].join('\n');
       });
       return;
     }
