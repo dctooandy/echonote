@@ -57,6 +57,7 @@ class _ImportScreenState extends State<ImportScreen> {
         elapsedSeconds: result.elapsed.inSeconds,
         audioFileName: audioFileName,
         segments: result.segments,
+        source: RecordingSource.imported,
       );
       await _store.save(recording);
 
