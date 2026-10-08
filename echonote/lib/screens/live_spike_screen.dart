@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:whisper_ggml/whisper_ggml.dart';
 
@@ -23,6 +24,8 @@ enum _Phase { idle, preparing, recording, finalizing }
 class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
   final _mic = MicStreamService();
   final _service = LiveTranscriptionService();
+  final _player = AudioPlayer();
+  String? _lastWav;
   final _scroll = ScrollController();
 
   WhisperModel _model = WhisperModel.tiny;
@@ -72,6 +75,7 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
     _ticker?.cancel();
     if (_phase == _Phase.recording) _rec?.stop();
     _scroll.dispose();
+    _player.dispose();
     super.dispose();
   }
 
@@ -241,6 +245,7 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
     if (!mounted) return;
     setState(() {
       _phase = _Phase.idle;
+      _lastWav = wavPath;
       _text = r.previewText;
       if (r.reason != LiveEndReason.stopped) _error = '錄音結束：${r.reason.name} ${r.error ?? ''}';
     });
@@ -353,6 +358,16 @@ class _LiveSpikeScreenState extends State<LiveSpikeScreen> {
                 ],
               ),
             ),
+            if (_lastWav != null && _phase == _Phase.idle)
+              TextButton.icon(
+                // T1.1: listen for clicks / speed changes after a route change.
+                onPressed: () async {
+                  await _player.setFilePath(_lastWav!);
+                  await _player.play();
+                },
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('播放剛錄的 WAV'),
+              ),
             const Divider(height: 24),
             Expanded(
               child: SingleChildScrollView(
