@@ -10,9 +10,14 @@ void main(List<String> args) async {
       assetName: '${packageName}_bindings_generated.dart',
       sources: ['src/$packageName.c'],
       std: 'c11',
-      // Warnings fail the build: they surface in the hook log otherwise,
-      // which nobody reads.
-      flags: ['-Wall', '-Wextra', '-Werror'],
+      flags: [
+        // Warnings fail the build: they surface in the hook log otherwise,
+        // which nobody reads.
+        '-Wall', '-Wextra', '-Werror',
+        // No fused multiply-add: results stay bit-identical across
+        // platforms and to the pure-Dart reference.
+        '-ffp-contract=off',
+      ],
       optimizationLevel: .o3,
     );
     await cbuilder.run(

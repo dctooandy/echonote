@@ -154,18 +154,20 @@
 
 依賴：T0.3 通過（或 T0.4 完成）。
 
-- [ ] **T1.1** `src/echo_core.h`：依規格定義 4 類函式與 `ec_vad_config`，寫清楚「不配置記憶體、不保留指標、`n ≤ 0` 的行為、VAD 非 thread-safe」等約定的註解。
-- [ ] **T1.2** 實作 `ec_pcm16_to_float`、`ec_rms_pcm16`、`ec_waveform_downsample`，含 `n ≤ 0`、`buckets ≤ 0`、`buckets > n`、-32768 等邊界。依賴：T1.1。
-- [ ] **T1.3** 實作 `ec_vad_create`／`process`／`reset`／`destroy`，演算法與 `whisper_flutter_plus.cpp` 的 `stream_feed` 門檻一致（快降慢升的雜訊底、上限、門檻 = max(ratio × 雜訊底, 下限)）。依賴：T1.1。
-- [ ] **T1.4** 用 `ffigen` 產生綁定：無狀態函式與 `ec_vad_process` 標 `isLeaf: true`；`ec_vad_destroy` 要能取得函式指標給 `NativeFinalizer` 用。依賴：T1.2、T1.3。
+- [x] **T1.1** `src/echo_core.h`：依規格定義 4 類函式與 `ec_vad_config`，寫清楚「不配置記憶體、不保留指標、`n ≤ 0` 的行為、VAD 非 thread-safe」等約定的註解。
+- [x] **T1.2** 實作 `ec_pcm16_to_float`、`ec_rms_pcm16`、`ec_waveform_downsample`，含 `n ≤ 0`、`buckets ≤ 0`、`buckets > n`、-32768 等邊界。依賴：T1.1。
+- [x] **T1.3** 實作 `ec_vad_create`／`process`／`reset`／`destroy`，演算法與 `whisper_flutter_plus.cpp` 的 `stream_feed` 門檻一致（快降慢升的雜訊底、上限、門檻 = max(ratio × 雜訊底, 下限)）。依賴：T1.1。
+- [x] **T1.4** 用 `ffigen` 產生綁定：無狀態函式與 `ec_vad_process` 標 `isLeaf: true`；`ec_vad_destroy` 要能取得函式指標給 `NativeFinalizer` 用。依賴：T1.2、T1.3。
 
 ### 階段 2：Dart 包裝與測試
 
-- [ ] **T2.1** 純 Dart 參考實作（`pcm16ToFloat`、`rms`、`waveform`、VAD），跟 C 版本的公式逐行對應。依賴：無（可與階段 1 同時做）。
-- [ ] **T2.2** 零複製路徑：直接把 `Int16List`／`Float32List` 的 `.address` 交給 leaf 函式；空輸入直接回傳、不呼叫 C。依賴：T1.4。
-- [ ] **T2.3** native buffer 路徑：持有 buffer 的物件，預先 `malloc`、`asTypedList` 複製後呼叫；不夠大時重新配置；`NativeFinalizer` 釋放。依賴：T1.4。
-- [ ] **T2.4** `EchoVad`：建構時 `ec_vad_create`（`NULL` 時丟例外）並綁 `NativeFinalizer`；`dispose()` 先解除 finalizer 再釋放、第二次呼叫不做事；釋放後呼叫其他方法丟 `StateError`。依賴：T1.4。
-- [ ] **T2.5** 測試（macOS 上 `flutter test`，真的呼叫 C）：C 與參考實作比對（轉 float 完全相同，RMS／峰值 1e-6 相對誤差）、兩條路徑結果一致、邊界案例表逐項、VAD 生命週期、buffer 重新配置。依賴：T2.1–T2.4。
+- [x] **T2.1** 純 Dart 參考實作（`pcm16ToFloat`、`rms`、`waveform`、VAD），跟 C 版本的公式逐行對應。依賴：無（可與階段 1 同時做）。
+- [x] **T2.2** 零複製路徑：直接把 `Int16List`／`Float32List` 的 `.address` 交給 leaf 函式；空輸入直接回傳、不呼叫 C。依賴：T1.4。
+- [x] **T2.3** native buffer 路徑：持有 buffer 的物件，預先 `malloc`、`asTypedList` 複製後呼叫；不夠大時重新配置；`NativeFinalizer` 釋放。依賴：T1.4。
+- [x] **T2.4** `EchoVad`：建構時 `ec_vad_create`（`NULL` 時丟例外）並綁 `NativeFinalizer`；`dispose()` 先解除 finalizer 再釋放、第二次呼叫不做事；釋放後呼叫其他方法丟 `StateError`。依賴：T1.4。
+- [x] **T2.5** 測試（macOS 上 `flutter test`，真的呼叫 C）：C 與參考實作比對（轉 float 完全相同，RMS／峰值 1e-6 相對誤差）、兩條路徑結果一致、邊界案例表逐項、VAD 生命週期、buffer 重新配置。依賴：T2.1–T2.4。
+  - 2026-10-08：`packages/echo_core/test/echo_core_test.dart` 16 項全部通過（macOS，真的呼叫 C）；iOS 模擬器的 `integration_test` 也改成呼叫真正的函式並通過。
+  - 規格未寫到、實作時新增：`ec_vad_default_config()`（Dart 預設值與 C 預設值有測試確保一致）；編譯參數加 `-ffp-contract=off`（關閉乘加合併，讓 C 與純 Dart、各平台結果逐位元相同，VAD 判斷因此能完全比對）；`EchoBufferedCore.allocations`（效能表要用的配置次數）；`waveform` 回傳 `Float32List`。
 
 ### 階段 3：效能比較
 
