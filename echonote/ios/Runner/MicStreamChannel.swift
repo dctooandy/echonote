@@ -49,6 +49,13 @@ final class MicStreamChannel: NSObject, FlutterStreamHandler {
     case "stop":
       stopCapture(sendEndOfStream: true)
       result(nil)
+    case "openSettings":
+      // Lets the user grant the mic after a denial; iOS never re-prompts.
+      if let url = URL(string: UIApplication.openSettingsURLString) {
+        UIApplication.shared.open(url) { opened in result(opened) }
+      } else {
+        result(false)
+      }
     default:
       result(FlutterMethodNotImplemented)
     }

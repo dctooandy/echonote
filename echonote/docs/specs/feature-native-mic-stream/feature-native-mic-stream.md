@@ -108,6 +108,7 @@
 | `requestPermission` | 無 | `bool` | 跳出系統的權限詢問；權限已經被永久拒絕時直接回 `false` |
 | `start` | `{ "sampleRate": 16000, "chunkMs": 100 }` | `null` | 開始收音，PCM 從 EventChannel 送出。已經在錄時回傳錯誤 `ALREADY_RUNNING` |
 | `stop` | 無 | `null` | 停止收音並釋放原生資源，結束 EventChannel 的串流。沒在錄音時呼叫也不算錯誤（idempotent） |
+| `openSettings` | 無 | `bool` | 開啟系統設定裡本 App 的頁面，讓使用者在拒絕後開啟麥克風權限（2026-10-08 新增，取代額外依賴 `url_launcher`） |
 
 錯誤一律用 `FlutterError`／`PlatformException` 的 `code` 區分：
 
@@ -338,10 +339,14 @@ transcribing（離線轉錄，顯示進度百分比）
 
 ### 階段 4：UI（暫定版，待正式設計）
 
-- [ ] **T4.1** `LiveRecordScreen` 和狀態機：`checkingPermission` → `requestingPermission`／`permissionDenied`（附前往系統設定按鈕）→ `preparing`（模型下載）→ `recording` → `finalizing` → `transcribing` → 導向 `MeetingDetailScreen`；`finalizing`／`transcribing` 時停用停止按鈕，防止連點。依賴：T1.5、T3.3、T3.4。
-- [ ] **T4.2** 錄音中的畫面元素：已錄時間、即時預覽（自動捲到最底，標示為「預覽」）、延遲提示、上限提示。依賴：T4.1、T3.5、T3.6。
-- [ ] **T4.3** 錄音中按返回：用 `PopScope` 攔截，跳出「停止並存檔／繼續錄音」確認對話框。依賴：T4.1。
-- [ ] **T4.4** 中斷和進入背景：收到 `INTERRUPTED`／`BACKGROUNDED` 時進入 `finalizing` 並存檔；進入背景的情況，回到前景後如果還在這個畫面就接著轉錄。依賴：T4.1、T1.5。
+- [x] **T4.1** `LiveRecordScreen` 和狀態機：`checkingPermission` → `requestingPermission`／`permissionDenied`（附前往系統設定按鈕）→ `preparing`（模型下載）→ `recording` → `finalizing` → `transcribing` → 導向 `MeetingDetailScreen`；`finalizing`／`transcribing` 時停用停止按鈕，防止連點。依賴：T1.5、T3.3、T3.4。
+  - 程式已完成：`lib/screens/live_record_screen.dart`。停止後**先存成未轉錄紀錄再轉錄**；錄音不到 1 秒不保存；權限被拒時用新增的 `openSettings` 開系統設定。測試畫面與首頁 debug 入口已刪除。**實機待驗**。
+- [x] **T4.2** 錄音中的畫面元素：已錄時間、即時預覽（自動捲到最底，標示為「預覽」）、延遲提示、上限提示。依賴：T4.1、T3.5、T3.6。
+  - 程式已完成（時:分:秒、預覽標示、延遲／停止／上限提示）。
+- [x] **T4.3** 錄音中按返回：用 `PopScope` 攔截，跳出「停止並存檔／繼續錄音」確認對話框。依賴：T4.1。
+  - 程式已完成（`PopScope`；收尾存檔中不能離開）。
+- [x] **T4.4** 中斷和進入背景：收到 `INTERRUPTED`／`BACKGROUNDED` 時進入 `finalizing` 並存檔；進入背景的情況，回到前景後如果還在這個畫面就接著轉錄。依賴：T4.1、T1.5。
+  - 程式已完成：中斷／背景／寫入失敗／上限都走同一條收尾流程並顯示原因；背景時等 `AppLifecycleListener.onResume` 才轉錄。
 - [x] **T4.5** `HomeScreen`：FAB 改成展開式（「匯入錄音檔」／「即時錄音」）；`_statusLabel` 新增「未轉錄」狀態。依賴：T2.2。
   - 已完成：`_ExpandableFab`（「即時錄音」／「匯入錄音檔」）；「未轉錄」標記與圖示。「即時錄音」在 T4.1 前先顯示「開發中」。
 - [x] **T4.6** `MeetingDetailScreen`：未轉錄時顯示「尚未轉錄」和「重新轉錄」按鈕；`_analysisGate` 的分析按鈕和 AppBar 的重新分析在未轉錄時停用；播放照常可用。依賴：T2.2、T3.3。

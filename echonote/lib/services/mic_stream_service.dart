@@ -65,6 +65,9 @@ class MicStreamService {
 
   Future<bool> requestPermission() async => await _invoke<bool>('requestPermission') ?? false;
 
+  /// Opens this app's page in iOS Settings (for a denied permission).
+  Future<bool> openSettings() async => await _invoke<bool>('openSettings') ?? false;
+
   /// Starts capturing and returns the PCM stream.
   ///
   /// The stream ends after [stop], or with a [MicStreamException]

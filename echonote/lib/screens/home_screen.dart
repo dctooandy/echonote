@@ -1,11 +1,10 @@
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/recording.dart';
 import '../services/recording_store.dart';
 import 'import_screen.dart';
-import 'live_spike_screen.dart';
+import 'live_record_screen.dart';
 import 'meeting_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -49,8 +48,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _startLiveRecording() async {
-    // TODO(T4.1): open LiveRecordScreen.
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('即時錄音畫面開發中')));
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LiveRecordScreen()));
+    _reload();
   }
 
   String _statusLabel(Recording recording) {
@@ -62,20 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('echonote'),
-        actions: [
-          // TEMPORARY spike entry (T0.5); removed in T0.8.
-          if (kDebugMode)
-            IconButton(
-              tooltip: '即時辨識技術驗證',
-              icon: const Icon(Icons.bug_report_outlined),
-              onPressed: () => Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const LiveSpikeScreen())),
-            ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('echonote')),
       floatingActionButton: _ExpandableFab(
         onImport: _importRecording,
         onRecord: _startLiveRecording,
