@@ -9,7 +9,7 @@
 
 ## 目標與範圍
 
-- 新增套件 `echonote/packages/echo_core`，用 `flutter create --template=package_ffi` 建立（`plugin_ffi` 已被 Flutter 標為 deprecated）。C 原始碼由套件的 build hook（`hook/build.dart`＋`native_toolchain_c`）在建置時編譯，iOS 實機／模擬器與 macOS（`flutter test` 用）都由同一份 C 產生。編譯參數：C11、`-O3`、`-Wall -Wextra -Werror`；原生產物最低 iOS 版本對齊 App 的 15.6（決定 #10、#12）。
+- 新增套件 `echonote/packages/echo_core`，用 `flutter create --template=package_ffi` 建立（`plugin_ffi` 已被 Flutter 標為 deprecated）。C 原始碼由套件的 build hook（`hook/build.dart`＋`native_toolchain_c`）在建置時編譯，iOS 實機／模擬器與 macOS（`flutter test` 用）都由同一份 C 產生。編譯參數：C11、`-O3`、`-Wall -Wextra -Werror`（決定 #12）；原生產物最低 iOS 版本沿用 Flutter 傳入的預設值（決定 #10）。
 - **第一個任務先驗證**：`package_ffi` 的 build hooks 在 iOS 實機、iOS 模擬器、macOS（`flutter test`）都編得過，且能跟用 podspec 的 `whisper_ggml` 並存。不行就退回 podspec，並另外為測試編 macOS dylib（決定 #3）。
 - 用 `ffigen` 從 `src/echo_core.h` 產生 Dart 綁定（`@Native` 外部函式），不手寫 `lookupFunction`。
 - 第一批 C 函式（見「API 異動」）：
@@ -132,7 +132,7 @@
 | 7 | 效能測試資料 | 合成訊號（正弦波加雜訊） |
 | 8 | 效能表位置 | `packages/echo_core/README.md` |
 | 9 | 比對容許誤差 | 轉 float 完全相同；RMS、峰值 1e-6 相對誤差 |
-| 10 | iOS 最低版本 | 原生產物對齊 15.6，併入 #3 驗證 |
+| 10 | iOS 最低版本 | 原定對齊 15.6；2026-10-08 修訂：沿用 Flutter 傳給 build hook 的預設值（13.0）。App 本身要求 15.6，執行上沒有影響，強行覆寫等於跟工具鏈打架 |
 | 11 | App 大小 | 記錄加入前後的大小 |
 | 12 | C 編譯參數 | C11、`-O3`、`-Wall -Wextra -Werror` |
 
@@ -142,10 +142,13 @@
 
 ### 階段 0：可行性驗證（必須最先完成）
 
-- [ ] **T0.1** 記錄基準 App 大小：在加入 `echo_core` 之前，`flutter build ios --release --no-codesign`，記下 `Runner.app` 大小（決定 #11）。
-- [ ] **T0.2** 用 `flutter create --template=package_ffi echo_core` 在 `packages/` 建立套件；讀懂產生的 `hook/build.dart`、`ffigen.yaml`、`src/` 結構。設定 C11、`-O3`、`-Wall -Wextra -Werror`。依賴：無。
-- [ ] **T0.3** App 加上 `echo_core: path: packages/echo_core`，用範本自帶的範例函式驗證三處：`flutter test`（macOS 上真的呼叫 C）、`flutter build ios --simulator`、iOS 實機 debug 執行；確認原生產物最低版本為 15.6，且 `whisper_ggml`（podspec）照常運作。依賴：T0.2。
-- [ ] **T0.4**（條件式）T0.3 任一處失敗時：改用 podspec 編譯 `echo_core`，並另外為 `flutter test` 編 macOS dylib；回頭修改規格。依賴：T0.3。
+- [x] **T0.1** 記錄基準 App 大小：在加入 `echo_core` 之前，`flutter build ios --release --no-codesign`，記下 `Runner.app` 大小（決定 #11）。
+  - 2026-10-08：`Runner.app` 41.0 MB（Flutter 回報；`du` 39.5 MB）。
+- [x] **T0.2** 用 `flutter create --template=package_ffi echo_core` 在 `packages/` 建立套件；讀懂產生的 `hook/build.dart`、`ffigen.yaml`、`src/` 結構。設定 C11、`-O3`、`-Wall -Wextra -Werror`。依賴：無。
+  - 2026-10-08：已建立；刪除範本附帶的 `example/` App（以 echonote 本身當範例）。hook 設定 `std: 'c11'`、`-Wall -Wextra -Werror`、`.o3`。
+- [x] **T0.3** App 加上 `echo_core: path: packages/echo_core`，用範本自帶的範例函式驗證三處：`flutter test`（macOS 上真的呼叫 C）、`flutter build ios --simulator`、iOS 實機 debug 執行；確認原生產物最低版本為 15.6，且 `whisper_ggml`（podspec）照常運作。依賴：T0.2。
+  - 2026-10-08 進度：macOS `dart test` 通過（hook 編出 `libecho_core.dylib`）；iOS 模擬器用 `integration_test/echo_core_smoke_test.dart` 執行通過，與 `whisper_ggml` 並存正常；實機 release 建置通過（arm64），App 41.0 → 41.2 MB。`echo_core.framework` 最低版本為 13.0，依修訂後的決定 #10 接受。實機執行併入 T4.3 驗證。
+- [x] **T0.4**（條件式，不需要：T0.3 通過）T0.3 任一處失敗時：改用 podspec 編譯 `echo_core`，並另外為 `flutter test` 編 macOS dylib；回頭修改規格。依賴：T0.3。
 
 ### 階段 1：C 實作
 
