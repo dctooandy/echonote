@@ -298,11 +298,16 @@ transcribing（離線轉錄，顯示進度百分比）
 
 依賴：T0.8 判定為通過或有條件通過。
 
-- [ ] **T1.1** 路由改變：監聽 `routeChangeNotification`，硬體格式改變時重建 converter 或重新安裝 tap，串流不中斷。
-- [ ] **T1.2** 中斷：監聽 `interruptionNotification`，收到 `.began` 時停止 engine，送出 `INTERRUPTED` 錯誤事件後結束串流。
-- [ ] **T1.3** 進入背景：監聽 `didEnterBackgroundNotification`，停止收音，送出 `BACKGROUNDED` 錯誤事件後結束串流。
-- [ ] **T1.4** 錯誤代碼補齊：`ALREADY_RUNNING`、`AUDIO_SESSION_ERROR`、`FORMAT_UNSUPPORTED`；確認 `stop` 是 idempotent。
-- [ ] **T1.5** `MicStreamService` 把 `INTERRUPTED`／`BACKGROUNDED` 轉成 Dart 端可以區分的例外型別，供狀態機判斷。依賴：T1.2、T1.3。
+- [x] **T1.1** 路由改變：監聽 `routeChangeNotification`，硬體格式改變時重建 converter 或重新安裝 tap，串流不中斷。
+  - 程式已完成：實際監聽的是 `AVAudioEngineConfigurationChange`（硬體格式改變時 engine 會自行停止，必須重裝 tap 並重新啟動；只聽 route change 不夠）。converter 與暫存改成每個 tap 各自持有的 `TapPipeline`，避免與 audio thread 競爭。**實機待驗**。
+- [x] **T1.2** 中斷：監聽 `interruptionNotification`，收到 `.began` 時停止 engine，送出 `INTERRUPTED` 錯誤事件後結束串流。
+  - 程式已完成。**實機待驗**（來電或 Siri）。
+- [x] **T1.3** 進入背景：監聽 `didEnterBackgroundNotification`，停止收音，送出 `BACKGROUNDED` 錯誤事件後結束串流。
+  - 程式已完成。**實機待驗**。
+- [x] **T1.4** 錯誤代碼補齊：`ALREADY_RUNNING`、`AUDIO_SESSION_ERROR`、`FORMAT_UNSUPPORTED`；確認 `stop` 是 idempotent。
+  - 已完成（T0.3 起就有基本回傳；`ALREADY_RUNNING` 另在 Dart 端先擋）。
+- [x] **T1.5** `MicStreamService` 把 `INTERRUPTED`／`BACKGROUNDED` 轉成 Dart 端可以區分的例外型別，供狀態機判斷。依賴：T1.2、T1.3。
+  - 已完成：`MicStreamErrorCode.interrupted／backgrounded`，`LiveTranscriptionService` 轉成 `LiveEndReason`。
 
 ### 階段 2：資料模型與儲存
 

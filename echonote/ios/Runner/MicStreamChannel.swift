@@ -1,5 +1,6 @@
 import AVFoundation
 import Flutter
+import UIKit
 
 /// Native mic capture for live transcription.
 ///
@@ -21,10 +22,11 @@ final class MicStreamChannel: NSObject, FlutterStreamHandler {
   /// This means up to ~one chunk of tail audio is lost on stop.
   private var generation = 0
 
-  // Audio (tap) thread only, except for the reset in `start` before the tap
-  // is installed.
-  private var converter: AVAudioConverter?
-  private var pending = Data()
+  /// Target format and chunk size of the running stream, kept for
+  /// reinstalling the tap after a hardware format change.
+  private var outFormat: AVAudioFormat?
+  private var chunkMs = 100
+  private var observers: [NSObjectProtocol] = []
 
   init(messenger: FlutterBinaryMessenger) {
     methodChannel = FlutterMethodChannel(name: "echonote/mic", binaryMessenger: messenger)
@@ -107,7 +109,7 @@ final class MicStreamChannel: NSObject, FlutterStreamHandler {
       return
     }
     let sampleRate = args?["sampleRate"] as? Int ?? 16000
-    let chunkMs = args?["chunkMs"] as? Int ?? 100
+    chunkMs = args?["chunkMs"] as? Int ?? 100
 
     let session = AVAudioSession.sharedInstance()
     do {
@@ -119,30 +121,54 @@ final class MicStreamChannel: NSObject, FlutterStreamHandler {
       return
     }
 
-    let input = engine.inputNode
-    let inFormat = input.outputFormat(forBus: 0)
-    guard inFormat.sampleRate > 0, inFormat.channelCount > 0,
-          let outFormat = AVAudioFormat(
-            commonFormat: .pcmFormatInt16, sampleRate: Double(sampleRate), channels: 1, interleaved: true),
-          let converter = AVAudioConverter(from: inFormat, to: outFormat)
+    guard let outFormat = AVAudioFormat(
+      commonFormat: .pcmFormatInt16, sampleRate: Double(sampleRate), channels: 1, interleaved: true)
     else {
       deactivateSession()
       result(FlutterError(
-        code: "FORMAT_UNSUPPORTED",
-        message: "Cannot convert \(inFormat) to \(sampleRate) Hz mono PCM16", details: nil))
+        code: "FORMAT_UNSUPPORTED", message: "Invalid sample rate \(sampleRate)", details: nil))
       return
     }
-    converter.downmix = true
-    self.converter = converter
-    pending = Data()
-
-    // 2 bytes per sample, so always an even byte count.
-    let chunkBytes = sampleRate * chunkMs / 1000 * 2
+    self.outFormat = outFormat
     generation += 1
+
+    if let error = installTapAndStart() {
+      deactivateSession()
+      result(error)
+      return
+    }
+    isRunning = true
+    addObservers()
+    result(nil)
+  }
+
+  /// Installs a tap converting the input node's *current* hardware format and
+  /// starts the engine. Used on start and again after a format change.
+  private func installTapAndStart() -> FlutterError? {
+    guard let outFormat = outFormat else {
+      return FlutterError(code: "FORMAT_UNSUPPORTED", message: "No target format", details: nil)
+    }
+    let input = engine.inputNode
+    let inFormat = input.outputFormat(forBus: 0)
+    guard inFormat.sampleRate > 0, inFormat.channelCount > 0,
+          let pipeline = TapPipeline(from: inFormat, to: outFormat, chunkMs: chunkMs)
+    else {
+      return FlutterError(
+        code: "FORMAT_UNSUPPORTED",
+        message: "Cannot convert \(inFormat) to \(outFormat.sampleRate) Hz mono PCM16", details: nil)
+    }
+
     let gen = generation
     let tapFrames = AVAudioFrameCount(inFormat.sampleRate * Double(chunkMs) / 1000)
+    // The pipeline is owned by this tap's closure alone, so a reinstall never
+    // races the audio thread over converter state.
     input.installTap(onBus: 0, bufferSize: tapFrames, format: inFormat) { [weak self] buffer, _ in
-      self?.process(buffer, outFormat: outFormat, chunkBytes: chunkBytes, generation: gen)
+      for chunk in pipeline.process(buffer) {
+        DispatchQueue.main.async {
+          guard let self = self, self.isRunning, self.generation == gen else { return }
+          self.eventSink?(FlutterStandardTypedData(bytes: chunk))
+        }
+      }
     }
 
     engine.prepare()
@@ -150,47 +176,64 @@ final class MicStreamChannel: NSObject, FlutterStreamHandler {
       try engine.start()
     } catch {
       input.removeTap(onBus: 0)
-      deactivateSession()
-      result(FlutterError(code: "AUDIO_SESSION_ERROR", message: error.localizedDescription, details: nil))
-      return
+      return FlutterError(code: "AUDIO_SESSION_ERROR", message: error.localizedDescription, details: nil)
     }
-    isRunning = true
-    result(nil)
+    return nil
   }
 
-  /// Runs on the tap's audio thread: converts the hardware buffer to PCM16,
-  /// then hands fixed-size chunks to the main thread for the event sink.
-  private func process(
-    _ buffer: AVAudioPCMBuffer, outFormat: AVAudioFormat, chunkBytes: Int, generation gen: Int
-  ) {
-    guard let converter = converter else { return }
-    let ratio = outFormat.sampleRate / buffer.format.sampleRate
-    // Headroom for frames the resampler held back from the previous buffer.
-    let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 32
-    guard let out = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: capacity) else { return }
+  // MARK: - System events
 
-    var consumed = false
-    var error: NSError?
-    let status = converter.convert(to: out, error: &error) { _, inputStatus in
-      if consumed {
-        inputStatus.pointee = .noDataNow
-        return nil
-      }
-      consumed = true
-      inputStatus.pointee = .haveData
-      return buffer
-    }
-    guard status != .error, out.frameLength > 0, let samples = out.int16ChannelData else { return }
-    pending.append(UnsafeBufferPointer(start: samples[0], count: Int(out.frameLength)))
+  private func addObservers() {
+    let center = NotificationCenter.default
+    observers = [
+      // Plugging/unplugging headphones or Bluetooth can change the hardware
+      // format; the engine stops itself and the tap must be rebuilt.
+      center.addObserver(
+        forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+      ) { [weak self] _ in
+        self?.handleConfigurationChange()
+      },
+      center.addObserver(
+        forName: AVAudioSession.interruptionNotification,
+        object: AVAudioSession.sharedInstance(), queue: .main
+      ) { [weak self] note in
+        guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+              AVAudioSession.InterruptionType(rawValue: raw) == .began
+        else { return }
+        // Decision #11: no auto-resume; end and let Dart save what we have.
+        self?.endWithError(code: "INTERRUPTED", message: "Audio session interrupted")
+      },
+      center.addObserver(
+        forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+      ) { [weak self] _ in
+        // Decision #5: no background recording.
+        self?.endWithError(code: "BACKGROUNDED", message: "App entered the background")
+      },
+    ]
+  }
 
-    while pending.count >= chunkBytes {
-      let chunk = Data(pending.prefix(chunkBytes))
-      pending.removeFirst(chunkBytes)
-      DispatchQueue.main.async { [weak self] in
-        guard let self = self, self.isRunning, self.generation == gen else { return }
-        self.eventSink?(FlutterStandardTypedData(bytes: chunk))
-      }
+  private func removeObservers() {
+    observers.forEach(NotificationCenter.default.removeObserver)
+    observers = []
+  }
+
+  private func handleConfigurationChange() {
+    guard isRunning else { return }
+    engine.inputNode.removeTap(onBus: 0)
+    engine.stop()
+    // Same generation: chunks already queued still belong to this stream.
+    // Up to one partial chunk buffered in the old pipeline is dropped.
+    if let error = installTapAndStart() {
+      endWithError(code: error.code, message: error.message ?? "")
     }
+  }
+
+  /// Sends a stream error, then ends the stream (error first, then
+  /// endOfStream, as the contract specifies).
+  private func endWithError(code: String, message: String) {
+    guard isRunning else { return }
+    eventSink?(FlutterError(code: code, message: message, details: nil))
+    stopCapture(sendEndOfStream: true)
   }
 
   /// Idempotent: calling it while not running does nothing.
@@ -198,6 +241,7 @@ final class MicStreamChannel: NSObject, FlutterStreamHandler {
     guard isRunning else { return }
     isRunning = false
     generation += 1
+    removeObservers()
     engine.inputNode.removeTap(onBus: 0)
     engine.stop()
     deactivateSession()
@@ -223,5 +267,51 @@ final class MicStreamChannel: NSObject, FlutterStreamHandler {
     stopCapture(sendEndOfStream: false)
     eventSink = nil
     return nil
+  }
+}
+
+/// Converts hardware buffers to PCM16 at the target rate and cuts them into
+/// fixed-size chunks. Lives on the tap's audio thread only.
+private final class TapPipeline {
+  private let converter: AVAudioConverter
+  private let outFormat: AVAudioFormat
+  private let chunkBytes: Int
+  private var pending = Data()
+
+  init?(from inFormat: AVAudioFormat, to outFormat: AVAudioFormat, chunkMs: Int) {
+    guard let converter = AVAudioConverter(from: inFormat, to: outFormat) else { return nil }
+    converter.downmix = true
+    self.converter = converter
+    self.outFormat = outFormat
+    // 2 bytes per sample, so always an even byte count.
+    chunkBytes = Int(outFormat.sampleRate) * chunkMs / 1000 * 2
+  }
+
+  func process(_ buffer: AVAudioPCMBuffer) -> [Data] {
+    let ratio = outFormat.sampleRate / buffer.format.sampleRate
+    // Headroom for frames the resampler held back from the previous buffer.
+    let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 32
+    guard let out = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: capacity) else { return [] }
+
+    var consumed = false
+    var error: NSError?
+    let status = converter.convert(to: out, error: &error) { _, inputStatus in
+      if consumed {
+        inputStatus.pointee = .noDataNow
+        return nil
+      }
+      consumed = true
+      inputStatus.pointee = .haveData
+      return buffer
+    }
+    guard status != .error, out.frameLength > 0, let samples = out.int16ChannelData else { return [] }
+    pending.append(UnsafeBufferPointer(start: samples[0], count: Int(out.frameLength)))
+
+    var chunks: [Data] = []
+    while pending.count >= chunkBytes {
+      chunks.append(Data(pending.prefix(chunkBytes)))
+      pending.removeFirst(chunkBytes)
+    }
+    return chunks
   }
 }
