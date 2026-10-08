@@ -11,15 +11,18 @@ void ec_pcm16_to_float(const int16_t *in, float *out, int32_t n) {
   }
 }
 
-// Mean of squares in the normalized [-1, 1] scale. Accumulates in double:
-// two hours of audio is ~1.2e8 samples, too many for a float sum.
+// Mean of squares in the normalized [-1, 1] scale. Sums s*s as exact
+// integers: each square fits in 31 bits and int64 holds two hours of them
+// (~1.2e8 * 2^30) with room to spare. Integer addition is associative, so
+// the compiler may vectorize the loop (a double sum's order is fixed, which
+// would keep it scalar), and the result is exact rather than rounded per step.
 static double ec_mean_square(const int16_t *in, int32_t n) {
-  double sum = 0.0;
+  int64_t sum = 0;
   for (int32_t i = 0; i < n; i++) {
-    const double s = in[i] / EC_FULL_SCALE;
+    const int32_t s = in[i];
     sum += s * s;
   }
-  return sum / n;
+  return (double)sum / ((double)n * EC_FULL_SCALE * EC_FULL_SCALE);
 }
 
 float ec_rms_pcm16(const int16_t *in, int32_t n) {

@@ -37,13 +37,17 @@ abstract final class DartReference {
     return out;
   }
 
+  // Same integer accumulation as the C code, so results are bit-identical.
+  // Indexed loop: for-in over a typed list goes through an iterator that
+  // AOT compiles poorly, which would unfairly slow the Dart side.
   static double _meanSquare(Int16List samples) {
-    var sum = 0.0;
-    for (final sample in samples) {
-      final s = sample / 32768.0;
+    final n = samples.length;
+    var sum = 0;
+    for (var i = 0; i < n; i++) {
+      final s = samples[i];
       sum += s * s;
     }
-    return sum / samples.length;
+    return sum / (n * 32768.0 * 32768.0);
   }
 }
 

@@ -171,8 +171,12 @@
 
 ### 階段 3：效能比較
 
-- [ ] **T3.1** 合成訊號產生器：固定亂數種子的正弦波加雜訊，2 小時、16 kHz mono PCM16，分成 100 ms chunk 餵入（跟實際錄音的呼叫粒度一致）。依賴：無。
-- [ ] **T3.2** Mac 上的效能比較：純 Dart／C 零複製／C 加 native buffer 三方，量各函式的總耗時；記憶體配置次數依設計列出（不量測）。依賴：T2.5、T3.1。
+- [x] **T3.1** 合成訊號產生器：固定亂數種子的正弦波加雜訊，2 小時、16 kHz mono PCM16，分成 100 ms chunk 餵入（跟實際錄音的呼叫粒度一致）。依賴：無。
+- [x] **T3.2** Mac 上的效能比較：純 Dart／C 零複製／C 加 native buffer 三方，量各函式的總耗時；記憶體配置次數依設計列出（不量測）。依賴：T2.5、T3.1。
+  - 2026-10-08：`lib/benchmark.dart`（Mac CLI 與 iPhone `integration_test` 共用）＋`bin/benchmark.dart`（`dart build cli` 以 AOT 編譯，跟 App 的 profile／release 可比）。
+  - **公平性修正**：純 Dart 的 `rms`／VAD 原本用 `for-in`，AOT 下慢約 4 倍，改成索引迴圈；兩邊再一起改成**整數累加平方和**（結果精確、逐位元相同，且讓 C 可以向量化）。最終 Mac（M2 Pro）：`rms` 8.4×、`vad` 8.3×、`pcm16ToFloat` 4.3×、`waveform` 23.5×（C 零複製相對純 Dart）。
+  - debug 模式（JIT）的 Dart 數值迴圈快很多，數字不可用；iPhone 量測必須用 profile（Xcode：Edit Scheme → Run → Build Configuration = Profile）。
+  - 觀察待確認：舊版 iPhone profile 數據中，`pcm16ToFloat` 的零複製（0.87 µs）慢於 native buffer（0.60 µs），與 Mac 相反，等新一輪 iPhone 數據再看是否重現。
 - [ ] **T3.3** iPhone 12 Pro Max 上跑同一組比較：新增 `integration_test`，用 `flutter drive --profile` 執行（debug 模式的 Dart 是 JIT，數字不可用），結果印到 console。依賴：T3.2。
 - [ ] **T3.4** 把兩台裝置的結果、量測方法、App 大小前後差異寫進 `packages/echo_core/README.md`。依賴：T0.1、T3.3、T4.1。
 
