@@ -30,7 +30,7 @@
 ### B. `whisper_ggml` 加回 Android 建置
 
 - 從上游 2.4.0 取回 `android/`（`build.gradle`、`settings.gradle`、`AndroidManifest.xml`、`CMakeLists.txt`），標 `[echonote]` 修改。
-- **CMake 改成編譯 `ios/Classes/` 底下同一份** `whisper/`（whisper.cpp v1.9.1）與 `whisper_flutter_plus.cpp`，不放第二份原始碼：把 `ios/Classes/` 的 `whisper/`、`json/`、`whisper_flutter_plus.cpp` 搬到套件根目錄的 `src/`，iOS podspec 與 Android CMake 都指向它（決定 #B1）。搬完後 iOS 模擬器與 iPhone 都要重新建置並回歸（決定 #R6）。這樣 iOS 與 Android 共用 echonote 的所有修改（串流參數、metrics、`audio_ctx`、`commit_sec`）。
+- **CMake 改成編譯 `ios/Classes/` 底下同一份** `whisper/`（whisper.cpp v1.9.1）與 `whisper_flutter_plus.cpp`，不放第二份原始碼：Android 的 CMake 直接引用 `ios/Classes/` 底下的 `whisper/`、`json/`、`whisper_flutter_plus.cpp`（決定 #B1，2026-10-10 修訂）。CocoaPods 只能引用 `ios/` 以內的檔案，CMake 沒有這個限制，所以由 CocoaPods 那一側擁有原始碼。iOS 端不動。這樣 iOS 與 Android 共用 echonote 的所有修改（串流參數、metrics、`audio_ctx`、`commit_sec`）。
 - 輸出名稱維持 `libwhisper.so`（Dart 端已經這樣載入）。
 - `pubspec.yaml` 的 `flutter.plugin.platforms` 加上 `android: ffiPlugin: true`。
 - ABI：只編 `arm64-v8a`；32 位元與 x86 不支援（決定 #B2）。
@@ -159,7 +159,7 @@ undetermined ──requestPermission──▶ granted
 | # | 項目 | 決定 |
 | --- | --- | --- |
 | A1 | 模擬器效能數字 | 只在開發紀錄提一句，README 只放實機數字 |
-| B1 | whisper 原始碼位置 | 搬到套件根目錄 `src/`，podspec 與 CMake 都指向它 |
+| B1 | whisper 原始碼位置 | ~~搬到 `src/`~~ → 2026-10-10 修訂：不搬，Android CMake 引用 `ios/Classes/`。原因：podspec 不能引用 `ios/` 以外的檔案，搬到 `src/` 需要為 30 個原始碼檔各寫一個轉接檔。「whisper 改用 build hook」列為第 4 週候選（排在 CI 與 Silero 之後） |
 | B2 | ABI | 只編 arm64-v8a |
 | C1 | 記住是否問過權限 | `SharedPreferences` 布林值 |
 | C2 | 錄音來源 | `VOICE_RECOGNITION`，實機再比較 `MIC` |
@@ -174,7 +174,7 @@ undetermined ──requestPermission──▶ granted
 | R3 | 檔案路徑 | 沿用 |
 | R4 | Android App 圖示 | 要做 |
 | R5 | Swift Package 並存 | 不處理，建置時確認 |
-| R6 | iOS 回歸 | 搬原始碼後 iOS 模擬器＋iPhone 重新建置並錄一次 |
+| R6 | iOS 回歸 | 因 #B1 修訂而不搬原始碼，改為：合併前 iOS 模擬器建置一次、iPhone 錄一次確認沒有被 `pubspec.yaml` 平台設定影響 |
 | R7 | 模擬器速度 | 只驗證功能 |
 
 ## 任務拆解
@@ -183,34 +183,38 @@ undetermined ──requestPermission──▶ granted
 
 ### 階段 0：讓 App 能在 Android 上啟動（必須最先完成）
 
-- [ ] **T0.1** 🤖 Firebase：`main.dart` 用 try/catch 包住初始化，失敗時記下「分析不可用」，不崩潰；`meeting_detail_screen.dart` 的分析入口在不可用時顯示 SnackBar「Android 版尚未支援分析」。iOS 行為不變。依賴：無。
-- [ ] **T0.2** 🤖 `android/app/build.gradle.kts` 的 `minSdk` 設成 24；`flutter build apk --debug` 跑一次，把所有建置錯誤列出來（預期：whisper_ggml 沒有 Android 建置、echo_core 可能缺 `libm`）。依賴：無。
-- [ ] **T0.3** 🤖 `echo_core` 在 Android：視 T0.2 的結果在 hook 加 `libm`；確認 APK 內有 `lib/arm64-v8a/libecho_core.so`；`flutter test integration_test/echo_core_smoke_test.dart -d <模擬器>` 通過；`dart test`（macOS）仍通過。依賴：T0.2。
+- [x] **T0.1** 🤖 Firebase：`main.dart` 用 try/catch 包住初始化，失敗時記下「分析不可用」，不崩潰；`meeting_detail_screen.dart` 的分析入口在不可用時顯示 SnackBar「Android 版尚未支援分析」。iOS 行為不變。依賴：無。
+- [x] **T0.2** 🤖 `android/app/build.gradle.kts` 的 `minSdk` 設成 24；`flutter build apk --debug` 跑一次，把所有建置錯誤列出來（預期：whisper_ggml 沒有 Android 建置、echo_core 可能缺 `libm`）。依賴：無。
+  - 2026-10-10：唯一的建置錯誤是 file_picker 的 `FilePickerPlugin` 找不到。AGP 9 下 file_picker 只靠 AGP 內建 Kotlin，但 audio_session 等套件又必須套 Kotlin 外掛，`android.builtInKotlin` 開或關都有一邊失敗；AGP 9.0.1 → 8.13.0 後通過。
+- [x] **T0.3** 🤖 `echo_core` 在 Android：視 T0.2 的結果在 hook 加 `libm`；確認 APK 內有 `lib/arm64-v8a/libecho_core.so`；`flutter test integration_test/echo_core_smoke_test.dart -d <模擬器>` 通過；`dart test`（macOS）仍通過。依賴：T0.2。
+  - 2026-10-10：**不需要 `libm`**：`llvm-readelf` 顯示三種 ABI 的 `libecho_core.so` 都沒有未解析的 `sqrt`（`-O3` 下編成指令），hook 不改。冒煙測試在 `flutter_emulator` 通過（`Pixel_6a` 只剩 746 MB 裝不下 220 MB 的 APK，上面是使用者其他專案的 App，未動）。
 
 ### 階段 1：whisper 的 Android 建置（最大的風險）
 
-- [ ] **T1.1** 把 `packages/whisper_ggml/ios/Classes/` 的 `whisper/`、`json/`、`whisper_flutter_plus.cpp` 搬到 `packages/whisper_ggml/src/`（`git mv`）；podspec 改成透過 `Classes/` 內的轉接檔引用 `../src`（podspec 不接受套件外的相對路徑，沿用 `plugin_ffi` 範本的 forwarder 做法），`HEADER_SEARCH_PATHS` 同步更新；iOS 模擬器建置通過。依賴：無。
-- [ ] **T1.2** 從上游取回 `android/`（`build.gradle`、`settings.gradle`、`src/main/AndroidManifest.xml`），`CMakeLists.txt` 改成編 `../src`（whisper.cpp＋`whisper_flutter_plus.cpp`），輸出 `libwhisper.so`，`abiFilters` 只留 `arm64-v8a`；`pubspec.yaml` 加 `android: ffiPlugin: true`；修改處標 `[echonote]`；`ECHONOTE.md` 更新。依賴：T1.1。
+- [x] **T1.1** ~~搬原始碼到 `src/`~~：依 #B1 修訂取消，iOS 端不動。
+- [ ] **T1.2** 從上游取回 `android/`（`build.gradle`、`settings.gradle`、`src/main/AndroidManifest.xml`），`CMakeLists.txt` 改成編 `../ios/Classes/` 的 whisper.cpp＋`whisper_flutter_plus.cpp`，輸出 `libwhisper.so`，`abiFilters` 只留 `arm64-v8a`；`pubspec.yaml` 加 `android: ffiPlugin: true`；修改處標 `[echonote]`；`ECHONOTE.md` 更新。依賴：無。
 - [ ] **T1.3** 🤖 `flutter build apk --debug` 通過，APK 內有 `libwhisper.so`；模擬器上匯入一個錄音檔 → 離線轉錄（base）完成、逐字稿正確顯示；確認 `ffmpeg_kit` 的格式轉換在 Android 可用。依賴：T0.1、T0.3、T1.2。
 
 ### 階段 2：Android 麥克風串流
 
-- [ ] **T2.1** `MicStreamChannel.kt`：MethodChannel `echonote/mic`（5 個方法）與 EventChannel `echonote/mic/pcm`；權限狀態判斷（`SharedPreferences` 記是否問過）、`requestPermission`（`onRequestPermissionsResult`）、`openSettings`；`AudioRecord`（`VOICE_RECOGNITION`、16 kHz、mono、PCM16），背景執行緒讀取、每 3200 bytes 切回主執行緒送出；錯誤碼與 iOS 相同；在 `MainActivity.configureFlutterEngine` 註冊、綁在 `FlutterEngine`；`AndroidManifest.xml` 加 `RECORD_AUDIO`。依賴：無（可與階段 1 同時做）。
-- [ ] **T2.2** 中斷處理：音訊焦點遺失 → `INTERRUPTED`；`onStop` → `BACKGROUNDED`；`AudioRecord.read` 錯誤 → `AUDIO_SESSION_ERROR`；16 kHz 初始化失敗 → `FORMAT_UNSUPPORTED`。依賴：T2.1。
+- [x] **T2.1** `MicStreamChannel.kt`：MethodChannel `echonote/mic`（5 個方法）與 EventChannel `echonote/mic/pcm`；權限狀態判斷（`SharedPreferences` 記是否問過）、`requestPermission`（`onRequestPermissionsResult`）、`openSettings`；`AudioRecord`（`VOICE_RECOGNITION`、16 kHz、mono、PCM16），背景執行緒讀取、每 3200 bytes 切回主執行緒送出；錯誤碼與 iOS 相同；在 `MainActivity.configureFlutterEngine` 註冊、綁在 `FlutterEngine`；`AndroidManifest.xml` 加 `RECORD_AUDIO`。依賴：無（可與階段 1 同時做）。
+- [x] **T2.2** 中斷處理：音訊焦點遺失 → `INTERRUPTED`；`onStop` → `BACKGROUNDED`；`AudioRecord.read` 錯誤 → `AUDIO_SESSION_ERROR`；16 kHz 初始化失敗 → `FORMAT_UNSUPPORTED`。依賴：T2.1。
+  - 2026-10-10：程式完成並確認編進 APK；實測併入 T2.3。`configChanges` 已含 `orientation`，旋轉時 Activity 不重建。
 - [ ] **T2.3** 🤖 模擬器（先開啟虛擬麥克風使用主機音訊輸入）：權限流程（第一次詢問、拒絕、永久拒絕後前往設定）；即時錄音出現即時文字、音量條會動、停止後離線轉錄完成；錄音中切到背景會結束並保存；錄音中旋轉螢幕不中斷。依賴：T1.3、T2.2。
 
 ### 階段 3：JNI 範例
 
-- [ ] **T3.1** `packages/echo_core/android_jni/`：獨立的 Android library（Gradle 設定與 wrapper、`CMakeLists.txt` 編 `../src/echo_core.c`＋`echo_core_jni.c`）；`echo_core_jni.c` 用 `GetPrimitiveArrayCritical` 實作 `rms`、`vadCreate`／`vadProcess`／`vadDestroy`；Kotlin `EchoCoreJni` 物件 `System.loadLibrary("echo_core_jni")`。依賴：無。
-- [ ] **T3.2** 🤖 instrumented test（`androidTest`）：`rms` 對已知輸入的結果（與 Swift 測試相同的案例）、VAD「安靜→說話→安靜」、`vadCreate` 回傳非 0、`vadDestroy` 後不再使用；在模擬器用 `./gradlew connectedAndroidTest` 通過。依賴：T3.1。
+- [x] **T3.1** `packages/echo_core/android_jni/`：獨立的 Android library（Gradle 設定與 wrapper、`CMakeLists.txt` 編 `../src/echo_core.c`＋`echo_core_jni.c`）；`echo_core_jni.c` 用 `GetPrimitiveArrayCritical` 實作 `rms`、`vadCreate`／`vadProcess`／`vadDestroy`；Kotlin `EchoCoreJni` 物件 `System.loadLibrary("echo_core_jni")`。依賴：無。
+- [x] **T3.2** 🤖 instrumented test（`androidTest`）：`rms` 對已知輸入的結果（與 Swift 測試相同的案例）、VAD「安靜→說話→安靜」、`vadCreate` 回傳非 0、`vadDestroy` 後不再使用；在模擬器用 `./gradlew connectedAndroidTest` 通過。依賴：T3.1。
+  - 2026-10-10：`./gradlew connectedAndroidTest` 4 項通過（`flutter_emulator`）。
 
 ### 階段 4：其他
 
-- [ ] **T4.1** `flutter_launcher_icons` 改 `android: true` 並產生圖示；模擬器桌面確認。依賴：無。
+- [x] **T4.1** `flutter_launcher_icons` 改 `android: true` 並產生圖示；模擬器桌面確認。依賴：無。
 
 ### 階段 5：實機
 
-- [ ] **T5.1** 📱 iPhone 回歸（T1.1 搬了原始碼）：iPhone 建置、匯入轉錄、即時錄音一次，`[live-metrics]` 與第 2 週同量級。依賴：T1.1。
+- [ ] **T5.1** 📱 iPhone 回歸（`whisper_ggml` 的 `pubspec.yaml` 加了 Android 平台）：iOS 模擬器建置、iPhone 即時錄音一次。依賴：T1.2。
 - [ ] **T5.2** 📱 Android 實機（2026-10-12 起）：T1.3、T2.3 的流程各一次；即時錄音用第 2 週的朗讀稿，記錄 `[live-metrics]`；跑 `echo_core_benchmark_test`（profile）。依賴：階段 1～2。
 - [ ] **T5.3** 📱 Android 實機比較 `VOICE_RECOGNITION` 與 `MIC` 的辨識效果（同一份稿子各錄一次），決定預設值。依賴：T5.2。
 
@@ -222,7 +226,7 @@ undetermined ──requestPermission──▶ granted
 ### 任務摘要
 
 - 共 18 項，全部「可獨立進行」；🤖 模擬器 6 項、📱 實機 3 項（T5.1 iPhone 隨時可做，T5.2／T5.3 等 Android 實機）。
-- 關鍵路徑：T0.2 → T0.3 → T1.1 → T1.2 → T1.3 → T2.3 → T5.2。階段 2 的 T2.1／T2.2、階段 3、T4.1 可以跟階段 1 同時做。
+- 關鍵路徑：T0.2 → T0.3 → T1.2 → T1.3 → T2.3 → T5.2。（2026-10-10：T1.1 依 #B1 修訂取消。）階段 2 的 T2.1／T2.2、階段 3、T4.1 可以跟階段 1 同時做。
 - 週一前可完成：階段 0～4 與 T5.1。
 
 ## 待確認事項
