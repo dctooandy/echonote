@@ -219,7 +219,8 @@ undetermined ──requestPermission──▶ granted
 
 ### 階段 5：實機
 
-- [ ] **T5.1** 📱 iPhone 回歸（`whisper_ggml` 的 `pubspec.yaml` 加了 Android 平台）：iOS 模擬器建置、iPhone 即時錄音一次。依賴：T1.2。
+- [x] **T5.1** 📱 iPhone 回歸（`whisper_ggml` 的 `pubspec.yaml` 加了 Android 平台）：iOS 模擬器建置、iPhone 即時錄音一次。依賴：T1.2。
+  - 2026-10-10：iOS 模擬器建置、`flutter test`（11 項）、`dart test`（20 項）通過。iPhone 12 Pro Max 即時錄音：`[live-metrics]` 7 次推論、`audio_ctx` 768、中位數 481 ms、最大落後 0.8 秒（第 2 週為 516 ms／1.0 秒，同量級）；離線轉錄正常；分析正常產出（Firebase 在 iOS 照常初始化）。
 - [ ] **T5.2** 📱 Android 實機（2026-10-12 起）：T1.3、T2.3 的流程各一次；即時錄音用第 2 週的朗讀稿，記錄 `[live-metrics]`；跑 `echo_core_benchmark_test`（profile）。依賴：階段 1～2。
 - [ ] **T5.3** 📱 Android 實機比較 `VOICE_RECOGNITION` 與 `MIC` 的辨識效果（同一份稿子各錄一次），決定預設值。依賴：T5.2。
 
