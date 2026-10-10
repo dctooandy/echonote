@@ -213,29 +213,37 @@ EchoVAD（Swift）
 
 **A. 餵資料改寫**
 
-- [ ] **T1.1** `echo_core` 新增 `PcmFloatBuffer`：`convert`（輸入零複製、輸出寫進重複使用的 malloc buffer）、`dispose`、`allocations`、`NativeFinalizer`；空輸入回傳 `nullptr`。依賴：無。
-- [ ] **T1.2** `echo_core` 測試：`convert` 結果與舊的 Dart 迴圈（`/ 32768.0`）逐位元相同（決定 #R1）、重新配置、`dispose` 前後與兩次 `dispose`。依賴：T1.1。
-- [ ] **T1.3** `whisper_ggml`：`pubspec.yaml` 加 `echo_core` path 依賴；`_liveWorker` 改用 `PcmFloatBuffer`（session 一個、stop 時 `dispose`；被 kill 的洩漏寫進註解，決定 #A2）；標 `[echonote]`，`ECHONOTE.md` 補一筆。App 端 `flutter pub get`、iOS 模擬器建置通過。依賴：T1.1。
+- [x] **T1.1** `echo_core` 新增 `PcmFloatBuffer`：`convert`（輸入零複製、輸出寫進重複使用的 malloc buffer）、`dispose`、`allocations`、`NativeFinalizer`；空輸入回傳 `nullptr`。依賴：無。
+- [x] **T1.2** `echo_core` 測試：`convert` 結果與舊的 Dart 迴圈（`/ 32768.0`）逐位元相同（決定 #R1）、重新配置、`dispose` 前後與兩次 `dispose`。依賴：T1.1。
+  - 2026-10-10：`echo_core` 測試 20 項全部通過（新增 4 項）。
+- [x] **T1.3** `whisper_ggml`：`pubspec.yaml` 加 `echo_core` path 依賴；`_liveWorker` 改用 `PcmFloatBuffer`（session 一個、stop 時 `dispose`；被 kill 的洩漏寫進註解，決定 #A2）；標 `[echonote]`，`ECHONOTE.md` 補一筆。App 端 `flutter pub get`、iOS 模擬器建置通過。依賴：T1.1。
+  - 2026-10-10：iOS 模擬器建置通過。
 
 **B. audio_ctx 接線**
 
-- [ ] **T1.4** `whisper_flutter_plus.cpp`：`stream_start` 讀 `audio_ctx`（0 預設、-1 動態、其他夾到 1～1500）與 `commit_sec`（預設 25，取代常數 `STREAM_COMMIT_SAMPLES`）；`stream_run_inference` 設 `wparams.audio_ctx`（動態：`ceil(秒數 × 50) + 餘量`，上限 1500）；metrics 加 `audio_ctx`、`commit_sec`。依賴：無。
-- [ ] **T1.5** Dart 參數一路接上：`startWhisperLiveSession`、`WhisperController.transcribeLive`、`LivePreviewConfig`（`audioCtx` 預設 0、`commitSec` 預設 25）、`LiveTranscriptionService.start` 傳入。預設值下行為不變；iOS 模擬器建置通過。依賴：T1.4。
+- [x] **T1.4** `whisper_flutter_plus.cpp`：`stream_start` 讀 `audio_ctx`（0 預設、-1 動態、其他夾到 1～1500）與 `commit_sec`（預設 25，取代常數 `STREAM_COMMIT_SAMPLES`）；`stream_run_inference` 設 `wparams.audio_ctx`（動態：`ceil(秒數 × 50) + 餘量`，上限 1500）；metrics 加 `audio_ctx`、`commit_sec`。依賴：無。
+- [x] **T1.5** Dart 參數一路接上：`startWhisperLiveSession`、`WhisperController.transcribeLive`、`LivePreviewConfig`（`audioCtx` 預設 0、`commitSec` 預設 25）、`LiveTranscriptionService.start` 傳入。預設值下行為不變；iOS 模擬器建置通過。依賴：T1.4。
+  - 2026-10-10：metrics 也回報 `commit_sec`；`commit_sec` 下限 1 秒。iOS 模擬器建置通過。
 
 **C. 零複製調查（Mac 部分）**
 
-- [ ] **T1.6** `lib/benchmark.dart` 加變體：H1 零複製寫進重複使用的 `Float32List`；H2 印出輸出位址對齊、對齊與非對齊 buffer 各量；H3 零複製輸入＋native 輸出＋`fromList`。Mac 用 `dart build cli` AOT 跑並記錄（決定 #R3）。iPhone 用的 `integration_test` 跟著共用。依賴：無（T1.1 完成後可順便把 `PcmFloatBuffer` 也列進比較）。
+- [x] **T1.6** `lib/benchmark.dart` 加變體：H1 零複製寫進重複使用的 `Float32List`；H2 印出輸出位址對齊、對齊與非對齊 buffer 各量；H3 零複製輸入＋native 輸出＋`fromList`。Mac 用 `dart build cli` AOT 跑並記錄（決定 #R3）。iPhone 用的 `integration_test` 跟著共用。依賴：無（T1.1 完成後可順便把 `PcmFloatBuffer` 也列進比較）。
+  - 2026-10-10 Mac（M2 Pro，AOT，3 次，第 1 次為離群值不計）：零複製 0.31～0.32 µs、native buffer 0.45～0.47 µs；**H1 只配置 `Float32List` 就要 0.25 µs**，轉換本身（寫進重複使用的輸出）只要 0.12～0.14 µs；H2 對齊 0.13～0.15 µs、+4B 0.15～0.17 µs，新配置的 `Float32List` 1000 次都 16 bytes 對齊（Mac 上排除對齊）；H3 0.38～0.40 µs；`PcmFloatBuffer` 0.11～0.13 µs。Dart 陣列的位址用 `@Native` leaf 呼叫 `memmove(p, p, 0)` 取回（`.address` 只能當 leaf call 參數）。
 
 **E. Swift 包裝**
 
-- [ ] **T1.7** `packages/echo_core/Package.swift`：C target 指向 `src/`（同一份原始碼），C11、`-O3`、`-ffp-contract=off`、`-Werror`（決定 #E3）；Swift target `EchoCore`：`EchoCore.pcm16ToFloat`／`rms`／`waveform` 與 `final class EchoVAD`（`init?`、`process`、`reset`、`deinit`）。依賴：無。
-- [ ] **T1.8** XCTest：手算的邊界案例（空輸入、-32768、`buckets` ≤ 0、`buckets` > n）、VAD「安靜 → 說話 → 安靜」判斷、`EchoVAD` 釋放；`swift test` 通過。依賴：T1.7。
-- [ ] **T1.9** `xcodebuild` 編譯 iOS 模擬器版本確認通過（決定 #E2）；確認 SwiftPM 的 `.build/` 不會被 build hook 或 Flutter 誤收進 App、也已被 `.gitignore` 排除。依賴：T1.7。
+- [x] **T1.7** `packages/echo_core/Package.swift`：C target 指向 `src/`（同一份原始碼），C11、`-O3`、`-ffp-contract=off`、`-Werror`（決定 #E3）；Swift target `EchoCore`：`EchoCore.pcm16ToFloat`／`rms`／`waveform` 與 `final class EchoVAD`（`init?`、`process`、`reset`、`deinit`）。依賴：無。
+- [x] **T1.8** XCTest：手算的邊界案例（空輸入、-32768、`buckets` ≤ 0、`buckets` > n）、VAD「安靜 → 說話 → 安靜」判斷、`EchoVAD` 釋放；`swift test` 通過。依賴：T1.7。
+  - 2026-10-10：`swift test` 6 項通過。
+- [x] **T1.9** `xcodebuild` 編譯 iOS 模擬器版本確認通過（決定 #E2）；確認 SwiftPM 的 `.build/` 不會被 build hook 或 Flutter 誤收進 App、也已被 `.gitignore` 排除。依賴：T1.7。
+  - 2026-10-10：`xcodebuild -scheme EchoCore -destination 'generic/platform=iOS Simulator' build` 通過；`.build/`、`.swiftpm/` 已加進 `.gitignore`；Flutter 建置不受影響（Flutter 只認 `ios/<plugin>/Package.swift`）。
 
 **D. VAD 評估（準備）**
 
-- [ ] **T1.10** `tool/vad_eval/`：在 Mac 編內建 whisper.cpp 原始碼，讀 16 kHz WAV，每 100 ms 輸出能量門檻（對照組）與 Silero（`whisper_vad_detect_speech_no_reset`）的判斷與處理時間；下載 ggml Silero 模型（不進 git）；附 README 說明怎麼跑。先用合成訊號或既有錄音確認能跑。依賴：無。
-- [ ] **T1.11** 人工標記格式與比對程式：標記檔（每 0.5 秒有沒有人聲）→ 算各方法的命中率／誤判率。依賴：T1.10。
+- [x] **T1.10** `tool/vad_eval/`：在 Mac 編內建 whisper.cpp 原始碼，讀 16 kHz WAV，每 100 ms 輸出能量門檻（對照組）與 Silero（`whisper_vad_detect_speech_no_reset`）的判斷與處理時間；下載 ggml Silero 模型（不進 git）；附 README 說明怎麼跑。先用合成訊號或既有錄音確認能跑。依賴：無。
+  - 2026-10-10：`tool/vad_eval/`（`build.sh` 直接編 App 的 whisper.cpp 與 `echo_core` 原始碼）。對照組用 `echo_core` 的 `ec_vad`（與 whisper 門檻同演算法）。Silero 以 512 樣本為窗，chunk 之間的餘數帶到下一個 chunk，不在串流中補零。用 `say` 合成的中文語音冒煙測試：靜音段正確判斷為非人聲；Mac 單執行緒每 100 ms 約 353 µs（能量門檻 0.2 µs）。
+- [x] **T1.11** 人工標記格式與比對程式：標記檔（每 0.5 秒有沒有人聲）→ 算各方法的命中率／誤判率。依賴：T1.10。
+  - 2026-10-10：比對併入 `vad_eval`（有標記檔就輸出 recall／false-pos，`--csv` 輸出每個 chunk）。標記格式改成「人聲區間（秒，0.5 秒精度）」，比逐 0.5 秒標記容易寫，精度相同。
 
 ### 階段 2：📱 實機時段（一次測完，決定 #R5）
 
