@@ -35,7 +35,8 @@ whisper 的 encoder 預設一律處理 30 秒（`audio_ctx` = 1500 個 frame，�
 
 - `stream_start` 的 JSON 新增 `audio_ctx`，`stream_run_inference` 設定 `wparams.audio_ctx`；`transcribeLive` 與 `LivePreviewConfig` 新增對應參數，**預設維持原行為**（0 = 1500）。
 - 調整方式：固定值與動態（每次推論依視窗長度算 `ceil(秒數 × 50) + 餘量`，上限 1500）兩種都做成參數，實機各量一次再決定預設值（決定 #B1）。固定值模式需要搭配可調的 commit 門檻（固定值涵蓋不到 25 秒），所以 commit 秒數也做成參數，預設維持 25 秒。
-- metrics 新增 `audio_ctx`（這次實際用的值），方便比對。
+- metrics 新增 `audio_ctx`（這次實際用的值）與 `commit_sec`，方便比對。
+- debug 建置在錄音結束時印出兩行 `[live-metrics]` 摘要（推論次數、`audio_ctx`、`commit_sec`、中位數 total_ms／encode_ms／視窗秒數、最大落後，以及預覽全文），量測時不用自己抄 log；release／profile 不印。
 - 實機量測：同一段朗讀內容，比較 encode_ms、total_ms、落後秒數、文字品質，依結果決定 `kLivePreviewConfig` 的預設值：中位數 total_ms 降低 20% 以上、且同一份約 2 分鐘朗讀稿的文字沒有明顯變差（使用者目視）才改，否則維持 0 並記錄結果（決定 #B2、#R2）。stop 時的最後一次推論套用同一個設定（決定 #R4）。
 - 只影響即時預覽（tiny）；錄完後的離線轉錄（base）不動。
 
@@ -51,10 +52,10 @@ whisper 的 encoder 預設一律處理 30 秒（`audio_ctx` = 1500 個 frame，�
 | 假設 | 變體 |
 | --- | --- |
 | H1：`Float32List(n)` 的清零加上 C 再寫一次，比 `fromList` 的一次複製貴 | 零複製寫進**預先配置、重複使用**的 `Float32List`（不配置、不清零） |
-| H2：Dart heap 的 typed data 對齊方式讓 NEON 寫入變慢 | 印出兩種輸出位址的對齊（`address % 16`）；C 端用對齊與非對齊 buffer 各量一次 |
+| H2：Dart heap 的 typed data 對齊方式讓 NEON 寫入變慢 | 印出新配置 `Float32List` 的位址對齊（`address % 16`，1000 次統計）；C 端用刻意 16 bytes 對齊與錯開 4 bytes 的 native buffer 各量一次 |
 | H3：剛配置的 Dart 記憶體第一次寫入的成本（cache／TLB），malloc 的 buffer 已經熱了 | 零複製輸入、native buffer 輸出（就是 A 的組合），再 `fromList` 複製出來 |
 
-- 交付物：README「從數據學到的」第 4 點改寫成結論（或「已排除哪些假設、仍未查明」），benchmark 變體留在 `lib/benchmark.dart`。
+- 交付物：README「從數據學到的」第 4 點改寫成結論（或「已排除哪些假設、仍未查明」），benchmark 變體留在 `lib/benchmark.dart`。Dart 陣列的位址無法直接讀（`.address` 只能當 leaf call 的參數），改用 `@Native` leaf 綁定 libc 的 `memmove(p, p, 0)`（回傳 `p`、不碰記憶體）取回。
 - 時間上限：實機 1 輪（約 30 分鐘）（決定 #C1）；變體在 Mac 上也跑一次對照（決定 #R3）。查不出原因也算完成，只要記錄排除了什麼。
 - 結果也回答 A 的設計問題：A 的輸入走零複製是否合理。
 
@@ -71,9 +72,9 @@ whisper 的 encoder 預設一律處理 30 秒（`audio_ctx` = 1500 個 frame，�
 | D-c：移植 WebRTC VAD 到 `echo_core` | BSD 授權、純 C、業界常用 | 中：移植與授權標示 |
 | 對照組 | 現有能量門檻 | — |
 
-- 評估在 Mac 上進行（沿用「在 Mac 編內建 whisper 原始碼」的做法），評估程式放進 repo 的 `tool/vad_eval/` 讓結果可重現（決定 #D3），輸入是實機錄的 WAV。
-- 素材由使用者用現有錄音功能錄 3 段、每段 30～60 秒：(1) 安靜環境說話、(2) 只有電視或音樂、(3) 說話加上電視背景（決定 #D5）。
-- 評估指標：每 100 ms 的判斷結果，與人工標記（粒度 0.5 秒）比對（決定 #D2）；另外記錄每 100 ms 的處理時間。
+- 評估在 Mac 上進行（沿用「在 Mac 編內建 whisper 原始碼」的做法），評估程式放進 repo 的 `tool/vad_eval/` 讓結果可重現（決定 #D3），輸入是實機錄的 WAV（不進 git），標記檔 `tool/vad_eval/data/*.txt` 進 git，讓結果可重現。
+- 素材由使用者用現有錄音功能錄：(1) 安靜環境說話、(2) 只有電視或音樂、(3) 說話加上電視背景（決定 #D5）；因為 (2) 錄到的是電視對白，另外補錄 (4) 只有音樂。實際每段約 20 秒（原定 30～60 秒）。
+- 評估指標：每 100 ms 的判斷結果，與人工標記比對；標記檔寫人聲區間（秒，0.5 秒精度），沒列到的時間算非人聲（決定 #D2）；另外記錄每 100 ms 的處理時間。
 - **限制要先講清楚**：語音型 VAD（D-a、D-c）偵測的是「人聲」，電視裡的對白也是人聲，**無法分辨現場的人和電視裡的人**。目標設定為「濾掉非語音的聲音（音樂、雜訊、敲擊聲）」，電視對白列為已知限制（決定 #D4）。
 
 ### E. Swift 包裝
@@ -121,18 +122,19 @@ whisper 的 encoder 預設一律處理 30 秒（`audio_ctx` = 1500 個 frame，�
 ### `whisper_ggml`（內建版本）
 
 - `pubspec.yaml`：新增 `echo_core: path: ../echo_core`（決定 #A1）。
-- `stream_start` JSON：新增 `audio_ctx`（整數，0 = 預設 1500，-1 = 動態）與 `commit_sec`（預設 25）。
-- `stream_run_inference`：依設定填 `wparams.audio_ctx`；metrics 新增 `audio_ctx`。
+- `stream_start` JSON：新增 `audio_ctx`（整數；0 = 預設 1500、負數 = 依視窗動態、正數 = 固定值且上限 1500）與 `commit_sec`（預設 25，下限 1 秒）。
+- `stream_run_inference`：依設定填 `wparams.audio_ctx`；metrics 新增 `audio_ctx`、`commit_sec`。
 - `WhisperController.transcribeLive`／`startWhisperLiveSession`：新增 `audioCtx`（預設 0）、`commitSec`（預設 25）參數。
 - 修改處照慣例在註解標 `[echonote]`，`ECHONOTE.md` 補一行說明。
 
 ### App 端
 
-- `LivePreviewConfig` 新增 `audioCtx`（預設 0）、`commitSec`（預設 25）；`kLivePreviewConfig` 的值依 B 的量測結果決定。
+- `LivePreviewConfig` 新增 `int audioCtx`（預設 0）、`int commitSec`（預設 25，整數秒；傳給套件時轉成 `double`）。`kLivePreviewConfig` 依 B 的量測改為 768／15，並可用 `--dart-define=LIVE_AUDIO_CTX=…`、`--dart-define=LIVE_COMMIT_SEC=…` 在建置時覆寫（用 `int.fromEnvironment`，這是 `commitSec` 用整數的原因）。
 
 ### Swift（`packages/echo_core/`，新增）
 
 - `Package.swift`：C target（`src/`）、Swift target `EchoCore`、測試 target。
+- `packages/echo_core/README.md` 新增「Swift 包裝」章節，含 dart:ffi 與 Swift 的對照表（傳陣列給 C、綁定方式、`ec_vad` 釋放、執行緒）。
 - `enum EchoCore`（命名空間）：
   - `static func pcm16ToFloat(_ samples: [Int16]) -> [Float]`
   - `static func rms(_ samples: [Int16]) -> Float`
@@ -170,7 +172,7 @@ EchoVAD（Swift）
 | chunk 比目前 buffer 大 | 重新配置（先解除舊 buffer 的 finalizer 再掛新的，沿用 `EchoBufferedCore` 做法） |
 | `stream_feed` 回傳錯誤 | 現有錯誤處理不變；buffer 留到 stop 時釋放 |
 | session 中途出錯、worker 被 kill | isolate 被 kill 時 `NativeFinalizer` 不保證執行；接受約 6 KB 的洩漏，寫進註解（決定 #A2） |
-| `audio_ctx` 大於 1500 或為負數 | C++ 端夾到合法範圍；Dart 端不另外檢查 |
+| `audio_ctx` 大於 1500 或為負數 | 大於 1500 夾到 1500；任何負數都視為動態；Dart 端不另外檢查 |
 | `audio_ctx` 小於視窗長度需要的 frame 數 | 固定值模式由使用者把 `commitSec` 設在涵蓋範圍內（量測設定會成對調整）；C++ 不另外截斷或報錯 |
 | Swift `ec_vad_create` 回傳 `NULL` | `init?` 回傳 `nil` |
 | Swift 空陣列 | 不呼叫 C，直接回傳 0／空陣列（與 Dart 一致） |
@@ -286,3 +288,22 @@ EchoVAD（Swift）
 ## 待確認事項
 
 目前無。
+
+## 驗收核對記錄
+
+### 2026-10-10（`/spec-check`，commit `d8b4c9f`）
+
+- **結論**：五個子項都有對應實作與驗證，功能面與規格一致。落差都是規格正文沒跟上實作細節或實際執行狀況，沒有實作做不到規格的項目。
+  - A：`PcmFloatBuffer`（`packages/echo_core/lib/src/native.dart:143`，空輸入回 `nullptr` 於 :160）；worker 每個 session 一個、stop 時 `dispose`（`whisper_live.dart:206`、:255、:270）；path 依賴與 `ECHONOTE.md` 已補。
+  - B：`audio_ctx`／`commit_sec`（`whisper_flutter_plus.cpp:478`、:536–545、:590、:644–647），metrics 回報（:576–577）；Dart 三層參數預設 0／25（`whisper_controller.dart:59–60`、`whisper_live.dart:73–74`）；`kLivePreviewConfig` 依量測改為 768／15（`live_transcription_service.dart:59–60`）。
+  - C：H1–H3 變體（`packages/echo_core/lib/benchmark.dart:108–139`），結論寫入 README。
+  - D：`tool/vad_eval`（能量門檻 vs Silero，標記比對），報告在其 README。
+  - E：SwiftPM（`Package.swift:19` 編譯參數與 hook 一致、C11），`EchoVAD` 的 `init?`／`deinit`（`EchoCore.swift:53`、:58）。
+- **落差**：
+  1. 負的 `audio_ctx`：規格寫「-1 動態、其他夾到 1～1500」，實作把**所有負數**都當動態（`whisper_flutter_plus.cpp:538`）。
+  2. `LivePreviewConfig.commitSec` 是 `int`（為了能用 `int.fromEnvironment`），規格未寫型別、Dart 套件層是 `double`。
+  3. D 的素材：規格寫 3 段、各 30～60 秒；實際 4 段（補錄 `music_only`）、各約 20 秒。
+  4. C 的 H2：規格寫「印出兩種輸出位址的對齊」，實作只印新配置 `Float32List` 的對齊；native 輸出是程式刻意對齊／錯開，不需要印。
+  5. T1.11 的標記格式：任務寫「每 0.5 秒有沒有人聲」，實作改成人聲區間（0.5 秒精度），任務註記已說明。
+- **規格未涵蓋**：`--dart-define=LIVE_AUDIO_CTX`／`LIVE_COMMIT_SEC` 覆寫；metrics 的 `commit_sec`；`commit_sec` 下限 1 秒；debug 建置錄音結束時印 `[live-metrics]` 摘要（`live_transcription_service.dart`）；benchmark 以 `@Native` leaf `memmove(p, p, 0)` 讀回 Dart 陣列位址；`tool/vad_eval/data/*.txt` 標記檔進 git（WAV 不進）；README 的 dart:ffi vs Swift 對照表。
+- **處理決定（同日，使用者）**：5 項落差全部改規格、「規格未涵蓋」7 項全部補進正文（已更新）。
