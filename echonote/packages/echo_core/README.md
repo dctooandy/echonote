@@ -1,6 +1,8 @@
 # echo_core
 
-echonote 的跨平台 C 音訊核心。C 原始碼只有一份（`src/`），由 build hook 在建置時編譯給 iOS、macOS（以及之後的 Android），Dart 透過 `dart:ffi` 呼叫。綁定用 `ffigen` 從標頭檔產生，不手寫。
+echonote 的跨平台 C 音訊核心。C 原始碼只有一份（`src/`），由 build hook 在建置時編譯給 iOS、macOS、Android，Dart 透過 `dart:ffi` 呼叫。綁定用 `ffigen` 從標頭檔產生，不手寫。同一份 C 另外包成 Swift（SwiftPM）與 Kotlin（JNI）兩種不經過 Flutter 的版本，三種包裝結果逐位元相同。
+
+> **Android 實機驗證進行中**：Android 的建置、dart:ffi 冒煙測試與 JNI instrumented test 已在模擬器（arm64、Android 13）通過；實機效能數字之後補上。
 
 規格與決定紀錄：[`docs/specs/feature-echo-core/`](../../docs/specs/feature-echo-core/feature-echo-core.md)。
 
@@ -37,12 +39,12 @@ if let vad = EchoVAD() {                     // ec_vad_create 失敗時是 nil
 }                                            // 最後一個參照消失時 deinit 呼叫 ec_vad_destroy
 ```
 
-| | dart:ffi | Swift |
-| --- | --- | --- |
-| 把陣列交給 C | `.address`，只能用在 leaf call | `withUnsafeBufferPointer`，指標只在 closure 內有效 |
-| 綁定 | ffigen 從標頭檔產生 | Swift 直接 import C 模組（clang importer） |
-| 釋放 `ec_vad` | `NativeFinalizer`（GC 時機不確定）＋明確的 `dispose()` | ARC 的 `deinit`（確定性，不需要 `dispose`） |
-| 執行緒 | 同一個 `EchoVad` 只能在一個 isolate 用 | `EchoVAD` 不標 `Sendable` |
+| | dart:ffi | Swift | Kotlin（JNI） |
+| --- | --- | --- | --- |
+| 把陣列交給 C | `.address`，只能用在 leaf call | `withUnsafeBufferPointer`，指標只在 closure 內有效 | `GetPrimitiveArrayCritical`，Get 到 Release 之間不能呼叫其他 JNI 函式 |
+| 綁定 | ffigen 從標頭檔產生 | Swift 直接 import C 模組（clang importer） | 手寫 `echo_core_jni.c`，函式名對應 `external fun` |
+| 釋放 `ec_vad` | `NativeFinalizer`（GC 時機不確定）＋明確的 `dispose()` | ARC 的 `deinit`（確定性，不需要 `dispose`） | 指標以 `Long` handle 交給 Kotlin；`AutoCloseable.close()`／`use { }` |
+| 執行緒 | 同一個 `EchoVad` 只能在一個 isolate 用 | `EchoVAD` 不標 `Sendable` | `EchoVad` 不是執行緒安全 |
 
 編譯參數跟 build hook 一樣（C11、`-O3`、`-Wall -Wextra -Werror`、`-ffp-contract=off`），所以結果跟 Dart 版逐位元相同。因為用了 `unsafeFlags`，這個套件只能以本地路徑依賴，不發佈。
 
@@ -50,6 +52,27 @@ if let vad = EchoVAD() {                     // ec_vad_create 失敗時是 nil
 swift test                                                                    # macOS，真的呼叫 C
 xcodebuild -scheme EchoCore -destination 'generic/platform=iOS Simulator' build  # 確認 iOS 編得過
 ```
+
+## Kotlin（JNI）包裝
+
+`android_jni/` 是獨立的 Android library：CMake 把同一份 `src/echo_core.c` 和橋接檔 `echo_core_jni.c` 編成 `libecho_core_jni.so`，Kotlin 用 `System.loadLibrary` 載入，不經過 Flutter。
+
+```kotlin
+val level = EchoCoreJni.rms(samples)      // ShortArray -> Float
+EchoVad().use { vad ->                    // ec_vad_create 失敗時丟例外
+    val voiced = vad.process(chunk)
+}                                         // close() 呼叫 ec_vad_destroy，呼叫兩次也安全
+```
+
+- **不複製陣列**：`GetPrimitiveArrayCritical` 通常直接拿到 JVM 陣列的位址。代價跟 dart:ffi 的 leaf call 一樣：Get 到 Release 之間程式要短、不能呼叫其他 JNI 函式；echo_core 的函式符合這個條件。只讀不寫，所以 Release 用 `JNI_ABORT`。
+- **指標交給 Kotlin**：`ec_vad*` 轉成 `jlong` handle，0 代表失敗；Kotlin 沒有確定性的解構子，所以 `EchoVad` 實作 `AutoCloseable`。
+- **編譯參數**跟 build hook 相同（C11、`-O3`、`-Wall -Wextra -Werror`、`-ffp-contract=off`），`-DANDROID_STL=none`（純 C，不需要 C++ 標準庫）；目前只建 `arm64-v8a`。
+
+```sh
+cd android_jni && ./gradlew connectedAndroidTest   # 需要已連線的模擬器或手機
+```
+
+instrumented test 4 項：`rms` 已知值、VAD「安靜 → 說話 → 安靜」、`close` 兩次後使用丟例外、handle 為 0 時安全。
 
 ## 建置
 
