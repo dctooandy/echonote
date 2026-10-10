@@ -41,6 +41,9 @@ flutter:
   uses-material-design: true
   plugin:
     platforms:
-      # echonote vendors the iOS sources only; Android comes with its own branch.
+      # echonote: one copy of the native sources (ios/Classes); Android's
+      # CMake builds them too (android/CMakeLists.txt).
       ios:
+        ffiPlugin: true
+      android:
         ffiPlugin: true
