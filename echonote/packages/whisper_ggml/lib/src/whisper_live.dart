@@ -37,8 +37,8 @@ class WhisperLiveSession {
 
   /// [echonote] One event per native inference run: total_ms, window_sec,
   /// fed_sec (audio the native side had received), tokens, threads,
-  /// step_sec, no_fallback, max_tokens, encode_ms, decode_ms_per_token,
-  /// batchd_ms.
+  /// step_sec, no_fallback, max_tokens, audio_ctx, commit_sec, encode_ms,
+  /// decode_ms_per_token, batchd_ms.
   Stream<Map<String, dynamic>> get metrics => _metrics.stream;
 
   /// Feed 16 kHz mono PCM16 (little-endian) audio bytes.
@@ -70,6 +70,8 @@ Future<WhisperLiveSession> startWhisperLiveSession({
   double stepSec = 1.5,
   bool noFallback = false,
   int maxTokens = 0,
+  int audioCtx = 0,
+  double commitSec = 25,
   double gateRmsMin = 0.0015,
   double gateVoiceRatio = 2.5,
   double gateNoiseFloorCap = 0.01,
@@ -144,6 +146,8 @@ Future<WhisperLiveSession> startWhisperLiveSession({
       'step_sec': stepSec,
       'no_fallback': noFallback,
       'max_tokens': maxTokens,
+      'audio_ctx': audioCtx,
+      'commit_sec': commitSec,
       if (initialPrompt != null && initialPrompt.isNotEmpty)
         'initial_prompt': initialPrompt,
     }),

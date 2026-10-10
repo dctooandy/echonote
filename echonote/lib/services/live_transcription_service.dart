@@ -18,6 +18,8 @@ class LivePreviewConfig {
     required this.stepSec,
     required this.noFallback,
     required this.maxTokens,
+    this.audioCtx = 0,
+    this.commitSec = 25,
     this.initialPrompt,
   });
 
@@ -26,6 +28,14 @@ class LivePreviewConfig {
   final double stepSec;
   final bool noFallback;
   final int maxTokens;
+
+  /// Encoder context: 0 = whisper's default (30 s), -1 = sized to each
+  /// run's window, >0 = fixed frames (50 per second; must cover
+  /// [commitSec]).
+  final int audioCtx;
+
+  /// Seconds the preview window grows before its text is committed.
+  final double commitSec;
   final String? initialPrompt;
 }
 
@@ -149,6 +159,8 @@ class LiveTranscriptionService {
         stepSec: config.stepSec,
         noFallback: config.noFallback,
         maxTokens: config.maxTokens,
+        audioCtx: config.audioCtx,
+        commitSec: config.commitSec,
       );
       final micStream = await _mic.start();
       return LiveRecording._(_mic, micStream, pcm, session, wav);

@@ -473,6 +473,10 @@ struct whisper_stream_state
     size_t step_samples = (size_t)(1.5 * WHISPER_SAMPLE_RATE);
     bool no_fallback = false;    // temperature_inc = 0: no re-decode retries
     int max_tokens = 0;          // per segment, 0 = no limit
+    // [echonote] encoder context: 0 = whisper default (1500 frames = 30 s),
+    // -1 = sized to each run's window, >0 = fixed (clamped to 1..1500).
+    int audio_ctx = 0;
+    size_t commit_samples = (size_t)(25.0 * WHISPER_SAMPLE_RATE);
     float noise_floor = 0.005f;  // adaptive ambient RMS estimate
     float gate_rms_min = 0.0015f;   // absolute minimum speech RMS
     float gate_ratio = 2.5f;        // voiced thold = ratio * noise_floor
@@ -489,9 +493,13 @@ struct whisper_stream_state
 
 static whisper_stream_state g_stream;
 
-static const size_t STREAM_COMMIT_SAMPLES = (size_t)(25.0 * WHISPER_SAMPLE_RATE);
 // Decode this much audio past the last voiced sample (trailing consonants).
 static const size_t STREAM_VOICE_PAD      = (size_t)(0.2 * WHISPER_SAMPLE_RATE);
+// [echonote] Encoder frames per second of audio (1500 frames / 30 s), and
+// the headroom added when audio_ctx is sized to the window.
+static const int STREAM_CTX_PER_SEC = 50;
+static const int STREAM_CTX_MARGIN  = 32;
+static const int STREAM_CTX_MAX     = 1500;
 
 // Runs whisper_full over the current window. Caller must hold g_stream.mutex.
 static json stream_run_inference()
@@ -525,6 +533,17 @@ static json stream_run_inference()
         return result;
     }
 
+    // [echonote] audio_ctx for this run (see whisper_stream_state).
+    int audio_ctx = g_stream.audio_ctx;
+    if (audio_ctx < 0) {
+        const int needed = (int)((n_decode * STREAM_CTX_PER_SEC + WHISPER_SAMPLE_RATE - 1) /
+                                 WHISPER_SAMPLE_RATE);
+        audio_ctx = std::min(needed + STREAM_CTX_MARGIN, STREAM_CTX_MAX);
+    } else if (audio_ctx > 0) {
+        audio_ctx = std::min(audio_ctx, STREAM_CTX_MAX);
+    }
+    wparams.audio_ctx = audio_ctx;
+
     // [echonote] per-run metrics; fed_sec lets the app compute real lag.
     whisper_reset_timings(g_stream.ctx);
     const auto t_start = std::chrono::steady_clock::now();
@@ -554,6 +573,8 @@ static json stream_run_inference()
     metrics["step_sec"] = (double)g_stream.step_samples / WHISPER_SAMPLE_RATE;
     metrics["no_fallback"] = g_stream.no_fallback;
     metrics["max_tokens"] = g_stream.max_tokens;
+    metrics["audio_ctx"] = audio_ctx == 0 ? STREAM_CTX_MAX : audio_ctx;
+    metrics["commit_sec"] = (double)g_stream.commit_samples / WHISPER_SAMPLE_RATE;
     if (whisper_timings *t = whisper_get_timings(g_stream.ctx)) {
         // Averages per call: one encode per run, decode is per token.
         metrics["encode_ms"] = t->encode_ms;
@@ -566,7 +587,7 @@ static json stream_run_inference()
     g_stream.last_text = text;
     g_stream.n_transcribed = n_decode;
 
-    if (n_decode >= STREAM_COMMIT_SAMPLES) {
+    if (n_decode >= g_stream.commit_samples) {
         g_stream.committed += text;
         g_stream.last_text.clear();
         g_stream.pcmf32.erase(g_stream.pcmf32.begin(),
@@ -620,6 +641,10 @@ extern "C"
                 jsonBody.value("step_sec", 1.5) * WHISPER_SAMPLE_RATE);
             g_stream.no_fallback = jsonBody.value("no_fallback", false);
             g_stream.max_tokens  = jsonBody.value("max_tokens", 0);
+            g_stream.audio_ctx   = jsonBody.value("audio_ctx", 0);
+            const double commit_sec = jsonBody.value("commit_sec", 25.0);
+            g_stream.commit_samples = (size_t)(
+                std::max(commit_sec, 1.0) * WHISPER_SAMPLE_RATE);
             g_stream.prompt.clear();
             if (jsonBody.contains("initial_prompt") && jsonBody["initial_prompt"].is_string()) {
                 g_stream.prompt = jsonBody["initial_prompt"].get<std::string>();
