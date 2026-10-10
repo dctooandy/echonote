@@ -80,6 +80,12 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
 
   Future<void> _runAnalysis() async {
     if (_isAnalyzing) return;
+    if (!AnalysisService.available) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(Platform.isAndroid ? 'Android 版尚未支援分析' : '分析服務無法使用')),
+      );
+      return;
+    }
     setState(() => _isAnalyzing = true);
     try {
       final analysis = await _analysisService.analyze(widget.recording.segments);

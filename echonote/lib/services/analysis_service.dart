@@ -5,6 +5,9 @@ import 'package:cloud_functions/cloud_functions.dart';
 import '../models/recording.dart';
 
 class AnalysisService {
+  /// False when Firebase didn't initialize (not configured on Android yet).
+  static bool available = false;
+
   Future<MeetingAnalysis> analyze(List<TranscriptSegment> segments) async {
     final callable = FirebaseFunctions.instance.httpsCallable('analyzeMeeting');
     final result = await callable.call<Map<String, dynamic>>({

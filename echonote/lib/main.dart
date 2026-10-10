@@ -3,10 +3,18 @@ import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
 import 'screens/home_screen.dart';
+import 'services/analysis_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Firebase is only configured for iOS so far; elsewhere (Android) the app
+  // still records and transcribes, and analysis reports itself unavailable.
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    AnalysisService.available = true;
+  } on UnsupportedError catch (e) {
+    debugPrint('Firebase not configured on this platform: ${e.message}');
+  }
   runApp(const EchoNoteApp());
 }
 
