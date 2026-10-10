@@ -89,7 +89,8 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
     });
     try {
       var permission = await _mic.permissionStatus();
-      if (permission == MicPermission.undetermined) {
+      // Android can ask again after a plain denial; iOS never reports `denied`.
+      if (permission == MicPermission.undetermined || permission == MicPermission.denied) {
         permission = await _mic.requestPermission() ? MicPermission.granted : MicPermission.denied;
       }
       if (permission != MicPermission.granted) {

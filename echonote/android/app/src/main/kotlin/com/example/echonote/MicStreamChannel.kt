@@ -85,17 +85,22 @@ class MicStreamChannel(messenger: BinaryMessenger, private val context: Context)
     // region Permission
 
     /**
-     * Android only tells "never asked" from "denied for good" through
-     * shouldShowRequestPermissionRationale plus whether we asked before.
+     * Android has no "never asked" state of its own, and
+     * shouldShowRequestPermissionRationale is false both before the first
+     * request and after "don't ask again". So permanentlyDenied is only
+     * reported after one of our own requests came back denied with the
+     * rationale off; a grant that expired ("Only this time") or was revoked
+     * in Settings reads as undetermined, and requesting shows the dialog again.
      */
     private fun permissionStatus(): String {
         if (hasPermission()) return "granted"
-        if (!prefs.getBoolean(KEY_ASKED, false)) return "undetermined"
-        val act = activity ?: return "denied"
-        return if (ActivityCompat.shouldShowRequestPermissionRationale(act, Manifest.permission.RECORD_AUDIO)) {
-            "denied"
-        } else {
-            "permanentlyDenied"
+        val rationale = activity?.let {
+            ActivityCompat.shouldShowRequestPermissionRationale(it, Manifest.permission.RECORD_AUDIO)
+        } ?: false
+        return when {
+            rationale -> "denied"
+            prefs.getBoolean(KEY_DENIED_FOR_GOOD, false) -> "permanentlyDenied"
+            else -> "undetermined"
         }
     }
 
@@ -114,7 +119,6 @@ class MicStreamChannel(messenger: BinaryMessenger, private val context: Context)
             return result.error("ALREADY_RUNNING", "A permission request is already showing", null)
         }
         pendingPermissionResult = result
-        prefs.edit().putBoolean(KEY_ASKED, true).apply()
         ActivityCompat.requestPermissions(act, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_CODE)
     }
 
@@ -122,6 +126,12 @@ class MicStreamChannel(messenger: BinaryMessenger, private val context: Context)
     fun onRequestPermissionsResult(requestCode: Int, grantResults: IntArray): Boolean {
         if (requestCode != REQUEST_CODE) return false
         val granted = grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
+        // Denied and the system will not ask again (or dismissed in a way it
+        // counts as such): only Settings can grant it from here.
+        val rationale = activity?.let {
+            ActivityCompat.shouldShowRequestPermissionRationale(it, Manifest.permission.RECORD_AUDIO)
+        } ?: false
+        prefs.edit().putBoolean(KEY_DENIED_FOR_GOOD, !granted && !rationale).apply()
         pendingPermissionResult?.success(granted)
         pendingPermissionResult = null
         return true
@@ -302,6 +312,6 @@ class MicStreamChannel(messenger: BinaryMessenger, private val context: Context)
 
     private companion object {
         const val REQUEST_CODE = 4217
-        const val KEY_ASKED = "asked_record_audio"
+        const val KEY_DENIED_FOR_GOOD = "record_audio_denied_for_good"
     }
 }
