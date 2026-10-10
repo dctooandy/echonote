@@ -36,7 +36,7 @@ class LivePreviewConfig {
   final int audioCtx;
 
   /// Seconds the preview window grows before its text is committed.
-  final double commitSec;
+  final int commitSec;
   final String? initialPrompt;
 }
 
@@ -51,6 +51,11 @@ const kLivePreviewConfig = LivePreviewConfig(
   noFallback: true,
   maxTokens: 64,
   initialPrompt: '以下是繁體中文的會議逐字稿。',
+  // Week 2 device measurements switch these per build without code edits:
+  //   flutter run --dart-define=LIVE_AUDIO_CTX=-1
+  //   flutter run --dart-define=LIVE_AUDIO_CTX=768 --dart-define=LIVE_COMMIT_SEC=15
+  audioCtx: int.fromEnvironment('LIVE_AUDIO_CTX'),
+  commitSec: int.fromEnvironment('LIVE_COMMIT_SEC', defaultValue: 25),
 );
 
 enum LiveEndReason {
@@ -161,7 +166,7 @@ class LiveTranscriptionService {
         noFallback: config.noFallback,
         maxTokens: config.maxTokens,
         audioCtx: config.audioCtx,
-        commitSec: config.commitSec,
+        commitSec: config.commitSec.toDouble(),
       );
       final micStream = await _mic.start();
       return LiveRecording._(_mic, micStream, pcm, session, wav);
