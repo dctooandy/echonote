@@ -13,6 +13,7 @@ echonote 的跨平台 C 音訊核心。C 原始碼只有一份（`src/`），由
 | `waveform` | `ec_waveform_downsample` | 把一段音訊壓成固定段數的峰值，用來畫波形 |
 | `EchoVad` | `ec_vad_*` | 能量門檻人聲偵測，演算法與 whisper 串流內建的門檻相同 |
 | `EchoBufferedCore` | 同上 | 同樣的函式，改走「複製進 native buffer」的路徑（效能比較用） |
+| `PcmFloatBuffer` | `ec_pcm16_to_float` | 輸入零複製、輸出寫進重複使用的 native buffer，給非 leaf 的 C 呼叫用（whisper 即時串流的 `stream_feed`） |
 | `DartReference` | — | 每個函式的純 Dart 版本（測試比對與效能比較用） |
 
 ## 記憶體所有權
@@ -21,6 +22,34 @@ echonote 的跨平台 C 音訊核心。C 原始碼只有一份（`src/`），由
 - **零複製（預設路徑）**：頂層函式把 Dart 的 `Int16List`／`Float32List` 位址（`.address`）直接交給 C。Dart 只允許在 **leaf call** 中這樣傳，所以所有函式都綁成 `@Native(isLeaf: true)`；代價是這些 C 函式必須很短、不能回呼 Dart，標頭檔有寫明這個約定。
 - **native buffer 路徑**：`EchoBufferedCore` 用 `malloc` 配置、重複使用，不夠大才重新配置；每塊 buffer 各自掛在 `NativeFinalizer` 上，重新配置時先 `detach` 舊的再掛新的。
 - **有狀態的 VAD**：`EchoVad` 持有不透明指標 `ec_vad*`，用 `NativeFinalizer` 綁定 `ec_vad_destroy`（函式位址由 ffigen 的 `symbol-address` 產生）。`dispose()` 先解除 finalizer 再釋放，所以不會重複釋放；釋放後呼叫會丟 `StateError`。同一個 `EchoVad` 只能在一個 isolate 使用。
+
+## Swift 包裝
+
+同一份 `src/` 也可以用 Swift 直接呼叫，不經過 Flutter。套件根目錄的 `Package.swift` 把 `src/` 編成 C target `CEchoCore`，上面一層是 Swift target `EchoCore`：
+
+```swift
+import EchoCore
+
+let level = EchoCore.rms(samples)            // [Int16] -> Float
+let floats = EchoCore.pcm16ToFloat(samples)  // [Int16] -> [Float]
+if let vad = EchoVAD() {                     // ec_vad_create 失敗時是 nil
+    let voiced = vad.process(chunk)
+}                                            // 最後一個參照消失時 deinit 呼叫 ec_vad_destroy
+```
+
+| | dart:ffi | Swift |
+| --- | --- | --- |
+| 把陣列交給 C | `.address`，只能用在 leaf call | `withUnsafeBufferPointer`，指標只在 closure 內有效 |
+| 綁定 | ffigen 從標頭檔產生 | Swift 直接 import C 模組（clang importer） |
+| 釋放 `ec_vad` | `NativeFinalizer`（GC 時機不確定）＋明確的 `dispose()` | ARC 的 `deinit`（確定性，不需要 `dispose`） |
+| 執行緒 | 同一個 `EchoVad` 只能在一個 isolate 用 | `EchoVAD` 不標 `Sendable` |
+
+編譯參數跟 build hook 一樣（C11、`-O3`、`-Wall -Wextra -Werror`、`-ffp-contract=off`），所以結果跟 Dart 版逐位元相同。因為用了 `unsafeFlags`，這個套件只能以本地路徑依賴，不發佈。
+
+```sh
+swift test                                                                    # macOS，真的呼叫 C
+xcodebuild -scheme EchoCore -destination 'generic/platform=iOS Simulator' build  # 確認 iOS 編得過
+```
 
 ## 建置
 
@@ -85,7 +114,22 @@ Mac 連跑三次，各列差異在 ±10% 以內；兩台裝置的 checksum 相�
 1. **C 快在 SIMD，不是快在「C」**。每個樣本各自計算的函式（`waveform`、`pcm16ToFloat`）clang 會向量化，Dart AOT 不會，差距大。
 2. **累加的資料型別決定能不能向量化**。`rms` 一開始用 double 累加平方和：浮點加法換順序結果會變，編譯器只能一個一個加，C 只比 Dart 快 1.1 倍。改成 int64 累加（精確、可換順序）後，C 可以向量化，變成 8 倍；Dart 也因為整數比較便宜而變快。
 3. **公平比較要用寫得合理的 Dart**。純 Dart 版原本用 `for (final s in list)`，AOT 下比索引迴圈慢約 4 倍，會把 C 的優勢灌水；改成索引迴圈後才是真正的差距。
-4. **零複製不一定比較快**。Mac 上零複製一律較快；iPhone 上 `pcm16ToFloat` 的零複製（0.87 µs）卻比 native buffer（0.59 µs）慢，兩次量測都重現。兩者都會在 Dart heap 配置一個輸出陣列，差別在零複製版讓 C 直接寫進剛配置的 Dart 陣列；**原因尚未查明**。
+4. **時間大多花在配置輸出陣列，不在轉換本身**。第 1 週 iPhone 上 `pcm16ToFloat` 零複製（0.87 µs）比 native buffer（0.59 µs）慢，第 2 週加了三個變體拆開來量（2026-10-10，iPhone 12 Pro Max profile／Mac M2 Pro AOT）：
+
+   | 變體 | iPhone | Mac | 量的是什麼 |
+   | --- | ---: | ---: | --- |
+   | C 零複製（配置新的 `Float32List`） | 0.49 µs | 0.31 µs | 原本的零複製路徑 |
+   | C native buffer＋`fromList` | 0.54 µs | 0.46 µs | 原本的 native buffer 路徑 |
+   | H1：只配置 `Float32List(1600)` | 0.31 µs | 0.25 µs | 配置＋清零的成本 |
+   | H1：C 零複製，寫進重複使用的輸出 | 0.13 µs | 0.13 µs | 轉換本身 |
+   | H2：C 寫進 native，16 bytes 對齊／+4 bytes | 0.14／0.17 µs | 0.14／0.16 µs | 對齊的影響 |
+   | H3：零複製輸入、native 輸出、再 `fromList` | 0.45 µs | 0.39 µs | 寫進剛配置的記憶體 vs 熱的 buffer |
+   | `PcmFloatBuffer`（whisper 串流實際用的） | 0.13 µs | 0.12 µs | 不配置、不複製出來 |
+
+   - **第 1 週的反常這次沒有重現**：iPhone 上零複製（0.49）已經比 native buffer（0.54）快，跟 Mac 一致。當時為什麼慢，沒有查明；兩次量測的差別是執行方式（第 1 週用 Xcode Profile，這次用 `flutter drive --profile`），沒有再回頭驗證。
+   - **配置佔了大半**：配置加清零就要 0.31 µs，轉換本身只要 0.13 µs，兩者相加跟零複製的 0.49 µs 接近。要更快，該省的是配置，不是換呼叫方式；`PcmFloatBuffer` 重複使用輸出，所以只剩 0.13 µs。
+   - **對齊排除**：新配置的 `Float32List` 在兩台裝置上 1000 次都是 16 bytes 對齊；故意錯開 4 bytes 只慢 0.03 µs。
+   - Dart 陣列的位址是透過 `@Native` leaf 呼叫 `memmove(p, p, 0)` 取回的：`.address` 只能直接當作 leaf call 的參數，不能拿來讀值。
 
 ## App 大小
 

@@ -51,11 +51,13 @@ const kLivePreviewConfig = LivePreviewConfig(
   noFallback: true,
   maxTokens: 64,
   initialPrompt: '以下是繁體中文的會議逐字稿。',
-  // Week 2 device measurements switch these per build without code edits:
-  //   flutter run --dart-define=LIVE_AUDIO_CTX=-1
-  //   flutter run --dart-define=LIVE_AUDIO_CTX=768 --dart-define=LIVE_COMMIT_SEC=15
-  audioCtx: int.fromEnvironment('LIVE_AUDIO_CTX'),
-  commitSec: int.fromEnvironment('LIVE_COMMIT_SEC', defaultValue: 25),
+  // A fixed 768-frame encoder context (~15 s) with 15 s commits: median run
+  // 1809 → 516 ms and max lag 4.8 → 1.0 s on an iPhone 12 Pro Max, text no
+  // worse (2026-10-10). Sizing audio_ctx per run (-1) was fast but fell into
+  // repetition loops. Override per build to re-measure:
+  //   flutter run --dart-define=LIVE_AUDIO_CTX=0 --dart-define=LIVE_COMMIT_SEC=25
+  audioCtx: int.fromEnvironment('LIVE_AUDIO_CTX', defaultValue: 768),
+  commitSec: int.fromEnvironment('LIVE_COMMIT_SEC', defaultValue: 15),
 );
 
 enum LiveEndReason {
