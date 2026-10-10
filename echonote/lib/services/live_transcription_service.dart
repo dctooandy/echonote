@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:echo_core/echo_core.dart' as echo;
+import 'package:flutter/foundation.dart';
 import 'package:whisper_ggml/whisper_ggml.dart';
 
 import 'mic_stream_service.dart';
@@ -194,6 +195,7 @@ class LiveRecording {
       },
     );
     _session.metrics.listen((m) {
+      if (kDebugMode) _runs.add(m);
       final fedSec = (m['fed_sec'] as num?)?.toDouble();
       if (fedSec != null) _onLag(sentSeconds - fedSec);
     });
@@ -286,6 +288,7 @@ class LiveRecording {
   }
 
   void _onLag(double lag) {
+    if (kDebugMode && lag > _maxLag) _maxLag = lag;
     _lag.add(lag);
     final delayed = lag > lagHintSeconds;
     if (delayed == _previewDelayed) return;
@@ -302,11 +305,36 @@ class LiveRecording {
     };
   }
 
+  // Debug builds only: per-run metrics, summarized when the recording ends
+  // so preview settings (audio_ctx etc.) can be compared on a device.
+  final List<Map<String, dynamic>> _runs = [];
+  double _maxLag = 0;
+
+  void _logRuns(String previewText) {
+    if (_runs.isEmpty) return;
+    double median(String key) {
+      final v = [for (final m in _runs) (m[key] as num?)?.toDouble() ?? 0]..sort();
+      return v[v.length ~/ 2];
+    }
+
+    final ctx = {for (final m in _runs) m['audio_ctx']};
+    debugPrint(
+      '[live-metrics] runs ${_runs.length}, audio_ctx $ctx, '
+      'commit_sec ${_runs.first['commit_sec']}, '
+      'median total_ms ${median('total_ms').round()}, '
+      'median encode_ms ${median('encode_ms').round()}, '
+      'median window_sec ${median('window_sec').toStringAsFixed(1)}, '
+      'max lag ${_maxLag.toStringAsFixed(1)} s',
+    );
+    debugPrint('[live-metrics] preview: $previewText');
+  }
+
   /// The mic stream ended (stop, system, or write failure): drain both
   /// consumers, then report.
   Future<void> _finish() async {
     unawaited(_pcm.close());
     final previewText = await _session.stop().catchError((Object _) => _lastText);
+    if (kDebugMode) _logRuns(previewText);
     try {
       await _wav.close();
     } catch (e) {
