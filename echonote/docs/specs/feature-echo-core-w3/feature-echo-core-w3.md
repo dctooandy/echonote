@@ -192,15 +192,20 @@ undetermined ──requestPermission──▶ granted
 ### 階段 1：whisper 的 Android 建置（最大的風險）
 
 - [x] **T1.1** ~~搬原始碼到 `src/`~~：依 #B1 修訂取消，iOS 端不動。
-- [ ] **T1.2** 從上游取回 `android/`（`build.gradle`、`settings.gradle`、`src/main/AndroidManifest.xml`），`CMakeLists.txt` 改成編 `../ios/Classes/` 的 whisper.cpp＋`whisper_flutter_plus.cpp`，輸出 `libwhisper.so`，`abiFilters` 只留 `arm64-v8a`；`pubspec.yaml` 加 `android: ffiPlugin: true`；修改處標 `[echonote]`；`ECHONOTE.md` 更新。依賴：無。
-- [ ] **T1.3** 🤖 `flutter build apk --debug` 通過，APK 內有 `libwhisper.so`；模擬器上匯入一個錄音檔 → 離線轉錄（base）完成、逐字稿正確顯示；確認 `ffmpeg_kit` 的格式轉換在 Android 可用。依賴：T0.1、T0.3、T1.2。
+- [x] **T1.2** 從上游取回 `android/`（`build.gradle`、`settings.gradle`、`src/main/AndroidManifest.xml`），`CMakeLists.txt` 改成編 `../ios/Classes/` 的 whisper.cpp＋`whisper_flutter_plus.cpp`，輸出 `libwhisper.so`，`abiFilters` 只留 `arm64-v8a`；`pubspec.yaml` 加 `android: ffiPlugin: true`；修改處標 `[echonote]`；`ECHONOTE.md` 更新。依賴：無。
+- [x] **T1.3** 🤖 `flutter build apk --debug` 通過，APK 內有 `libwhisper.so`；模擬器上匯入一個錄音檔 → 離線轉錄（base）完成、逐字稿正確顯示；確認 `ffmpeg_kit` 的格式轉換在 Android 可用。依賴：T0.1、T0.3、T1.2。
+  - 2026-10-10（`flutter_emulator`）：APK 內有 `libwhisper.so`（2.9 MB，匯出 `request`、`stream_*`）。匯入 10 秒的合成中文語音 → base 模型下載 → ffmpeg 轉檔 → 轉錄出正確的繁體逐字稿與時間戳；播放正常；按分析顯示「Android 版尚未支援分析」。
 
 ### 階段 2：Android 麥克風串流
 
 - [x] **T2.1** `MicStreamChannel.kt`：MethodChannel `echonote/mic`（5 個方法）與 EventChannel `echonote/mic/pcm`；權限狀態判斷（`SharedPreferences` 記是否問過）、`requestPermission`（`onRequestPermissionsResult`）、`openSettings`；`AudioRecord`（`VOICE_RECOGNITION`、16 kHz、mono、PCM16），背景執行緒讀取、每 3200 bytes 切回主執行緒送出；錯誤碼與 iOS 相同；在 `MainActivity.configureFlutterEngine` 註冊、綁在 `FlutterEngine`；`AndroidManifest.xml` 加 `RECORD_AUDIO`。依賴：無（可與階段 1 同時做）。
 - [x] **T2.2** 中斷處理：音訊焦點遺失 → `INTERRUPTED`；`onStop` → `BACKGROUNDED`；`AudioRecord.read` 錯誤 → `AUDIO_SESSION_ERROR`；16 kHz 初始化失敗 → `FORMAT_UNSUPPORTED`。依賴：T2.1。
   - 2026-10-10：程式完成並確認編進 APK；實測併入 T2.3。`configChanges` 已含 `orientation`，旋轉時 Activity 不重建。
-- [ ] **T2.3** 🤖 模擬器（先開啟虛擬麥克風使用主機音訊輸入）：權限流程（第一次詢問、拒絕、永久拒絕後前往設定）；即時錄音出現即時文字、音量條會動、停止後離線轉錄完成；錄音中切到背景會結束並保存；錄音中旋轉螢幕不中斷。依賴：T1.3、T2.2。
+- [x] **T2.3** 🤖 模擬器（先開啟虛擬麥克風使用主機音訊輸入）：權限流程（第一次詢問、拒絕、永久拒絕後前往設定）；即時錄音出現即時文字、音量條會動、停止後離線轉錄完成；錄音中切到背景會結束並保存；錄音中旋轉螢幕不中斷。依賴：T1.3、T2.2。
+  - 2026-10-10（`flutter_emulator`，模擬器麥克風用 Mac 輸入）：
+    - 權限：拒絕 → 再進入時重新詢問 → 再拒絕 → 再進入時不再詢問、顯示拒絕畫面 → 前往設定開啟 App 資訊頁 → 設定允許後可直接錄音（使用者操作確認）。過程中發現並修正：「僅限這次」過期或在設定撤銷後會被誤判為永久拒絕（03d310d）。
+    - 即時錄音：音量條會動、即時文字出現（tiny）；旋轉螢幕不中斷；按 Home 鍵 → 「App 進入背景，錄音已停止並保存」→ 離線轉錄。
+    - 22 秒錄音的離線轉錄（base）約 5 分鐘，逐字稿正確。慢的原因是模擬器（1.5 GB RAM、4 核，App 占 687 MB、swap 已用 647 MB），不代表實機（決定 #R7）。模擬器上的即時預覽 `[live-metrics]`：中位數 296 ms、最大落後 3.1 秒。
 
 ### 階段 3：JNI 範例
 
