@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:echo_core/echo_core.dart' as echo;
+import 'package:flutter/foundation.dart';
 import 'package:whisper_ggml/whisper_ggml.dart';
 
 import 'mic_stream_service.dart';
@@ -18,6 +19,8 @@ class LivePreviewConfig {
     required this.stepSec,
     required this.noFallback,
     required this.maxTokens,
+    this.audioCtx = 0,
+    this.commitSec = 25,
     this.initialPrompt,
   });
 
@@ -26,6 +29,14 @@ class LivePreviewConfig {
   final double stepSec;
   final bool noFallback;
   final int maxTokens;
+
+  /// Encoder context: 0 = whisper's default (30 s), -1 = sized to each
+  /// run's window, >0 = fixed frames (50 per second; must cover
+  /// [commitSec]).
+  final int audioCtx;
+
+  /// Seconds the preview window grows before its text is committed.
+  final int commitSec;
   final String? initialPrompt;
 }
 
@@ -40,6 +51,13 @@ const kLivePreviewConfig = LivePreviewConfig(
   noFallback: true,
   maxTokens: 64,
   initialPrompt: '以下是繁體中文的會議逐字稿。',
+  // A fixed 768-frame encoder context (~15 s) with 15 s commits: median run
+  // 1809 → 516 ms and max lag 4.8 → 1.0 s on an iPhone 12 Pro Max, text no
+  // worse (2026-10-10). Sizing audio_ctx per run (-1) was fast but fell into
+  // repetition loops. Override per build to re-measure:
+  //   flutter run --dart-define=LIVE_AUDIO_CTX=0 --dart-define=LIVE_COMMIT_SEC=25
+  audioCtx: int.fromEnvironment('LIVE_AUDIO_CTX', defaultValue: 768),
+  commitSec: int.fromEnvironment('LIVE_COMMIT_SEC', defaultValue: 15),
 );
 
 enum LiveEndReason {
@@ -149,6 +167,8 @@ class LiveTranscriptionService {
         stepSec: config.stepSec,
         noFallback: config.noFallback,
         maxTokens: config.maxTokens,
+        audioCtx: config.audioCtx,
+        commitSec: config.commitSec.toDouble(),
       );
       final micStream = await _mic.start();
       return LiveRecording._(_mic, micStream, pcm, session, wav);
@@ -182,6 +202,7 @@ class LiveRecording {
       },
     );
     _session.metrics.listen((m) {
+      if (kDebugMode) _runs.add(m);
       final fedSec = (m['fed_sec'] as num?)?.toDouble();
       if (fedSec != null) _onLag(sentSeconds - fedSec);
     });
@@ -274,6 +295,7 @@ class LiveRecording {
   }
 
   void _onLag(double lag) {
+    if (kDebugMode && lag > _maxLag) _maxLag = lag;
     _lag.add(lag);
     final delayed = lag > lagHintSeconds;
     if (delayed == _previewDelayed) return;
@@ -290,11 +312,36 @@ class LiveRecording {
     };
   }
 
+  // Debug builds only: per-run metrics, summarized when the recording ends
+  // so preview settings (audio_ctx etc.) can be compared on a device.
+  final List<Map<String, dynamic>> _runs = [];
+  double _maxLag = 0;
+
+  void _logRuns(String previewText) {
+    if (_runs.isEmpty) return;
+    double median(String key) {
+      final v = [for (final m in _runs) (m[key] as num?)?.toDouble() ?? 0]..sort();
+      return v[v.length ~/ 2];
+    }
+
+    final ctx = {for (final m in _runs) m['audio_ctx']};
+    debugPrint(
+      '[live-metrics] runs ${_runs.length}, audio_ctx $ctx, '
+      'commit_sec ${_runs.first['commit_sec']}, '
+      'median total_ms ${median('total_ms').round()}, '
+      'median encode_ms ${median('encode_ms').round()}, '
+      'median window_sec ${median('window_sec').toStringAsFixed(1)}, '
+      'max lag ${_maxLag.toStringAsFixed(1)} s',
+    );
+    debugPrint('[live-metrics] preview: $previewText');
+  }
+
   /// The mic stream ended (stop, system, or write failure): drain both
   /// consumers, then report.
   Future<void> _finish() async {
     unawaited(_pcm.close());
     final previewText = await _session.stop().catchError((Object _) => _lastText);
+    if (kDebugMode) _logRuns(previewText);
     try {
       await _wav.close();
     } catch (e) {

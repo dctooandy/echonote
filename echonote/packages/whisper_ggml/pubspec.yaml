@@ -13,6 +13,9 @@ dependencies:
     sdk: flutter
 
   ffi: ^2.1.4
+  # [echonote] PCM16 -> float for the live stream (see whisper_live.dart).
+  echo_core:
+    path: ../echo_core
   ffmpeg_kit_flutter_new_min: ^2.1.0
   freezed_annotation: ^3.0.0
   json_annotation: ^4.9.0

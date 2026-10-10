@@ -4,6 +4,7 @@ import 'dart:ffi';
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import 'package:echo_core/echo_core.dart';
 import 'package:ffi/ffi.dart';
 import 'package:universal_io/io.dart';
 
@@ -36,8 +37,8 @@ class WhisperLiveSession {
 
   /// [echonote] One event per native inference run: total_ms, window_sec,
   /// fed_sec (audio the native side had received), tokens, threads,
-  /// step_sec, no_fallback, max_tokens, encode_ms, decode_ms_per_token,
-  /// batchd_ms.
+  /// step_sec, no_fallback, max_tokens, audio_ctx, commit_sec, encode_ms,
+  /// decode_ms_per_token, batchd_ms.
   Stream<Map<String, dynamic>> get metrics => _metrics.stream;
 
   /// Feed 16 kHz mono PCM16 (little-endian) audio bytes.
@@ -69,6 +70,8 @@ Future<WhisperLiveSession> startWhisperLiveSession({
   double stepSec = 1.5,
   bool noFallback = false,
   int maxTokens = 0,
+  int audioCtx = 0,
+  double commitSec = 25,
   double gateRmsMin = 0.0015,
   double gateVoiceRatio = 2.5,
   double gateNoiseFloorCap = 0.01,
@@ -143,6 +146,8 @@ Future<WhisperLiveSession> startWhisperLiveSession({
       'step_sec': stepSec,
       'no_fallback': noFallback,
       'max_tokens': maxTokens,
+      'audio_ctx': audioCtx,
+      'commit_sec': commitSec,
       if (initialPrompt != null && initialPrompt.isNotEmpty)
         'initial_prompt': initialPrompt,
     }),
@@ -194,6 +199,11 @@ void _liveWorker(SendPort toMain) {
   toMain.send(['ready', inbox.sendPort]);
 
   String lastPartial = '';
+  // [echonote] One reused native buffer per session for the float samples
+  // (stream_feed isn't a leaf call, so it can't take Dart memory). Freed on
+  // stop; if the isolate is killed after a native error the finalizer may
+  // not run and the few KB leak, which is acceptable for a dead session.
+  final PcmFloatBuffer pcm = PcmFloatBuffer();
   int pendingByte = -1; // odd trailing byte carried into the next chunk
 
   Map<String, dynamic> parse(Pointer<Utf8> res) {
@@ -241,15 +251,8 @@ void _liveWorker(SendPort toMain) {
         if (bytes.isEmpty) return;
         final Int16List samples =
             bytes.buffer.asInt16List(bytes.offsetInBytes, bytes.length ~/ 2);
-        final Pointer<Float> pcm = malloc.allocate<Float>(
-          samples.length * sizeOf<Float>(),
-        );
-        final Float32List dest = pcm.asTypedList(samples.length);
-        for (int i = 0; i < samples.length; i++) {
-          dest[i] = samples[i] / 32768.0;
-        }
-        final Map<String, dynamic> result = parse(feed(pcm, samples.length));
-        malloc.free(pcm);
+        final Map<String, dynamic> result =
+            parse(feed(pcm.convert(samples), samples.length));
         if (result['@type'] == 'error') {
           toMain.send(['error', result['message']]);
         } else {
@@ -264,6 +267,7 @@ void _liveWorker(SendPort toMain) {
         }
       case 'stop':
         final Map<String, dynamic> result = parse(stopFn());
+        pcm.dispose();
         toMain.send([
           'final',
           result['@type'] == 'error' ? lastPartial : result['text'] as String,

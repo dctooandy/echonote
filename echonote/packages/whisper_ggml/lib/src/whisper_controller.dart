@@ -36,7 +36,11 @@ class WhisperController {
   /// [echonote] [threads] is the native thread count; [stepSec] is how much
   /// new audio triggers a re-decode; [noFallback] disables whisper's
   /// temperature-fallback re-decodes; [maxTokens] caps tokens per segment
-  /// (0 = no limit). Defaults keep upstream behavior. On an iPhone 12 Pro Max
+  /// (0 = no limit); [audioCtx] is the encoder context (0 = whisper's
+  /// default of 1500 frames = 30 s, -1 = sized to each run's window, >0 =
+  /// fixed); [commitSec] is how long the window grows before its text is
+  /// committed (a fixed [audioCtx] must cover it). Defaults keep upstream
+  /// behavior. On an iPhone 12 Pro Max
   /// the upstream defaults fall behind real time within a minute; see
   /// echonote's docs/specs/feature-native-mic-stream for measurements.
   Future<WhisperLiveSession> transcribeLive({
@@ -52,6 +56,8 @@ class WhisperController {
     double stepSec = 1.5,
     bool noFallback = false,
     int maxTokens = 0,
+    int audioCtx = 0,
+    double commitSec = 25,
   }) async {
     await initModel(model);
 
@@ -67,6 +73,8 @@ class WhisperController {
       stepSec: stepSec,
       noFallback: noFallback,
       maxTokens: maxTokens,
+      audioCtx: audioCtx,
+      commitSec: commitSec,
     );
 
     pcm16Stream.listen(

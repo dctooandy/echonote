@@ -8,10 +8,28 @@
 /// signal is generated up front and the chunks cycle through it.
 library;
 
+import 'dart:ffi';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:ffi/ffi.dart';
+
 import 'echo_core.dart';
+import 'src/echo_core_bindings_generated.dart';
+
+// `.address` is only allowed as a leaf-call argument, so the address of a
+// Dart typed list is read back through memmove(dst, dst, 0), which returns
+// dst and touches nothing.
+@Native<Pointer<Float> Function(Pointer<Float>, Pointer<Float>, Size)>(
+  symbol: 'memmove',
+  isLeaf: true,
+)
+external Pointer<Float> _memmove(Pointer<Float> dst, Pointer<Float> src, int n);
+
+Pointer<Float> _addressOfNew(int n) {
+  final list = Float32List(n);
+  return _memmove(list.address, list.address, 0);
+}
 
 /// Speech-like synthetic signal: 2 s of syllable-modulated tones, then 1 s
 /// of near-silence, repeating, plus low noise. Fixed seed, so anyone can
@@ -84,6 +102,46 @@ List<BenchmarkResult> runBenchmark({
   measure('pcm16ToFloat', 'Dart', (c) => DartReference.pcm16ToFloat(c)[1]);
   measure('pcm16ToFloat', 'C zero-copy', (c) => pcm16ToFloat(c)[1]);
   measure('pcm16ToFloat', 'C native buffer', (c) => buffered.pcm16ToFloat(c)[1]);
+
+  // Week 2: why is zero-copy slower than the native buffer on iPhone? Each
+  // variant isolates one difference between the two paths.
+  // H1: Float32List(n) zero-fills and then C writes again. Cost of the
+  // allocation alone, and zero-copy into one reused output (no allocation).
+  measure('pcm16ToFloat', 'H1 Dart alloc only', (c) => Float32List(c.length)[1]);
+  final reusedOut = Float32List(chunkSamples);
+  measure('pcm16ToFloat', 'H1 C zero-copy, reused output', (c) {
+    ec_pcm16_to_float(c.address, reusedOut.address, c.length);
+    return reusedOut[1];
+  });
+  // H2: alignment of the output. Native output 16-byte aligned vs offset by
+  // 4 bytes; plus where fresh Dart outputs land (logged below).
+  final alignedOut = malloc<Float>(chunkSamples + 4);
+  final aligned = Pointer<Float>.fromAddress((alignedOut.address + 15) & ~15);
+  final misaligned = aligned + 1;
+  measure('pcm16ToFloat', 'H2 C native out, 16B aligned', (c) {
+    ec_pcm16_to_float(c.address, aligned, c.length);
+    return aligned[1];
+  });
+  measure('pcm16ToFloat', 'H2 C native out, +4B', (c) {
+    ec_pcm16_to_float(c.address, misaligned, c.length);
+    return misaligned[1];
+  });
+  malloc.free(alignedOut);
+  final alignments = <int, int>{};
+  for (var i = 0; i < 1000; i++) {
+    final a = _addressOfNew(chunkSamples).address % 16;
+    alignments[a] = (alignments[a] ?? 0) + 1;
+  }
+  log?.call('fresh Float32List address % 16 over 1000 allocations: $alignments');
+  // H3: C writing into freshly allocated (cold) Dart memory vs a warm native
+  // buffer, then copying out as the native-buffer path does.
+  final pcmBuffer = PcmFloatBuffer();
+  measure('pcm16ToFloat', 'H3 C zero-copy in, native out, fromList', (c) {
+    return Float32List.fromList(pcmBuffer.convert(c).asTypedList(c.length))[1];
+  });
+  // What whisper's live stream uses since week 2: no copy out at all.
+  measure('pcm16ToFloat', 'PcmFloatBuffer (whisper feed)', (c) => pcmBuffer.convert(c)[1]);
+  pcmBuffer.dispose();
 
   measure('rms', 'Dart', DartReference.rms);
   measure('rms', 'C zero-copy', rms);
