@@ -271,8 +271,10 @@ EchoVAD（Swift）
   - 2026-10-10：固定 768＋commit 15 秒符合決定 #B2（中位數 total_ms −71%，文字沒有變差），改為 `kLivePreviewConfig` 預設；仍可用 `--dart-define=LIVE_AUDIO_CTX=…`／`LIVE_COMMIT_SEC=…` 覆寫重新量測。
 - [x] **T3.2** C 的結論：改寫 README「從數據學到的」第 4 點（查明的原因，或排除了哪些假設）。依賴：T2.2。
   - 2026-10-10：README「從數據學到的」第 4 點改寫：反常未重現（原因未查明），配置成本佔大半，對齊排除。
-- [ ] **T3.3** D 的評估：標記 3 段素材（T1.11 格式）、跑 `tool/vad_eval`、把結果與 D-b／D-c 成本分析寫成報告（放 `tool/vad_eval/README.md` 或規格），附建議。依賴：T1.11、T2.4。
-- [ ] **T3.4** 更新 `packages/echo_core/README.md`：Swift 用法、`PcmFloatBuffer`、C 的結論（決定 #R6）。依賴：T1.9、T3.2。
+- [x] **T3.3** D 的評估：標記 3 段素材（T1.11 格式）、跑 `tool/vad_eval`、把結果與 D-b／D-c 成本分析寫成報告（放 `tool/vad_eval/README.md` 或規格），附建議。依賴：T1.11、T2.4。
+  - 2026-10-10：4 段素材（補錄 `music_only`，因為 `tv_only` 是電視對白）。音樂：能量門檻誤判 86.0%、Silero 0%；說話：Silero recall 74.5%／93.7% 皆不低於能量門檻；電視對白：Silero 誤判 93.7%（已知限制）。報告與 D-b／D-c 成本分析寫在 `tool/vad_eval/README.md`；建議第 3／4 週把即時串流觸發改成 Silero、能量門檻當備援。標記由 Silero 草稿經使用者確認，可能偏向 Silero。
+- [x] **T3.4** 更新 `packages/echo_core/README.md`：Swift 用法、`PcmFloatBuffer`、C 的結論（決定 #R6）。依賴：T1.9、T3.2。
+  - 2026-10-10：README 新增「Swift 包裝」章節（用法、與 dart:ffi 對照表）、`PcmFloatBuffer` 列入 API 表、第 4 點改寫為零複製調查結論。
 - [ ] **T3.5** 用 `/spec-check` 核對、用 `/devlog` 整理開發紀錄，再 merge 進 master（每週一次）。依賴：階段 1～3 全部完成。
 
 ### 任務摘要
