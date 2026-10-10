@@ -1,7 +1,7 @@
 # echo_core 第 2 週：whisper 餵資料改寫、audio_ctx、零複製調查、VAD 評估、Swift 包裝 規格
 
 分支：`feature/echo-core-w2`（從 `master` f851e44 開）
-狀態：已確認（2026-10-10；20 項待確認事項皆採用建議，見「決定紀錄」）
+狀態：已完成（2026-10-10；20 項待確認事項皆採用建議，見「決定紀錄」）
 
 四週 FFI 計畫的第 2 週（計畫頁：<https://claude.ai/artifact/9j2LTabW7yRuLDZ1YU12KR>；第 1 週規格：[`../feature-echo-core/feature-echo-core.md`](../feature-echo-core/feature-echo-core.md)）。第 1 週做出了 `echo_core` 和它的量測工具，這週把它用到真正的資料路徑上，並補上兩個缺口：(1) 第 1 週留下的「iPhone 上零複製反而比較慢」；(2) 同一份 C library 只有 dart:ffi 一種包裝，缺少 iOS 原生（Swift）直接呼叫 C 的版本（2026-10-10 使用者決定排進本週）。
 
@@ -277,7 +277,8 @@ EchoVAD（Swift）
   - 2026-10-10：4 段素材（補錄 `music_only`，因為 `tv_only` 是電視對白）。音樂：能量門檻誤判 86.0%、Silero 0%；說話：Silero recall 74.5%／93.7% 皆不低於能量門檻；電視對白：Silero 誤判 93.7%（已知限制）。報告與 D-b／D-c 成本分析寫在 `tool/vad_eval/README.md`；建議第 3／4 週把即時串流觸發改成 Silero、能量門檻當備援。標記由 Silero 草稿經使用者確認，可能偏向 Silero。
 - [x] **T3.4** 更新 `packages/echo_core/README.md`：Swift 用法、`PcmFloatBuffer`、C 的結論（決定 #R6）。依賴：T1.9、T3.2。
   - 2026-10-10：README 新增「Swift 包裝」章節（用法、與 dart:ffi 對照表）、`PcmFloatBuffer` 列入 API 表、第 4 點改寫為零複製調查結論。
-- [ ] **T3.5** 用 `/spec-check` 核對、用 `/devlog` 整理開發紀錄，再 merge 進 master（每週一次）。依賴：階段 1～3 全部完成。
+- [x] **T3.5** 用 `/spec-check` 核對、用 `/devlog` 整理開發紀錄，再 merge 進 master（每週一次）。依賴：階段 1～3 全部完成。
+  - 2026-10-10：`/spec-check`（5 項落差改規格、7 項補進正文）、`/devlog`（`docs/devlogs/feature-echo-core-w2.md`），merge 進 master。
 
 ### 任務摘要
 
