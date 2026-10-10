@@ -132,6 +132,59 @@ class EchoBufferedCore implements Finalizable {
   }
 }
 
+/// Converts PCM16 into a reused native float buffer, for C calls that need
+/// native memory because they aren't leaf calls (e.g. whisper's
+/// `stream_feed`, which runs inference). The input still goes to C without
+/// copying; only the output lives in malloc'ed memory, allocated on the
+/// first call and regrown only when a call needs more.
+///
+/// Call [dispose] when done; a [NativeFinalizer] frees the buffer if the
+/// object is garbage-collected first.
+class PcmFloatBuffer implements Finalizable {
+  static final _finalizer = NativeFinalizer(malloc.nativeFree);
+
+  Pointer<Float> _buffer = nullptr;
+  int _capacity = 0;
+  bool _disposed = false;
+
+  /// How many times the buffer had to be (re)allocated.
+  int get allocations => _allocations;
+  int _allocations = 0;
+
+  /// Converts [samples] and returns the buffer holding the result. The
+  /// pointer is only valid until the next [convert] or [dispose]. Empty
+  /// input returns `nullptr` without calling C.
+  Pointer<Float> convert(Int16List samples) {
+    if (_disposed) throw StateError('PcmFloatBuffer is disposed');
+    final n = samples.length;
+    if (n == 0) return nullptr;
+    if (n > _capacity) {
+      _free();
+      _buffer = malloc<Float>(n);
+      _capacity = n;
+      _allocations++;
+      _finalizer.attach(this, _buffer.cast(), detach: this);
+    }
+    ec_pcm16_to_float(samples.address, _buffer, n);
+    return _buffer;
+  }
+
+  /// Frees the buffer now. Safe to call twice.
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _free();
+  }
+
+  void _free() {
+    if (_buffer == nullptr) return;
+    _finalizer.detach(this);
+    malloc.free(_buffer);
+    _buffer = nullptr;
+    _capacity = 0;
+  }
+}
+
 /// Energy-gate voice activity detector backed by a native `ec_vad`.
 ///
 /// Call [dispose] when done; a [NativeFinalizer] frees the native state if

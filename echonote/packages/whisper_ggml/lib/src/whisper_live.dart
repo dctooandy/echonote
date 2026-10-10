@@ -4,6 +4,7 @@ import 'dart:ffi';
 import 'dart:isolate';
 import 'dart:typed_data';
 
+import 'package:echo_core/echo_core.dart';
 import 'package:ffi/ffi.dart';
 import 'package:universal_io/io.dart';
 
@@ -194,6 +195,11 @@ void _liveWorker(SendPort toMain) {
   toMain.send(['ready', inbox.sendPort]);
 
   String lastPartial = '';
+  // [echonote] One reused native buffer per session for the float samples
+  // (stream_feed isn't a leaf call, so it can't take Dart memory). Freed on
+  // stop; if the isolate is killed after a native error the finalizer may
+  // not run and the few KB leak, which is acceptable for a dead session.
+  final PcmFloatBuffer pcm = PcmFloatBuffer();
   int pendingByte = -1; // odd trailing byte carried into the next chunk
 
   Map<String, dynamic> parse(Pointer<Utf8> res) {
@@ -241,15 +247,8 @@ void _liveWorker(SendPort toMain) {
         if (bytes.isEmpty) return;
         final Int16List samples =
             bytes.buffer.asInt16List(bytes.offsetInBytes, bytes.length ~/ 2);
-        final Pointer<Float> pcm = malloc.allocate<Float>(
-          samples.length * sizeOf<Float>(),
-        );
-        final Float32List dest = pcm.asTypedList(samples.length);
-        for (int i = 0; i < samples.length; i++) {
-          dest[i] = samples[i] / 32768.0;
-        }
-        final Map<String, dynamic> result = parse(feed(pcm, samples.length));
-        malloc.free(pcm);
+        final Map<String, dynamic> result =
+            parse(feed(pcm.convert(samples), samples.length));
         if (result['@type'] == 'error') {
           toMain.send(['error', result['message']]);
         } else {
@@ -264,6 +263,7 @@ void _liveWorker(SendPort toMain) {
         }
       case 'stop':
         final Map<String, dynamic> result = parse(stopFn());
+        pcm.dispose();
         toMain.send([
           'final',
           result['@type'] == 'error' ? lastPartial : result['text'] as String,

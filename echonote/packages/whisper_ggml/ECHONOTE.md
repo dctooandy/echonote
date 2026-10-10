@@ -4,3 +4,4 @@
 - 只保留 Dart（`lib/`）與 iOS（`ios/`）原始碼；`pubspec.yaml` 的平台只留 iOS，並加上 `publish_to: none`。
 - echonote 的修改都在這個資料夾之後的 commit，標註 `[echonote]`。規格與量測結果見
   `docs/specs/feature-native-mic-stream/`。
+- 即時串流的 PCM16 → float 改由 `echo_core` 的 `PcmFloatBuffer` 執行（`pubspec.yaml` 因此依賴 `../echo_core`），見 `docs/specs/feature-echo-core-w2/`。

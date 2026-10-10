@@ -1,3 +1,4 @@
+import 'dart:ffi';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -134,6 +135,46 @@ void main() {
       core.dispose();
       core.dispose();
       expect(() => core.rms(_samples(10)), throwsStateError);
+    });
+  });
+
+  group('PcmFloatBuffer', () {
+    test('matches the loop whisper_ggml used before, bit for bit', () {
+      final buf = PcmFloatBuffer();
+      addTearDown(buf.dispose);
+      final s = _samples(1600);
+      // The conversion _liveWorker did in Dart until week 2.
+      final expected = Float32List(s.length);
+      for (var i = 0; i < s.length; i++) {
+        expected[i] = s[i] / 32768.0;
+      }
+      expect(buf.convert(s).asTypedList(s.length), expected);
+    });
+
+    test('reuses the buffer and grows it only when needed', () {
+      final buf = PcmFloatBuffer();
+      addTearDown(buf.dispose);
+      final first = buf.convert(_samples(1600));
+      expect(buf.convert(_samples(800, seed: 2)), first);
+      expect(buf.allocations, 1);
+      final big = _samples(3200, seed: 3);
+      expect(buf.convert(big).asTypedList(3200), DartReference.pcm16ToFloat(big));
+      expect(buf.allocations, 2);
+    });
+
+    test('empty input returns nullptr without allocating', () {
+      final buf = PcmFloatBuffer();
+      addTearDown(buf.dispose);
+      expect(buf.convert(Int16List(0)), nullptr);
+      expect(buf.allocations, 0);
+    });
+
+    test('dispose twice is fine; convert after dispose throws', () {
+      final buf = PcmFloatBuffer()..convert(_samples(10));
+      buf
+        ..dispose()
+        ..dispose();
+      expect(() => buf.convert(_samples(10)), throwsStateError);
     });
   });
 
