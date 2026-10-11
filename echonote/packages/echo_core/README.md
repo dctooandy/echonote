@@ -1,6 +1,6 @@
 # echo_core
 
-echonote 的跨平台 C 音訊核心。C 原始碼只有一份（`src/`），由 build hook 在建置時編譯給 iOS、macOS、Android，Dart 透過 `dart:ffi` 呼叫。綁定用 `ffigen` 從標頭檔產生，不手寫。同一份 C 另外包成 Swift（SwiftPM）與 Kotlin（JNI）兩種不經過 Flutter 的版本，三種包裝的編譯參數都相同。
+echonote 的跨平台 C 音訊核心。C 原始碼只有一份（`src/`），由 build hook 在建置時編譯給 iOS、macOS、Android，Dart 透過 `dart:ffi` 呼叫。綁定用 `ffigen` 從標頭檔產生，不手寫。同一份 C 另外包成 Swift（SwiftPM）、Kotlin（JNI）與 C#（P/Invoke）三種不經過 Flutter 的版本；用 clang／gcc 編譯時，四種包裝的編譯參數都相同。
 
 > **Android 實機驗證進行中**：Android 的建置、dart:ffi 冒煙測試與 JNI instrumented test 已在模擬器（arm64、Android 13）通過；實機效能數字之後補上。
 
@@ -39,12 +39,12 @@ if let vad = EchoVAD() {                     // ec_vad_create 失敗時是 nil
 }                                            // 最後一個參照消失時 deinit 呼叫 ec_vad_destroy
 ```
 
-| | dart:ffi | Swift | Kotlin（JNI） |
-| --- | --- | --- | --- |
-| 把陣列交給 C | `.address`，只能用在 leaf call | `withUnsafeBufferPointer`，指標只在 closure 內有效 | `GetPrimitiveArrayCritical`，Get 到 Release 之間不能呼叫其他 JNI 函式 |
-| 綁定 | ffigen 從標頭檔產生 | Swift 直接 import C 模組（clang importer） | 手寫 `echo_core_jni.c`，函式名對應 `external fun` |
-| 釋放 `ec_vad` | `NativeFinalizer`（GC 時機不確定）＋明確的 `dispose()` | ARC 的 `deinit`（確定性，不需要 `dispose`） | 指標以 `Long` handle 交給 Kotlin；`AutoCloseable.close()`／`use { }` |
-| 執行緒 | 同一個 `EchoVad` 只能在一個 isolate 用 | `EchoVAD` 不標 `Sendable` | `EchoVad` 不是執行緒安全 |
+| | dart:ffi | Swift | Kotlin（JNI） | C#（P/Invoke） |
+| --- | --- | --- | --- | --- |
+| 把陣列交給 C | `.address`，只能用在 leaf call | `withUnsafeBufferPointer`，指標只在 closure 內有效 | `GetPrimitiveArrayCritical`，Get 到 Release 之間不能呼叫其他 JNI 函式 | `fixed` 釘住 `Span`，指標只在區塊內有效 |
+| 綁定 | ffigen 從標頭檔產生 | Swift 直接 import C 模組（clang importer） | 手寫 `echo_core_jni.c`，函式名對應 `external fun` | `[LibraryImport]`，編譯期產生 marshalling 程式碼 |
+| 釋放 `ec_vad` | `NativeFinalizer`（GC 時機不確定）＋明確的 `dispose()` | ARC 的 `deinit`（確定性，不需要 `dispose`） | 指標以 `Long` handle 交給 Kotlin；`AutoCloseable.close()`／`use { }` | `SafeHandle`（finalizer 兜底）＋`IDisposable.Dispose()`／`using` |
+| 執行緒 | 同一個 `EchoVad` 只能在一個 isolate 用 | `EchoVAD` 不標 `Sendable` | `EchoVad` 不是執行緒安全 | `EchoVad` 不是執行緒安全 |
 
 編譯參數跟 build hook 一樣（C11、`-O3`、`-Wall -Wextra -Werror`、`-ffp-contract=off`），所以結果跟 Dart 版逐位元相同。因為用了 `unsafeFlags`，這個套件只能以本地路徑依賴，不發佈。
 
@@ -73,6 +73,35 @@ cd android_jni && ./gradlew connectedAndroidTest   # 需要已連線的模擬器
 ```
 
 instrumented test 4 項：`rms` 已知值、VAD「安靜 → 說話 → 安靜」、`close` 兩次後使用丟例外、handle 為 0 時安全。
+
+## C#（P/Invoke）包裝
+
+`dotnet/EchoCore/` 是 .NET 8 class library；根目錄的 `CMakeLists.txt` 把同一份 `src/echo_core.c` 編成共享庫（`libecho_core.dylib`／`libecho_core.so`／`echo_core.dll`），C# 用 P/Invoke 呼叫，不經過 Flutter。
+
+```csharp
+using EchoNote.Audio;
+
+float level = EchoCore.Rms(samples);            // ReadOnlySpan<short> -> float
+EchoCore.Pcm16ToFloat(samples, floatBuffer);    // 寫進呼叫端的 Span<float>，不配置
+using (var vad = new EchoVad())                 // ec_vad_create 失敗時丟 OutOfMemoryException
+{
+    bool voiced = vad.Process(chunk);
+}                                               // Dispose() 呼叫 ec_vad_destroy，呼叫兩次也安全
+```
+
+- **不複製陣列**：`fixed` 把 `ReadOnlySpan<short>` 釘住，GC 在區塊內不會搬動它，指標直接交給 C。C 函式不保留指標，所以區塊結束就安全，跟 dart:ffi 的 leaf call 是同一個條件。`unsafe` 只用在綁定層內部，公開的 API 都是 `Span` 與陣列。
+- **`[LibraryImport]` 而不是 `[DllImport]`**：`LibraryImport` 在編譯期由 source generator 產生 marshalling 程式碼，可以在編譯時檢查、也相容 Native AOT；`DllImport` 在執行期產生，是舊版 .NET 與 Xamarin 常見的寫法。這裡的參數都是 blittable（指標、整數、6 個 `float` 的 struct），產生出來的程式碼幾乎就是直接呼叫。
+- **原生指標交給 `SafeHandle`**：`ec_vad*` 包在 `SafeHandleZeroOrMinusOneIsInvalid` 裡。呼叫 C 的期間 runtime 會增加 handle 的參照計數，不會在呼叫途中被釋放；忘了 `Dispose` 時由 finalizer 呼叫 `ec_vad_destroy`。`Dispose` 後再使用丟 `ObjectDisposedException`。
+- **編譯參數**：clang／gcc 跟其他包裝相同（C11、`-O3`、`-Wall -Wextra -Werror`、`-ffp-contract=off`）；MSVC 用 `/O2 /W4 /WX`，浮點用預設的 `/fp:precise`（不合併乘加），測試比對已知值，不要求跟其他平台逐位元相同。
+- **只做 64 位元**（x64、arm64）。CMake 編出來的原生庫要跟 .NET runtime 同一個 CPU 架構，否則載入時丟 `BadImageFormatException`。
+
+```sh
+dotnet test dotnet/EchoCore.Tests   # 需要 .NET SDK 8 以上與 CMake；建置前會自動用 CMake 編原生庫
+```
+
+測試 8 項：`Pcm16ToFloat`（含寫進 `Span` 與長度不符）、`Rms`、`Waveform` 的已知值；VAD「安靜 → 說話 → 安靜」；預設值與標頭一致；`Dispose` 兩次與之後使用丟例外；沒有 `Dispose` 時由 finalizer 釋放。測試專案設 `RollForward=Major`，只裝了較新 .NET runtime 的機器也能跑。
+
+之後的方向：打包成 NuGet，原生庫依平台放進 `runtimes/<rid>/native/`。
 
 ## 建置
 
