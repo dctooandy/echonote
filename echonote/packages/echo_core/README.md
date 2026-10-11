@@ -99,7 +99,7 @@ using (var vad = new EchoVad())                 // ec_vad_create 失敗時丟 Ou
 dotnet test dotnet/EchoCore.Tests   # 需要 .NET SDK 8 以上與 CMake；建置前會自動用 CMake 編原生庫
 ```
 
-測試 8 項：`Pcm16ToFloat`（含寫進 `Span` 與長度不符）、`Rms`、`Waveform` 的已知值；VAD「安靜 → 說話 → 安靜」；預設值與標頭一致；`Dispose` 兩次與之後使用丟例外；沒有 `Dispose` 時由 finalizer 釋放。測試專案設 `RollForward=Major`，只裝了較新 .NET runtime 的機器也能跑。
+測試 8 項：`Pcm16ToFloat`（含寫進 `Span` 與長度不符）、`Rms`、`Waveform` 的已知值；VAD「安靜 → 說話 → 安靜」；預設值與標頭一致；`Dispose` 兩次與之後使用丟例外；沒有 `Dispose` 時由 finalizer 釋放。測試專案設 `RollForward=Major`，只裝了較新 .NET runtime 的機器也能跑。公開 repo 的 GitHub Actions（`.github/workflows/dotnet.yml`）在 Windows（MSVC、`echo_core.dll`）、macOS、Linux 上各跑一次這 8 項測試。
 
 之後的方向：打包成 NuGet，原生庫依平台放進 `runtimes/<rid>/native/`。
 
