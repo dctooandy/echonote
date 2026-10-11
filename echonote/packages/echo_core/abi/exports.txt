@@ -1,0 +1,13 @@
+# Symbols the echo_core native library must export: exactly these, on every
+# platform (scripts/check_exports.py). Removing or renaming one breaks the
+# ABI (major version); adding one is a minor version. An extra symbol in the
+# library means something leaked (C++ internals, the C++ runtime).
+ec_pcm16_to_float
+ec_rms_pcm16
+ec_vad_create
+ec_vad_default_config
+ec_vad_destroy
+ec_vad_process
+ec_vad_reset
+ec_version
+ec_waveform_downsample

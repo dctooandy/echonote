@@ -12,6 +12,13 @@ private func chunk(_ level: Double, _ index: Int) -> [Int16] {
 }
 
 final class EchoCoreTests: XCTestCase {
+    func testVersionMatchesTheHeader() {
+        let v = EchoCore.version
+        XCTAssertEqual(v.major, Int(EC_VERSION_MAJOR))
+        XCTAssertEqual(v.minor, Int(EC_VERSION_MINOR))
+        XCTAssertEqual(v.patch, Int(EC_VERSION_PATCH))
+    }
+
     func testPcm16ToFloat() {
         XCTAssertEqual(EchoCore.pcm16ToFloat([-32768, 0, 16384, 32767]),
                        [-1, 0, 0.5, Float(32767) / 32768])

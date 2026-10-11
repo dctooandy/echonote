@@ -20,6 +20,11 @@ class EchoCoreJniTest {
     }
 
     @Test
+    fun versionMatchesTheHeader() {
+        assertEquals(EchoCoreJni.headerVersion(), EchoCoreJni.version())
+    }
+
+    @Test
     fun rms() {
         assertEquals(0.5f, EchoCoreJni.rms(shortArrayOf(16384, -16384, 16384, -16384)))
         assertEquals(1f, EchoCoreJni.rms(shortArrayOf(-32768)))

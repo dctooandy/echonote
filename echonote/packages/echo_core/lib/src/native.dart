@@ -12,6 +12,13 @@ import 'vad_config.dart';
 // why every echo_core function is bound with isLeaf: true (they are short
 // and never call back into Dart). No native memory is allocated.
 
+/// Version of the loaded native library (SemVer), decoded from
+/// `ec_version()`.
+({int major, int minor, int patch}) nativeVersion() {
+  final v = ec_version();
+  return (major: v ~/ 10000, minor: v ~/ 100 % 100, patch: v % 100);
+}
+
 /// PCM16 → float in [-1, 1).
 Float32List pcm16ToFloat(Int16List samples) {
   final out = Float32List(samples.length);

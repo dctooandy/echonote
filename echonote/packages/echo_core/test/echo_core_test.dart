@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:echo_core/echo_core.dart';
+import 'package:echo_core/src/echo_core_bindings_generated.dart'
+    show EC_VERSION_MAJOR, EC_VERSION_MINOR, EC_VERSION_PATCH;
 import 'package:test/test.dart';
 
 /// Seeded noise covering the full int16 range, extremes included.
@@ -36,6 +38,15 @@ Int16List _chunk(double level, int index) {
 Matcher _closeRel(double expected) => closeTo(expected, expected.abs() * 1e-6 + 1e-12);
 
 void main() {
+  test('nativeVersion matches the header the bindings were generated from',
+      () {
+    expect(nativeVersion(), (
+      major: EC_VERSION_MAJOR,
+      minor: EC_VERSION_MINOR,
+      patch: EC_VERSION_PATCH,
+    ));
+  });
+
   final buffered = EchoBufferedCore();
   tearDownAll(buffered.dispose);
 

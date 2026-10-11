@@ -7,6 +7,13 @@ import CEchoCore
 /// inside the closure; the C functions never keep them, so that is enough
 /// (the Dart side has the matching rule: `.address` only in leaf calls).
 public enum EchoCore {
+    /// Version of the linked native library (SemVer), decoded from
+    /// `ec_version()`.
+    public static var version: (major: Int, minor: Int, patch: Int) {
+        let v = Int(ec_version())
+        return (v / 10000, v / 100 % 100, v % 100)
+    }
+
     /// PCM16 → float in [-1, 1).
     public static func pcm16ToFloat(_ samples: [Int16]) -> [Float] {
         let n = samples.count

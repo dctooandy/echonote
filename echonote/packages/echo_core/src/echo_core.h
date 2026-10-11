@@ -23,9 +23,23 @@
 #define EC_EXPORT __attribute__((visibility("default")))
 #endif
 
+// Library version (SemVer). The single source of truth: pubspec.yaml, the
+// C# package version, CHANGELOG.md and release tags are checked against it.
+// Bump MAJOR when a function or ec_vad_config changes or disappears (old
+// bindings would call the wrong thing), MINOR when one is added, PATCH
+// otherwise.
+#define EC_VERSION_MAJOR 0
+#define EC_VERSION_MINOR 2
+#define EC_VERSION_PATCH 0
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// Version of the compiled library: MAJOR * 10000 + MINOR * 100 + PATCH
+// (0.2.0 is 200). A binding compares it with the EC_VERSION_* it was built
+// against to catch a mismatched native library.
+EC_EXPORT int32_t ec_version(void);
 
 // Converts PCM16 to float in [-1, 1): out[i] = in[i] / 32768.
 // Same formula whisper_ggml uses before decoding.

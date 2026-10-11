@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- C# wrapper over echo_core (the same C the Flutter app calls through
-       dart:ffi). The native library is built by ../../CMakeLists.txt. -->
+  <!-- C# wrapper over echo_core (the same C++ core, behind the same C API,
+       that the Flutter app calls through dart:ffi). The native library is
+       built by ../../CMakeLists.txt. -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <RootNamespace>EchoNote.Audio</RootNamespace>
@@ -11,5 +12,42 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+
+  <!-- Version: read from echo_core.h, the single source of truth. A
+       prerelease is packed with -p:VersionSuffix=rc.1. -->
+  <PropertyGroup>
+    <EchoCoreHeader>$(MSBuildThisFileDirectory)../../src/echo_core.h</EchoCoreHeader>
+    <EchoCoreHeaderText>$([System.IO.File]::ReadAllText($(EchoCoreHeader)))</EchoCoreHeaderText>
+    <EchoCoreMajor>$([System.Text.RegularExpressions.Regex]::Match($(EchoCoreHeaderText), `#define EC_VERSION_MAJOR (\d+)`).Groups[1].Value)</EchoCoreMajor>
+    <EchoCoreMinor>$([System.Text.RegularExpressions.Regex]::Match($(EchoCoreHeaderText), `#define EC_VERSION_MINOR (\d+)`).Groups[1].Value)</EchoCoreMinor>
+    <EchoCorePatch>$([System.Text.RegularExpressions.Regex]::Match($(EchoCoreHeaderText), `#define EC_VERSION_PATCH (\d+)`).Groups[1].Value)</EchoCorePatch>
+    <VersionPrefix>$(EchoCoreMajor).$(EchoCoreMinor).$(EchoCorePatch)</VersionPrefix>
+  </PropertyGroup>
+
+  <!-- NuGet package. -->
+  <PropertyGroup>
+    <PackageId>Dctooandy.EchoCore</PackageId>
+    <Authors>Rod Chen</Authors>
+    <Description>C# (P/Invoke) bindings for echo_core, a small C++ audio core with a C API: PCM16 to float, RMS level, waveform peaks and an energy-gate voice activity detector. Native libraries for win-x64, osx-arm64, osx-x64, linux-x64 and linux-arm64 are included.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/dctooandy/echo_core</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/dctooandy/echo_core</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>audio;pcm;vad;pinvoke;native;interop</PackageTags>
+    <PackageReleaseNotes>https://github.com/dctooandy/echo_core/blob/main/CHANGELOG.md</PackageReleaseNotes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <InternalsVisibleTo Include="EchoCore.Tests" />
+  </ItemGroup>
+
+  <!-- CI passes the native libraries laid out as <dir>/<rid>/native/<file>;
+       they land in runtimes/<rid>/native/, where .NET picks the one for the
+       running platform. -->
+  <ItemGroup Condition="'$(EchoCoreRuntimesDir)' != ''">
+    <None Include="$(EchoCoreRuntimesDir)/**/*" Pack="true" PackagePath="runtimes" />
+  </ItemGroup>
 
 </Project>

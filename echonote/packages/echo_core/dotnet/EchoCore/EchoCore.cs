@@ -9,6 +9,13 @@ namespace EchoNote.Audio;
 /// </summary>
 public static class EchoCore
 {
+    /// <summary>
+    /// Version of the loaded native library (SemVer), from ec_version(). Not
+    /// version-checked, so it also works for diagnosing a mismatch.
+    /// </summary>
+    public static (int Major, int Minor, int Patch) Version =>
+        NativeVersion.Decode(NativeMethods.Version());
+
     /// <summary>PCM16 to float in [-1, 1).</summary>
     public static float[] Pcm16ToFloat(ReadOnlySpan<short> samples)
     {
@@ -31,6 +38,7 @@ public static class EchoCore
                 nameof(destination));
         }
         if (samples.IsEmpty) return;
+        NativeVersion.EnsureCompatible();
         fixed (short* input = samples)
         fixed (float* output = destination)
         {
@@ -42,6 +50,7 @@ public static class EchoCore
     public static unsafe float Rms(ReadOnlySpan<short> samples)
     {
         if (samples.IsEmpty) return 0;
+        NativeVersion.EnsureCompatible();
         fixed (short* input = samples)
         {
             return NativeMethods.RmsPcm16(input, samples.Length);
@@ -56,6 +65,7 @@ public static class EchoCore
     public static unsafe float[] Waveform(ReadOnlySpan<short> samples, int buckets)
     {
         if (samples.IsEmpty || buckets <= 0) return [];
+        NativeVersion.EnsureCompatible();
         var output = new float[Math.Min(buckets, samples.Length)];
         int written;
         fixed (short* input = samples)

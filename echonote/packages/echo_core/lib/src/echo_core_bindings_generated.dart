@@ -8,6 +8,12 @@ library;
 import 'dart:ffi' as ffi;
 import '' as self;
 
+/// Version of the compiled library: MAJOR * 10000 + MINOR * 100 + PATCH
+/// (0.2.0 is 200). A binding compares it with the EC_VERSION_* it was built
+/// against to catch a mismatched native library.
+@ffi.Native<ffi.Int32 Function()>(isLeaf: true)
+external int ec_version();
+
 /// Converts PCM16 to float in [-1, 1): out[i] = in[i] / 32768.
 /// Same formula whisper_ggml uses before decoding.
 @ffi.Native<
@@ -108,3 +114,9 @@ final class ec_vad_config extends ffi.Struct {
 }
 
 final class ec_vad extends ffi.Opaque {}
+
+const int EC_VERSION_MAJOR = 0;
+
+const int EC_VERSION_MINOR = 2;
+
+const int EC_VERSION_PATCH = 0;

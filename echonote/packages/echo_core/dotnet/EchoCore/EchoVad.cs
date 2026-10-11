@@ -18,7 +18,14 @@ public struct EcVadConfig
     public float RiseRate;
 
     /// <summary>The defaults from echo_core.h (ec_vad_default_config).</summary>
-    public static EcVadConfig Default => NativeMethods.VadDefaultConfig();
+    public static EcVadConfig Default
+    {
+        get
+        {
+            NativeVersion.EnsureCompatible();
+            return NativeMethods.VadDefaultConfig();
+        }
+    }
 }
 
 /// <summary>
@@ -49,8 +56,10 @@ public sealed class EchoVad : IDisposable
     public EchoVad() : this(EcVadConfig.Default) { }
 
     /// <exception cref="OutOfMemoryException">ec_vad_create returned NULL.</exception>
+    /// <exception cref="InvalidOperationException">The native library's major version differs.</exception>
     public EchoVad(EcVadConfig config)
     {
+        NativeVersion.EnsureCompatible();
         _handle = NativeMethods.VadCreate(config);
         if (_handle.IsInvalid)
         {

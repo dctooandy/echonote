@@ -9,6 +9,12 @@ object EchoCoreJni {
         System.loadLibrary("echo_core_jni")
     }
 
+    /** ec_version(): MAJOR * 10000 + MINOR * 100 + PATCH. */
+    external fun version(): Int
+
+    /** EC_VERSION_* from echo_core.h, as compiled into the JNI bridge. */
+    external fun headerVersion(): Int
+
     /** Normalized RMS level, 0..1. */
     external fun rms(samples: ShortArray): Float
 

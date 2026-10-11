@@ -14,6 +14,10 @@ internal static unsafe partial class NativeMethods
     // Resolved to echo_core.dll, libecho_core.so or libecho_core.dylib.
     private const string Lib = "echo_core";
 
+    [LibraryImport(Lib, EntryPoint = "ec_version")]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int Version();
+
     [LibraryImport(Lib, EntryPoint = "ec_pcm16_to_float")]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial void Pcm16ToFloat(short* input, float* output, int n);

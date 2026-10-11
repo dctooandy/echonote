@@ -72,7 +72,7 @@ EchoVad().use { vad ->                    // ec_vad_create 失敗時丟例外
 cd android_jni && ./gradlew connectedAndroidTest   # 需要已連線的模擬器或手機
 ```
 
-instrumented test 4 項：`rms` 已知值、VAD「安靜 → 說話 → 安靜」、`close` 兩次後使用丟例外、handle 為 0 時安全。
+instrumented test 5 項：版本與標頭一致、`rms` 已知值、VAD「安靜 → 說話 → 安靜」、`close` 兩次後使用丟例外、handle 為 0 時安全。
 
 ## C#（P/Invoke）包裝
 
@@ -99,9 +99,9 @@ using (var vad = new EchoVad())                 // ec_vad_create 失敗時丟 Ou
 dotnet test dotnet/EchoCore.Tests   # 需要 .NET SDK 8 以上與 CMake；建置前會自動用 CMake 編原生庫
 ```
 
-測試 8 項：`Pcm16ToFloat`（含寫進 `Span` 與長度不符）、`Rms`、`Waveform` 的已知值；VAD「安靜 → 說話 → 安靜」；預設值與標頭一致；`Dispose` 兩次與之後使用丟例外；沒有 `Dispose` 時由 finalizer 釋放。測試專案設 `RollForward=Major`，只裝了較新 .NET runtime 的機器也能跑。公開 repo 的 GitHub Actions（`.github/workflows/dotnet.yml`）在 Windows（MSVC、`echo_core.dll`）、macOS、Linux 上各跑一次這 8 項測試。
+測試 10 項：版本與主版本檢查、`Pcm16ToFloat`（含寫進 `Span` 與長度不符）、`Rms`、`Waveform` 的已知值；VAD「安靜 → 說話 → 安靜」；預設值與標頭一致；`Dispose` 兩次與之後使用丟例外；沒有 `Dispose` 時由 finalizer 釋放。測試專案設 `RollForward=Major`，只裝了較新 .NET runtime 的機器也能跑。公開 repo 的 GitHub Actions（`.github/workflows/ci.yml`）在 Windows（MSVC、`echo_core.dll`）、macOS、Linux 上各跑一次這些測試。
 
-之後的方向：打包成 NuGet，原生庫依平台放進 `runtimes/<rid>/native/`。
+發佈成 NuGet 套件 `Dctooandy.EchoCore`，見「版本與發佈」。
 
 ## C++ 核心、C 介面
 
@@ -124,6 +124,37 @@ dotnet test dotnet/EchoCore.Tests   # 需要 .NET SDK 8 以上與 CMake；建置
 | C++，`malloc`＋placement new（目前） | 5,832 bytes |
 
 代價是核心不能用會配置記憶體的 `std::` 容器，用了 libc++ 就會被拉回來。macOS／iOS 連結系統的 `libc++.dylib`，大小幾乎不變（macOS CMake 版 33,808 → 34,064 bytes）。
+
+## 版本與發佈
+
+**版本號只寫在 `src/echo_core.h`**（`EC_VERSION_MAJOR`／`MINOR`／`PATCH`），執行時用 `ec_version()` 讀（`主*10000 + 次*100 + 修訂`）。四種包裝都能讀：Dart `nativeVersion()`、Swift `EchoCore.version`、Kotlin `EchoCoreJni.version()`、C# `EchoCore.Version`。C# 套件的版本號在建置時從標頭讀出；`pubspec.yaml`、`CHANGELOG.md` 與 release tag 由 `scripts/check_version.py` 檢查是否一致。
+
+**升哪一位由 C API 的 ABI 決定**（SemVer）：
+
+| 變更 | 升版 | 原因 |
+| --- | --- | --- |
+| 刪除或改名函式、改函式簽章、改 `ec_vad_config` 的欄位 | 主版本 | 舊的 binding 會找不到符號，或讀錯記憶體 |
+| 新增函式 | 次版本 | 舊的 binding 照常可用 |
+| 只改實作、修 bug、改文件 | 修訂 | 介面不變 |
+
+1.0.0 之前，次版本也可能有不相容變更，CHANGELOG 會標 **Breaking**。
+
+**兩道防線**：
+
+- **ABI 匯出檢查**：`abi/exports.txt` 列出原生庫應該匯出的符號，`scripts/check_exports.py` 在每個平台比對實際匯出的（macOS `nm -gU`、Linux `nm -D`、Windows 直接讀 DLL 的 PE 匯出表）。少了一個是 ABI 被破壞，多了一個是有東西外洩（C++ 改寫時遇過：第一版把 `echo_core::` 與整套 libc++abi 都匯出了）。
+- **C# 載入時檢查主版本**：第一次呼叫前比對 `ec_version()` 的主版本與 C# 組件的主版本，不同就丟 `InvalidOperationException`，避免「新 binding＋舊 dll」讀錯記憶體。
+
+**NuGet 套件 `Dctooandy.EchoCore`**：`lib/net8.0/EchoCore.dll`＋`runtimes/<RID>/native/` 下五個平台的原生庫（`win-x64`、`osx-arm64`、`osx-x64`、`linux-x64`、`linux-arm64`），.NET 執行時自動挑對的那一個，使用者不用自己複製 dll。發佈在 GitHub Release（附 `.nupkg`，不用登入就能下載）與 GitHub Packages（`dotnet add package` 需要先用 GitHub 帳號設定來源）。
+
+**CI**（公開 repo）：
+
+- `ci.yml`：每次 push、PR。三平台 `dotnet test`＋匯出檢查、macOS／Linux `dart test`、macOS `swift test`、版本一致性檢查。
+- `release.yml`：推 `v*` tag 時。`ci` → 檢查 tag 版本＝標頭版本 → 五個 RID 各自用 CMake 編原生庫（匯出檢查、架構檢查）→ `dotnet pack` 並確認套件裡有 5 個原生庫 → 在 Windows、macOS、Linux x64／arm64 各建**全新的 console 專案**安裝套件並執行 → 建 GitHub Release（內文取 CHANGELOG 該版那一節）、推 GitHub Packages。任何一步失敗都不發佈。tag 有 `-` 後綴（`v0.3.0-rc.1`）時發成 prerelease。
+- `osx-x64` 在 arm64 的 runner 上交叉編譯，CI 只驗證到「建置成功、架構是 x86_64」，沒有實際執行。
+
+**發一版的步驟**：改 `echo_core.h` 的版本 → `pubspec.yaml` 同步 → `CHANGELOG.md` 把 Unreleased 移到新版本 → PR、合併 → `git tag v0.3.0 && git push origin v0.3.0`。發錯了就升修訂版重發；NuGet 不允許覆蓋已發佈的版本，所以不刪 tag 重來。
+
+之後的方向：nuget.org、pub.dev、Android AAR（Maven）、iOS xcframework（SwiftPM binary target）。
 
 ## 建置
 

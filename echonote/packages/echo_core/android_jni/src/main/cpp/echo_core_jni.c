@@ -11,6 +11,20 @@
 
 #define FN(name) Java_com_echonote_echocore_EchoCoreJni_##name
 
+JNIEXPORT jint JNICALL FN(version)(JNIEnv *env, jobject self) {
+    (void)env;
+    (void)self;
+    return ec_version();
+}
+
+// The header's EC_VERSION_* as compiled into this bridge; the test compares
+// it with ec_version() from the C++ core.
+JNIEXPORT jint JNICALL FN(headerVersion)(JNIEnv *env, jobject self) {
+    (void)env;
+    (void)self;
+    return EC_VERSION_MAJOR * 10000 + EC_VERSION_MINOR * 100 + EC_VERSION_PATCH;
+}
+
 JNIEXPORT jfloat JNICALL FN(rms)(JNIEnv *env, jobject self, jshortArray samples) {
     (void)self;
     const jsize n = (*env)->GetArrayLength(env, samples);

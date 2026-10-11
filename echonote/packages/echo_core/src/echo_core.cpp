@@ -86,6 +86,10 @@ bool Vad::process(const int16_t *in, int32_t n) noexcept {
 
 extern "C" {
 
+int32_t ec_version(void) {
+  return EC_VERSION_MAJOR * 10000 + EC_VERSION_MINOR * 100 + EC_VERSION_PATCH;
+}
+
 void ec_pcm16_to_float(const int16_t *in, float *out, int32_t n) {
   echo_core::pcm16_to_float(in, out, n);
 }

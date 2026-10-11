@@ -18,6 +18,24 @@ public class EchoCoreTests
             .ToArray();
 
     [Fact]
+    public void VersionMatchesTheAssembly()
+    {
+        // The assembly version is read from echo_core.h at build time.
+        var expected = typeof(EchoCore).Assembly.GetName().Version!;
+        Assert.Equal((expected.Major, expected.Minor, expected.Build), EchoCore.Version);
+    }
+
+    [Fact]
+    public void MajorVersionMismatchThrows()
+    {
+        NativeVersion.CheckCompatible(nativeVersion: 200, expectedMajor: 0);
+        NativeVersion.CheckCompatible(nativeVersion: 999, expectedMajor: 0);
+        var e = Assert.Throws<InvalidOperationException>(
+            () => NativeVersion.CheckCompatible(nativeVersion: 10203, expectedMajor: 0));
+        Assert.Contains("1.2.3", e.Message);
+    }
+
+    [Fact]
     public void Pcm16ToFloat()
     {
         Assert.Equal([-1f, 0f, 0.5f, 32767f / 32768], EchoCore.Pcm16ToFloat([-32768, 0, 16384, 32767]));
