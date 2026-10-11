@@ -107,7 +107,7 @@
 | --- | --- | --- |
 | 1 | C++ 標準 | C++17 |
 | 2 | Android C++ 標準庫 | `c++_static`（hook 與 JNI 都是） |
-| 3 | 例外 | ~~保留例外，在 C 介面 catch~~ → 2026-10-11 修訂：**核心不拋例外**，`ec_vad_create` 改用 `std::malloc`＋placement new、`ec_vad_destroy` 呼叫解構子＋`std::free`，所有函式 `noexcept`。原因：`make_unique` 版讓 Android `libecho_core.so`（strip 後）從 5,816 變 214,744 bytes；關掉例外也只到 214,248，元兇是 `operator new` 把靜態 libc++／libc++abi 執行期整包拉進來；改 `malloc` 後 5,832 bytes |
+| 3 | 例外 | ~~保留例外，在 C 介面 catch~~ → 2026-10-11 修訂：**核心不拋例外**，`ec_vad_create` 改用 `std::malloc`＋placement new、`ec_vad_destroy` 呼叫解構子＋`std::free`，所有函式 `noexcept`。原因：`make_unique` 版讓 Android `libecho_core.so`（strip 後，build hook 產物）從 5,816 變 214,744 bytes；另用 NDK clang 單獨編譯比較，`make_unique` 版 214,160、關掉例外 214,248、`malloc` 版 5,432，所以元兇不是例外，而是 `operator new` 把靜態 libc++／libc++abi 執行期整包拉進來；改 `malloc` 後 build hook 產物 5,832 bytes |
 | 4 | MSVC runtime | 靜態（`MultiThreaded`） |
 | 5 | Linux libstdc++ | 動態（預設） |
 | 6 | 檔案 | `echo_core_impl.hpp`＋`echo_core.cpp` |

@@ -116,12 +116,14 @@ dotnet test dotnet/EchoCore.Tests   # 需要 .NET SDK 8 以上與 CMake；建置
 
 **不用 `operator new`**：`ec_vad_create` 用 `std::malloc` 配置，再用 placement new 在那塊記憶體上建構；`ec_vad_destroy` 先呼叫解構子再 `std::free`。改成 C++ 時第一版用 `std::make_unique`＋`try`／`catch`，Android 的 `libecho_core.so` 一下子變大幾十倍。量過之後發現原因不是例外本身：只要用到 `operator new`，靜態連結就會把 libc++／libc++abi 的執行期（例外處理、型別資訊、名稱還原器）整包拉進來。
 
-| `libecho_core.so`（Android arm64-v8a，strip 後） | 大小 |
-| --- | ---: |
-| C 版 | 5,816 bytes |
-| C++，`make_unique`＋`try`／`catch` | 214,744 bytes |
-| 同上，再關掉例外（`-fno-exceptions -fno-rtti`） | 214,248 bytes |
-| C++，`malloc`＋placement new（目前） | 5,832 bytes |
+| `libecho_core.so`（Android arm64-v8a，strip 後） | Flutter build hook 產物 | NDK clang 單獨編譯（同樣參數） |
+| --- | ---: | ---: |
+| C 版 | 5,816 bytes | — |
+| C++，`make_unique`＋`try`／`catch` | 214,744 bytes | 214,160 bytes |
+| 同上，再關掉例外（`-fno-exceptions -fno-rtti`） | — | 214,248 bytes |
+| C++，`malloc`＋placement new（目前） | 5,832 bytes | 5,432 bytes |
+
+關掉例外那一組只用 NDK clang 單獨編過（為了快速比較），沒有走 build hook；兩欄的建置方式不同，只比同一欄裡的數字。
 
 代價是核心不能用會配置記憶體的 `std::` 容器，用了 libc++ 就會被拉回來。macOS／iOS 連結系統的 `libc++.dylib`，大小幾乎不變（macOS CMake 版 33,808 → 34,064 bytes）。
 
