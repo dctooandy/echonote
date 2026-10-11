@@ -1,5 +1,6 @@
 name: echo_core
-description: "echonote cross-platform C audio core (dart:ffi)"
+description: "Cross-platform C audio core for EchoNote, wrapped for Dart (dart:ffi), Swift and Kotlin (JNI)"
+publish_to: none
 version: 0.2.0
 
 environment:
