@@ -1,7 +1,7 @@
 # echo_core：SDK 發版流程規格（版本號、NuGet、tag 自動發佈）
 
 分支：`feature/echo-core-release`（從 `feature/echo-core-cpp` 65fc166 開；dotnet、cpp 兩個分支都尚未 merge）
-狀態：已確認（2026-10-11；12 項待確認事項皆採用建議，見「決定紀錄」）
+狀態：已完成（2026-10-11；`v0.2.0` 已發佈，見「結果」）
 
 讓 echo_core 像一個對外發佈的 SDK：**有版本號與相容性規則、有可安裝的套件、推 tag 就自動測試、打包、驗證、發佈**。起因是職缺分析（鉅怡智慧「跨平台軟體開發工程師」）職務說明第 3 項「SDK Build、Packaging、Release 及 Auto Build／Deploy」與第 6 項「版本資訊」；目前只有 App 的發版經驗（GitLab CI、Xcode Cloud、Fastlane），沒有 SDK 的版本管理與套件發佈。
 
@@ -122,6 +122,15 @@
 | GitHub Actions 的 runner 版本變動（例如 `macos-latest` 改指向新版） | 不釘 runner 版本；CI 失敗時再處理 |
 
 ---
+
+## 結果（2026-10-11）
+
+- 本機：Dart 21 項、Swift 7 項、C# 10 項、JNI 5 項（模擬器）通過；`dotnet pack` 出的套件在全新的 console 專案安裝後可執行（`0.2.0 rms=0.5`）。
+- 公開 repo `ci.yml` 第一次就全綠：Dart（macOS、Linux）、Swift、.NET 三平台＋匯出檢查（Windows 讀 PE 匯出表）、版本檢查。
+- `v0.2.0-rc.1`：`release.yml` 19 個 job 全綠，GitHub Release 標為 prerelease、附 `.nupkg`。
+- `v0.2.0`：正式發佈，<https://github.com/dctooandy/echo_core/releases/tag/v0.2.0>。
+- 實作中的修正：`PackagePath="runtimes/%(RecursiveDir)"` 會讓路徑重複一層（NuGet 自己會加 RecursiveDir），改成 `runtimes`；Windows runner 沒有 `python3`，改依 `RUNNER_OS` 選 `python`；Windows 的 `dotnet run` 輸出有 `\r`，比對前去掉。同步到公開 repo 時一度把 MIT `LICENSE` 與 pubspec 說明蓋回 monorepo 的舊版，已修正並讓 monorepo 與公開 repo 一致。
+- Dart 的讀版本 API 是頂層函式 `nativeVersion()`（Dart 端本來就是頂層函式，沒有 `EchoCore` 類別）。
 
 ## 決定紀錄
 
