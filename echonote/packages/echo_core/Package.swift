@@ -1,5 +1,6 @@
 // swift-tools-version:5.9
-// The same C sources as the Flutter build hook (src/), wrapped for Swift.
+// The same sources as the Flutter build hook (src/: C++ inside, C API),
+// wrapped for Swift. Swift only imports the C header.
 // Local path dependency only: unsafeFlags keeps the compiler flags identical
 // to hook/build.dart, so results match the Dart side bit for bit.
 import PackageDescription
@@ -17,6 +18,9 @@ let package = Package(
             publicHeadersPath: ".",
             cSettings: [
                 .unsafeFlags(["-O3", "-Wall", "-Wextra", "-Werror", "-ffp-contract=off"]),
+            ],
+            cxxSettings: [
+                .unsafeFlags(["-O3", "-Wall", "-Wextra", "-Werror", "-ffp-contract=off"]),
             ]
         ),
         .target(
@@ -30,5 +34,6 @@ let package = Package(
             path: "swift/Tests/EchoCoreTests"
         ),
     ],
-    cLanguageStandard: .c11
+    cLanguageStandard: .c11,
+    cxxLanguageStandard: .cxx17
 )

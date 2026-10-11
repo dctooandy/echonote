@@ -1,0 +1,6 @@
+// SwiftPM: expose only the C API to Swift. Without this, every header in
+// src/ is public, including the C++-only echo_core_impl.hpp.
+module CEchoCore {
+    header "echo_core.h"
+    export *
+}

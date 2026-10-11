@@ -1,14 +1,18 @@
 cmake_minimum_required(VERSION 3.22)
-project(echo_core_jni C)
+project(echo_core_jni C CXX)
 
-# The same echo_core.c as the Flutter build hook, with the same flags, so
+# The same echo_core.cpp as the Flutter build hook, with the same flags, so
 # results match the Dart and Swift wrappers bit for bit.
 set(ECHO_CORE_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../../../../src)
 
 add_library(echo_core_jni SHARED
-    ${ECHO_CORE_SRC}/echo_core.c
+    ${ECHO_CORE_SRC}/echo_core.cpp
     echo_core_jni.c
 )
 target_include_directories(echo_core_jni PRIVATE ${ECHO_CORE_SRC})
-set_target_properties(echo_core_jni PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON)
+set_target_properties(echo_core_jni PROPERTIES
+    C_STANDARD 11 C_STANDARD_REQUIRED ON
+    CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON
+    # Only JNIEXPORT and EC_EXPORT symbols are visible.
+    C_VISIBILITY_PRESET hidden CXX_VISIBILITY_PRESET hidden)
 target_compile_options(echo_core_jni PRIVATE -O3 -Wall -Wextra -Werror -ffp-contract=off)

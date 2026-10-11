@@ -1,6 +1,6 @@
 # echo_core
 
-echonote 的跨平台 C 音訊核心。C 原始碼只有一份（`src/`），由 build hook 在建置時編譯給 iOS、macOS、Android，Dart 透過 `dart:ffi` 呼叫。綁定用 `ffigen` 從標頭檔產生，不手寫。同一份 C 另外包成 Swift（SwiftPM）、Kotlin（JNI）與 C#（P/Invoke）三種不經過 Flutter 的版本；用 clang／gcc 編譯時，四種包裝的編譯參數都相同。
+echonote 的跨平台音訊核心：**C++17 實作、對外只有 C API**（`src/echo_core.h`）。原始碼只有一份（`src/`），由 build hook 在建置時編譯給 iOS、macOS、Android，Dart 透過 `dart:ffi` 呼叫。綁定用 `ffigen` 從標頭檔產生，不手寫。同一份原始碼另外包成 Swift（SwiftPM）、Kotlin（JNI）與 C#（P/Invoke）三種不經過 Flutter 的版本；用 clang／gcc 編譯時，四種包裝的編譯參數都相同。
 
 > **Android 實機驗證進行中**：Android 的建置、dart:ffi 冒煙測試與 JNI instrumented test 已在模擬器（arm64、Android 13）通過；實機效能數字之後補上。
 
@@ -46,7 +46,7 @@ if let vad = EchoVAD() {                     // ec_vad_create 失敗時是 nil
 | 釋放 `ec_vad` | `NativeFinalizer`（GC 時機不確定）＋明確的 `dispose()` | ARC 的 `deinit`（確定性，不需要 `dispose`） | 指標以 `Long` handle 交給 Kotlin；`AutoCloseable.close()`／`use { }` | `SafeHandle`（finalizer 兜底）＋`IDisposable.Dispose()`／`using` |
 | 執行緒 | 同一個 `EchoVad` 只能在一個 isolate 用 | `EchoVAD` 不標 `Sendable` | `EchoVad` 不是執行緒安全 | `EchoVad` 不是執行緒安全 |
 
-編譯參數跟 build hook 一樣（C11、`-O3`、`-Wall -Wextra -Werror`、`-ffp-contract=off`），所以結果跟 Dart 版逐位元相同。因為用了 `unsafeFlags`，這個套件只能以本地路徑依賴，不發佈。
+編譯參數跟 build hook 一樣（C++17、`-O3`、`-Wall -Wextra -Werror`、`-ffp-contract=off`），所以結果跟 Dart 版逐位元相同。`src/module.modulemap` 讓 Swift 只看到 C 標頭；沒有它，SwiftPM 會把 `src/` 裡所有標頭（包括 C++ 的 `echo_core_impl.hpp`）當成 C module 編譯而失敗。因為用了 `unsafeFlags`，這個套件只能以本地路徑依賴，不發佈。
 
 ```sh
 swift test                                                                    # macOS，真的呼叫 C
@@ -55,7 +55,7 @@ xcodebuild -scheme EchoCore -destination 'generic/platform=iOS Simulator' build 
 
 ## Kotlin（JNI）包裝
 
-`android_jni/` 是獨立的 Android library：CMake 把同一份 `src/echo_core.c` 和橋接檔 `echo_core_jni.c` 編成 `libecho_core_jni.so`，Kotlin 用 `System.loadLibrary` 載入，不經過 Flutter。
+`android_jni/` 是獨立的 Android library：CMake 把同一份 `src/echo_core.cpp` 和橋接檔 `echo_core_jni.c`（C） 編成 `libecho_core_jni.so`，Kotlin 用 `System.loadLibrary` 載入，不經過 Flutter。
 
 ```kotlin
 val level = EchoCoreJni.rms(samples)      // ShortArray -> Float
@@ -66,7 +66,7 @@ EchoVad().use { vad ->                    // ec_vad_create 失敗時丟例外
 
 - **不複製陣列**：`GetPrimitiveArrayCritical` 通常直接拿到 JVM 陣列的位址。代價跟 dart:ffi 的 leaf call 一樣：Get 到 Release 之間程式要短、不能呼叫其他 JNI 函式；echo_core 的函式符合這個條件。只讀不寫，所以 Release 用 `JNI_ABORT`。
 - **指標交給 Kotlin**：`ec_vad*` 轉成 `jlong` handle，0 代表失敗；Kotlin 沒有確定性的解構子，所以 `EchoVad` 實作 `AutoCloseable`。
-- **編譯參數**跟 build hook 相同（C11、`-O3`、`-Wall -Wextra -Werror`、`-ffp-contract=off`），`-DANDROID_STL=none`（純 C，不需要 C++ 標準庫）；目前只建 `arm64-v8a`。
+- **編譯參數**跟 build hook 相同（C++17、`-O3`、`-Wall -Wextra -Werror`、`-ffp-contract=off`、符號預設隱藏），`-DANDROID_STL=c++_static`；目前只建 `arm64-v8a`。
 
 ```sh
 cd android_jni && ./gradlew connectedAndroidTest   # 需要已連線的模擬器或手機
@@ -76,7 +76,7 @@ instrumented test 4 項：`rms` 已知值、VAD「安靜 → 說話 → 安靜�
 
 ## C#（P/Invoke）包裝
 
-`dotnet/EchoCore/` 是 .NET 8 class library；根目錄的 `CMakeLists.txt` 把同一份 `src/echo_core.c` 編成共享庫（`libecho_core.dylib`／`libecho_core.so`／`echo_core.dll`），C# 用 P/Invoke 呼叫，不經過 Flutter。
+`dotnet/EchoCore/` 是 .NET 8 class library；根目錄的 `CMakeLists.txt` 把同一份 `src/echo_core.cpp` 編成共享庫（`libecho_core.dylib`／`libecho_core.so`／`echo_core.dll`），C# 用 P/Invoke 呼叫，不經過 Flutter。
 
 ```csharp
 using EchoNote.Audio;
@@ -92,7 +92,7 @@ using (var vad = new EchoVad())                 // ec_vad_create 失敗時丟 Ou
 - **不複製陣列**：`fixed` 把 `ReadOnlySpan<short>` 釘住，GC 在區塊內不會搬動它，指標直接交給 C。C 函式不保留指標，所以區塊結束就安全，跟 dart:ffi 的 leaf call 是同一個條件。`unsafe` 只用在綁定層內部，公開的 API 都是 `Span` 與陣列。
 - **`[LibraryImport]` 而不是 `[DllImport]`**：`LibraryImport` 在編譯期由 source generator 產生 marshalling 程式碼，可以在編譯時檢查、也相容 Native AOT；`DllImport` 在執行期產生，是舊版 .NET 與 Xamarin 常見的寫法。這裡的參數都是 blittable（指標、整數、6 個 `float` 的 struct），產生出來的程式碼幾乎就是直接呼叫。
 - **原生指標交給 `SafeHandle`**：`ec_vad*` 包在 `SafeHandleZeroOrMinusOneIsInvalid` 裡。呼叫 C 的期間 runtime 會增加 handle 的參照計數，不會在呼叫途中被釋放；忘了 `Dispose` 時由 finalizer 呼叫 `ec_vad_destroy`。`Dispose` 後再使用丟 `ObjectDisposedException`。
-- **編譯參數**：clang／gcc 跟其他包裝相同（C11、`-O3`、`-Wall -Wextra -Werror`、`-ffp-contract=off`）；MSVC 用 `/O2 /W4 /WX`，浮點用預設的 `/fp:precise`（不合併乘加），測試比對已知值，不要求跟其他平台逐位元相同。
+- **編譯參數**：clang／gcc 跟其他包裝相同（C++17、`-O3`、`-Wall -Wextra -Werror`、`-ffp-contract=off`）；MSVC 用 `/O2 /W4 /WX /EHsc`、靜態 C++ runtime（`/MT`，使用者不用另裝 VC++ 可轉散發套件），浮點用預設的 `/fp:precise`（不合併乘加），測試比對已知值，不要求跟其他平台逐位元相同。
 - **只做 64 位元**（x64、arm64）。CMake 編出來的原生庫要跟 .NET runtime 同一個 CPU 架構，否則載入時丟 `BadImageFormatException`。
 
 ```sh
@@ -103,9 +103,31 @@ dotnet test dotnet/EchoCore.Tests   # 需要 .NET SDK 8 以上與 CMake；建置
 
 之後的方向：打包成 NuGet，原生庫依平台放進 `runtimes/<rid>/native/`。
 
+## C++ 核心、C 介面
+
+`src/echo_core_impl.hpp`＋`src/echo_core.cpp` 是 C++17（`namespace echo_core`、`class Vad`）；對外只有 `echo_core.h` 的 `extern "C"` 函式。四種包裝都只碰 C 介面，原始碼從 C 改成 C++ 時一行都沒改，現有測試直接當回歸。
+
+**為什麼對外是 C，不是 C++**：
+
+- **名稱**：C++ 函式名會被編譯器改寫（name mangling），各家編譯器規則不同；`extern "C"` 的名稱就是函式名，dart:ffi、Swift、JNI、P/Invoke 都能直接找到。
+- **例外**：例外穿過 C 介面進到 Dart、Swift、Kotlin、C# 是未定義行為。核心裡沒有任何會拋例外的程式碼，所有函式都是 `noexcept`；失敗用回傳值表示（`ec_vad_create` 回傳 NULL）。
+- **`std::` 型別**：`std::vector`、`std::string` 的記憶體配置在不同的 C++ 標準庫、不同版本之間不相容，所以不出現在介面上，只傳指標、整數與 C struct。
+- **C++ 標準庫的連結方式**：Android 用 `c++_static`，跟 whisper（NDK CMake 的預設）一樣，不用另外打包 `libc++_shared.so`。同一個 App 裡會有兩份靜態 libc++（`libwhisper.so`、`libecho_core.so`），之所以安全，是因為兩者之間只有 C 函式呼叫，沒有 C++ 物件或例外往來；`-Wl,--exclude-libs,ALL` 再把 libc++ 的符號留在各自的 `.so` 裡，不會互相綁定。
+
+**不用 `operator new`**：`ec_vad_create` 用 `std::malloc` 配置，再用 placement new 在那塊記憶體上建構；`ec_vad_destroy` 先呼叫解構子再 `std::free`。改成 C++ 時第一版用 `std::make_unique`＋`try`／`catch`，Android 的 `libecho_core.so` 一下子變大幾十倍。量過之後發現原因不是例外本身：只要用到 `operator new`，靜態連結就會把 libc++／libc++abi 的執行期（例外處理、型別資訊、名稱還原器）整包拉進來。
+
+| `libecho_core.so`（Android arm64-v8a，strip 後） | 大小 |
+| --- | ---: |
+| C 版 | 5,816 bytes |
+| C++，`make_unique`＋`try`／`catch` | 214,744 bytes |
+| 同上，再關掉例外（`-fno-exceptions -fno-rtti`） | 214,248 bytes |
+| C++，`malloc`＋placement new（目前） | 5,832 bytes |
+
+代價是核心不能用會配置記憶體的 `std::` 容器，用了 libc++ 就會被拉回來。macOS／iOS 連結系統的 `libc++.dylib`，大小幾乎不變（macOS CMake 版 33,808 → 34,064 bytes）。
+
 ## 建置
 
-`hook/build.dart` 用 `native_toolchain_c` 編譯：`-std=c11 -O3 -Wall -Wextra -Werror -ffp-contract=off`。
+`hook/build.dart` 用 `native_toolchain_c` 編譯：`-std=c++17 -O3 -Wall -Wextra -Werror -ffp-contract=off -fvisibility=hidden`；Android 用 `c++_static`，另加 `-Wl,--exclude-libs,ALL` 與 `--gc-sections`（見下一段）。
 
 - `-Werror`：hook 的警告平常沒人看，直接讓建置失敗。
 - `-ffp-contract=off`：不讓 clang 把乘法和加法合併成一個乘加指令（FMA）。合併後捨入次數不同，結果會跟純 Dart 版本、跟其他平台差一點點；關掉之後 C、Dart、各平台逐位元相同，VAD 的判斷才能完全比對。
