@@ -1,7 +1,7 @@
 # echo_core：.NET P/Invoke 包裝規格
 
 分支：`feature/echo-core-dotnet`（從 `master` ccb10e8 開）
-狀態：已確認（2026-10-11；11 項待確認事項皆採用建議，見「決定紀錄」）
+狀態：已完成（2026-10-11；C# 8 項測試在 macOS 本機通過，公開 repo CI 在 Windows／macOS／Linux 綠燈）
 
 讓 C# 不透過 Flutter，經由 P/Invoke 呼叫同一份 `echo_core` C 原始碼，跟 dart:ffi、Swift、Kotlin JNI 並列成第四種包裝。起因是職缺分析（鉅怡智慧「跨平台軟體開發工程師」）列出的缺口：JD 要求 Windows／.NET 與 .NET Interop，四週計畫原本只把 .NET P/Invoke 列為選做。今天完成，投遞前放上公開 repo。
 
