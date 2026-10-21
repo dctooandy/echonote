@@ -33,7 +33,8 @@ class GlossaryStore {
 
   Future<GlossaryLoadResult> load() async {
     final file = await _file();
-    if (!await file.exists()) return const GlossaryLoadResult([]);
+    // Fresh lists, never `const []`: callers edit the terms in place.
+    if (!await file.exists()) return GlossaryLoadResult([]);
     try {
       final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       final terms = (json['terms'] as List<dynamic>)
@@ -41,7 +42,7 @@ class GlossaryStore {
           .toList();
       return GlossaryLoadResult(terms);
     } catch (_) {
-      return const GlossaryLoadResult([], isCorrupt: true);
+      return GlossaryLoadResult([], isCorrupt: true);
     }
   }
 

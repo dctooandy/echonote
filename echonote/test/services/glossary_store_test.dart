@@ -27,6 +27,13 @@ void main() {
       expect(result.isCorrupt, isFalse);
     });
 
+    test('an empty glossary loads as a list callers can add to', () async {
+      final terms = (await store.load()).terms;
+
+      terms.add(_term('台積電'));
+      expect(terms, hasLength(1));
+    });
+
     test('added terms round-trip, trimmed', () async {
       expect(await store.add('  台積電 '), isNull);
       expect(await store.add('EchoNote'), isNull);

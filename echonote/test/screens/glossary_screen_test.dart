@@ -46,6 +46,19 @@ void main() {
     expect(find.textContaining('加入人名、公司名'), findsOneWidget);
   });
 
+  testWidgets('the first term can be added to an empty glossary', (tester) async {
+    await open(tester);
+
+    await tester.tap(find.byTooltip('新增詞條'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '台積電');
+    await tester.tap(find.text('儲存'));
+    await settle(tester);
+
+    expect(find.text('台積電'), findsOneWidget);
+    expect((await tester.runAsync(store.load))!.terms.single.term, '台積電');
+  });
+
   testWidgets('adding a term validates it, then saves it', (tester) async {
     await tester.runAsync(() => store.save([_term('台積電')]));
     await open(tester);
