@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../models/recording.dart';
 import '../services/analysis_service.dart';
+import '../services/glossary_store.dart';
 import '../services/recording_store.dart';
 import '../services/recording_transcriber.dart';
 import '../utils/format.dart';
@@ -25,6 +26,7 @@ class MeetingDetailScreen extends StatefulWidget {
 class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   final _audioPlayer = AudioPlayer();
   final _analysisService = AnalysisService();
+  final _glossary = GlossaryStore();
   final _store = RecordingStore();
   late final _transcriber = RecordingTranscriber(store: _store);
   bool _isAnalyzing = false;
@@ -88,8 +90,16 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     }
     setState(() => _isAnalyzing = true);
     try {
-      final analysis = await _analysisService.analyze(widget.recording.segments);
-      widget.recording.analysis = analysis;
+      // A corrupt glossary loads as empty: analyze without it.
+      final glossary = (await _glossary.load()).terms.map((t) => t.term).toList();
+      final analysis = await _analysisService.analyze(
+        widget.recording.segments,
+        glossary: glossary,
+        notes: widget.recording.notes,
+      );
+      widget.recording
+        ..analysis = analysis
+        ..transcriptStaleAnalysis = false;
       await _store.save(widget.recording);
       if (mounted) setState(() {});
     } catch (e) {

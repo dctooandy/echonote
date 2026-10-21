@@ -261,7 +261,7 @@
   - 2026-10-21 程式完成、**尚未部署**。邏輯抽到 `functions/src/analyze.ts`（純函式），`index.ts` 只留接線。
   - 已驗證：直接呼叫純函式跑 12 個情境；emulator 上三種錯誤都回 `INVALID_ARGUMENT`，舊版請求通過驗證。
   - 尚未驗證：真的呼叫 Claude 時，新 schema 的輸出內容（`highlight_contexts`、詞庫改正錯字）。部署後再勾選這一項。
-- [ ] **T8 App 端送出詞庫**：`AnalysisService.analyze()` 新增詞庫參數，`MeetingDetailScreen._runAnalysis()` 讀取詞庫後**全部**送出（最多 200 條，不截斷）。依賴：T1、T7
+- [x] **T8 App 端送出詞庫**：`AnalysisService.analyze()` 新增詞庫參數，`MeetingDetailScreen._runAnalysis()` 讀取詞庫後**全部**送出（最多 200 條，不截斷）。依賴：T1、T7
 
 ### 階段 3：資料模型（筆記、編輯、過時標記）
 
@@ -272,7 +272,8 @@
   - `MeetingAnalysis` 新增 `highlight_contexts`。
 
   舊 JSON 缺欄位時要讀得出預設值。在 `test/models/recording_test.dart` 補上新舊格式的往返測試。
-- [ ] **T10 筆記送進分析**：純函式把筆記時間戳換算成 `segment_index`（取 `startMs <= t` 的最後一個片段，早於第一個片段取 0），在分析當下計算、不儲存；`AnalysisService` 送出 `highlights`，並把回傳的 `note_index` 換回筆記 `id`，存進 `highlight_contexts`（缺少或不存在的序號直接略過）。重新分析時清掉 `transcript_stale_analysis`。附換算函式的單元測試。依賴：T7、T9
+- [x] **T10 筆記送進分析**：純函式把筆記時間戳換算成 `segment_index`（取 `startMs <= t` 的最後一個片段，早於第一個片段取 0），在分析當下計算、不儲存；`AnalysisService` 送出 `highlights`，並把回傳的 `note_index` 換回筆記 `id`，存進 `highlight_contexts`（缺少或不存在的序號直接略過）。重新分析時清掉 `transcript_stale_analysis`。附換算函式的單元測試。依賴：T7、T9
+  - 2026-10-21 完成（T8 一併完成）：`segmentIndexFor`、`buildHighlights`、`resolveHighlightContexts` 都是純函式並附測試。和 T7 一樣，要等部署後用真實呼叫確認端到端。
 
 ### 階段 4：筆記 UI
 
