@@ -43,10 +43,11 @@ void main() {
   });
 
   setUp(() {
-    // just_audio has no platform side in tests; answer its calls with null.
+    // just_audio has no platform side in tests; answer its calls with an
+    // empty result.
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
       const MethodChannel('com.ryanheise.just_audio.methods'),
-      (_) async => null,
+      (_) async => <String, dynamic>{},
     );
   });
 
@@ -230,5 +231,68 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(recording.segments.single.edited, isFalse);
+  });
+
+  Future<void> correct(WidgetTester tester, String line, String corrected) async {
+    await tester.tap(find.text('逐字稿'));
+    await tester.pumpAndSettle();
+    await tester.longPress(find.text(line));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), corrected);
+    await tester.tap(find.text('儲存'));
+    await tester.pumpAndSettle();
+  }
+
+  Recording withLines(List<String> lines) => _recording()
+    ..segments
+        .replaceRange(0, 1, [for (final (i, l) in lines.indexed) TranscriptSegment(startMs: i * 1000, endMs: i * 1000 + 999, text: l)]);
+
+  testWidgets('a correction offers to learn the widened term and fix the rest', (tester) async {
+    final recording = withLines(['太基電的報價', '太基電回覆了', '跟太基電談']);
+    recording.analysis = analysis();
+    await _pump(tester, recording);
+
+    await correct(tester, '太基電的報價', '台積電的報價');
+    expect(find.text('會把「太基」記成「台積」'), findsOneWidget);
+
+    // The detected span is half the word; the user completes it.
+    await tester.enterText(find.widgetWithText(TextField, '台積'), '台積電');
+    await tester.pumpAndSettle();
+    expect(find.text('會把「太基電」記成「台積電」'), findsOneWidget);
+    expect(find.text('加入並修正 2 處'), findsOneWidget);
+
+    await tester.tap(find.text('加入並修正 2 處'));
+    // The glossary is read and written with real file I/O, which fake time
+    // doesn't advance: let real time pass between pumps until it's done.
+    for (var i = 0; i < 5; i++) {
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    }
+    await tester.pumpAndSettle();
+
+    expect(recording.segments.map((s) => s.text), ['台積電的報價', '台積電回覆了', '跟台積電談']);
+    expect(recording.transcriptStaleAnalysis, isTrue);
+    expect(find.text('已加入詞庫，並修正 2 處'), findsOneWidget);
+  });
+
+  testWidgets('a declined replacement is not offered again in this recording', (tester) async {
+    final recording = withLines(['太基電的報價', '太基電回覆了']);
+    await _pump(tester, recording);
+
+    await correct(tester, '太基電的報價', '台積電的報價');
+    await tester.tap(find.text('不用'));
+    await tester.pumpAndSettle();
+    expect(recording.dismissedReplacements, ['太基→台積']);
+
+    await correct(tester, '太基電回覆了', '台積電回覆了');
+    expect(find.text('記住這個寫法？'), findsNothing);
+  });
+
+  testWidgets('a single-character fix asks nothing', (tester) async {
+    await _pump(tester, withLines(['他說好']));
+
+    await correct(tester, '他說好', '她說好');
+
+    expect(find.text('記住這個寫法？'), findsNothing);
   });
 }

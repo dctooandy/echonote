@@ -6,8 +6,10 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../models/glossary.dart';
 import '../models/recording.dart';
 import '../services/analysis_service.dart';
+import '../services/correction_learning.dart';
 import '../services/glossary_store.dart';
 import '../services/recording_store.dart';
 import '../services/recording_transcriber.dart';
@@ -323,10 +325,59 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     );
     final text = result?.trim();
     if (text == null || text.isEmpty || text == segment.text) return;
+    final replacement = detectReplacement(segment.text, text);
     segment
       ..text = text
       ..edited = true;
     _persist();
+    if (replacement != null && !widget.recording.dismissedReplacements.contains(replacement.key)) {
+      await _offerToLearn(replacement, segment);
+    }
+  }
+
+  /// Asks whether a correction is a term worth learning. The detected span
+  /// may be part of a word (`太基電` → `台積電` diffs to `太基` → `台積`), so the
+  /// term is editable and the misspelling widens with it.
+  Future<void> _offerToLearn(Replacement detected, TranscriptSegment edited) async {
+    final segments = widget.recording.segments;
+    final answer = await showDialog<({_LearnChoice choice, Replacement expanded})>(
+      context: context,
+      builder: (context) => _LearnDialog(
+        detected: detected,
+        countOthers: (misspelling) => countOccurrences(segments, misspelling, except: edited),
+      ),
+    );
+    if (answer == null || !mounted) return;
+    final (:choice, :expanded) = answer;
+
+    if (choice == _LearnChoice.dismiss) {
+      widget.recording.dismissedReplacements.add(detected.key);
+      _persist();
+      return;
+    }
+
+    final GlossaryTermError? error;
+    try {
+      error = await _glossary.learn(expanded.after, expanded.before);
+    } on GlossaryCorruptException catch (e) {
+      _showSnack('$e');
+      return;
+    }
+    if (!mounted) return;
+    if (error != null) {
+      _showSnack(error.message);
+      return;
+    }
+
+    var fixed = 0;
+    if (choice == _LearnChoice.learnAndApply) {
+      fixed = replaceInSegments(segments, expanded.before, expanded.after, except: edited);
+      if (fixed > 0 && widget.recording.analysis != null) {
+        widget.recording.transcriptStaleAnalysis = true;
+      }
+      _persist();
+    }
+    _showSnack(fixed > 0 ? '已加入詞庫，並修正 $fixed 處' : '已加入詞庫');
   }
 
   Future<void> _addAttendee(MeetingAnalysis analysis) async {
@@ -850,5 +901,66 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
         ],
       );
     });
+  }
+}
+
+enum _LearnChoice { dismiss, learn, learnAndApply }
+
+/// Owns its text controller, so the field outlives the closing animation.
+class _LearnDialog extends StatefulWidget {
+  const _LearnDialog({required this.detected, required this.countOthers});
+
+  final Replacement detected;
+
+  /// How many more times a misspelling appears in the recording.
+  final int Function(String misspelling) countOthers;
+
+  @override
+  State<_LearnDialog> createState() => _LearnDialogState();
+}
+
+class _LearnDialogState extends State<_LearnDialog> {
+  late final _term = TextEditingController(text: widget.detected.after);
+
+  @override
+  void dispose() {
+    _term.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final expanded = expandToTerm(widget.detected, _term.text.trim());
+    final others = widget.countOthers(expanded.before);
+    void answer(_LearnChoice choice) => Navigator.pop(context, (choice: choice, expanded: expanded));
+    return AlertDialog(
+      title: const Text('記住這個寫法？'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _term,
+            decoration: const InputDecoration(labelText: '正確寫法（可補成完整的詞）'),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          Text('會把「${expanded.before}」記成「${expanded.after}」'),
+          if (others > 0) ...[
+            const SizedBox(height: 4),
+            Text('這場錄音的其他地方還有 $others 處「${expanded.before}」'),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => answer(_LearnChoice.dismiss), child: const Text('不用')),
+        TextButton(onPressed: () => answer(_LearnChoice.learn), child: const Text('只加入詞庫')),
+        if (others > 0)
+          TextButton(
+            onPressed: () => answer(_LearnChoice.learnAndApply),
+            child: Text('加入並修正 $others 處'),
+          ),
+      ],
+    );
   }
 }

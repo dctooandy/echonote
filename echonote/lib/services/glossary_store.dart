@@ -67,4 +67,41 @@ class GlossaryStore {
     ]);
     return null;
   }
+
+  /// Records [term] (trimmed) as learned from a transcript correction of
+  /// [misspelling]. An existing term just gains the misspelling as an alias;
+  /// either way it counts as just used. Returns why a new term was
+  /// rejected, or null on success. Throws [GlossaryCorruptException] rather
+  /// than replacing a file it couldn't read.
+  Future<GlossaryTermError?> learn(String term, String misspelling) async {
+    final loaded = await load();
+    if (loaded.isCorrupt) throw const GlossaryCorruptException();
+    final trimmed = term.trim();
+    final now = DateTime.now();
+
+    final existing = loaded.terms.where((t) => t.term == trimmed).firstOrNull;
+    if (existing != null) {
+      if (misspelling != trimmed && !existing.aliases.contains(misspelling)) {
+        existing.aliases.add(misspelling);
+      }
+      existing.lastUsedAt = now;
+      await save(loaded.terms);
+      return null;
+    }
+
+    final error = validateNewTerm(trimmed, loaded.terms);
+    if (error != null) return error;
+    await save([
+      ...loaded.terms,
+      GlossaryTerm(
+        id: now.microsecondsSinceEpoch.toString(),
+        term: trimmed,
+        aliases: [if (misspelling != trimmed) misspelling],
+        source: GlossaryTermSource.learned,
+        createdAt: now,
+        lastUsedAt: now,
+      ),
+    ]);
+    return null;
+  }
 }

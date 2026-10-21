@@ -49,6 +49,34 @@ void main() {
       expect(await file.readAsString(), '{not json');
     });
 
+    test('learn adds a learned term with its misspelling', () async {
+      expect(await store.learn('台積電', '太基電'), isNull);
+
+      final term = (await store.load()).terms.single;
+      expect(term.term, '台積電');
+      expect(term.aliases, ['太基電']);
+      expect(term.source, GlossaryTermSource.learned);
+      expect(term.lastUsedAt, isNotNull);
+    });
+
+    test('learning a known term adds the alias once and marks it used', () async {
+      await store.add('台積電');
+
+      await store.learn('台積電', '太基電');
+      await store.learn('台積電', '太基電');
+      await store.learn('台積電', '抬機電');
+
+      final term = (await store.load()).terms.single;
+      expect(term.aliases, ['太基電', '抬機電']);
+      expect(term.source, GlossaryTermSource.manual);
+      expect(term.lastUsedAt, isNotNull);
+    });
+
+    test('learn rejects an invalid term', () async {
+      expect(await store.learn('台積、電', '太基電'), GlossaryTermError.forbiddenChar);
+      expect((await store.load()).terms, isEmpty);
+    });
+
     test('rejected terms are not saved', () async {
       await store.add('台積電');
 
