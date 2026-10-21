@@ -272,6 +272,22 @@
     - 詞庫原字（`一可諾`、`富的斯內鋪`、`flutter app`）四組都沒出現。講者講的是英文名稱，詞庫卻放了**中文音譯**，等於叫 whisper 往錯的寫法靠，所以 C、D 的英文名反而更走樣（Echo Note → Ecklenote）。這組數據**不能**說明「詞庫填正確寫法」時有沒有效。
     - 意外發現：只要送固定開頭那句話（B），逐字稿就有標點（2 → 200），但片段變長（188 → 52 段），點逐字稿跳轉播放和筆記對應的位置會變粗。
   - **重測**：詞庫改成正確寫法 `Flutter`、`EchoNote`、`EchoCore`、`FoodSnap`、`PostureCheck`，重跑 C、D（A、B 不受詞庫影響，沿用第一次結果）。之後再一起決定第 ① 層的去留，以及要不要預設送固定開頭（標點 vs 片段精度）。
+  - **2026-10-21 重測結果**（A、B 沿用第一次）：
+
+    | 專有名詞 | A 不送 | B 只送開頭 | C2 詞庫、開頭 30 秒 | D2 詞庫、每 30 秒 |
+    |---|---|---|---|---|
+    | Flutter | BLAD ×2 | BLAD | **Flutter** | **Flutter** |
+    | EchoNote | Echo Note ×3 | EKO Note ×3 | **EchoNote ×4** | **EchoNote ×3** |
+    | EchoCore | Echo Core／Echo Code | EKO Core／Echo Code | **EchoCore ×4** | **EchoCore ×4**、EchoCorre ×1 |
+    | FoodSnap | Full Snap ×2 | Full Snap、Foursnap | FoodSnap、ForeSnaps | **FoodSnap ×2** |
+    | PostureCheck | Post-Cheer Check、Porture Strip／Check | 同 A | PostureCheck、後段 Porture Strip／Check | **PostureCheck ×2** |
+    | 07:47 結尾的 EchoCore | Airco-cove | Ego Code | AirGoogle | **EchoCore** |
+    | 標點／片段數 | 2／188 | 201／52 | 195／90 | 196／60 |
+
+    - **D2 最好**：5 個詞幾乎全對，而且錄音後段（05:55、07:47）也對。C2 只有開頭 30 秒對，後段又變回 Porture Strip、AirGoogle，證明 `carry_initial_prompt` 是必要的。
+    - 沒有 prompt 外洩（逐字稿裡沒出現「會議逐字稿」「會提到」）。
+    - 待確認：C2 在 01:47 出現「EchoNote是一個會議」，B 同位置是「那我又是一個會議」，D2 同位置是另一句話。要聽原音確認是不是幻覺。
+    - 第一次實測變差的原因確定是**詞庫填了中文音譯**，不是第 ① 層本身的問題。
 
 ### 階段 1：詞庫管理＋即時預覽
 
