@@ -258,6 +258,19 @@
     | D | `flutter run --release --dart-define=WHISPER_PROMPT=glossary` | 固定開頭＋詞庫，每 30 秒都帶 |
 
   - 判讀：D、C 比 A 好就恢復第 ① 層並選較好的那組；都不比 A 好就把第 ① 層移出 P1，詞庫只用在摘要和學詞。
+  - **2026-10-21 四組對照結果**（錄音「手機應用開發技術介紹」，詞庫：`flutter app`、`富的斯內鋪`、`一可諾`）：
+
+    | 專有名詞（實際講法） | A 不送 | B 只送開頭 | C 詞庫、開頭 30 秒 | D 詞庫、每 30 秒 |
+    |---|---|---|---|---|
+    | Flutter | BLAD ×2 | BLAD | plut | plut |
+    | EchoNote ×3 | Echo Note | EKO Note | Ecklenote | Ecklenote |
+    | EchoCore | Echo Core ×2 | EKO Core ×2 | Ecklenote call ×2、後段 Echo Core ×2 | Ecklenote call ×2 |
+    | FoodSnap | Full Snap ×2 | Full Snap、Foursnap | Fusenap、Foursnap | Fusenap |
+    | 標點符號數 | 2 | 200 | 200 | 205 |
+    | 片段數 | 188 | 52 | 62 | 87 |
+
+    - 詞庫原字（`一可諾`、`富的斯內鋪`、`flutter app`）四組都沒出現。講者講的是英文名稱，詞庫卻放了**中文音譯**，等於叫 whisper 往錯的寫法靠，所以 C、D 的英文名反而更走樣（Echo Note → Ecklenote）。這組數據**不能**說明「詞庫填正確寫法」時有沒有效。
+    - 意外發現：只要送固定開頭那句話（B），逐字稿就有標點（2 → 200），但片段變長（188 → 52 段），點逐字稿跳轉播放和筆記對應的位置會變粗。
 
 ### 階段 1：詞庫管理＋即時預覽
 
