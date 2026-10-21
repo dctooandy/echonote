@@ -143,13 +143,11 @@ class LiveTranscriptionService {
   }
 
   /// Downloads (first use only) and loads the preview model, then starts the
-  /// mic. Audio is written to [wavPath] as it arrives. [initialPrompt]
-  /// replaces [LivePreviewConfig.initialPrompt] (it carries the glossary).
-  /// On failure nothing is left running and the WAV file is removed.
+  /// mic. Audio is written to [wavPath] as it arrives. On failure nothing is
+  /// left running and the WAV file is removed.
   Future<LiveRecording> start({
     required String wavPath,
     LivePreviewConfig config = kLivePreviewConfig,
-    String? initialPrompt,
   }) async {
     await _whisper.downloadModel(config.model);
     final wav = await WavWriter.open(wavPath, sampleRate: MicStreamService.sampleRate);
@@ -164,7 +162,7 @@ class LiveTranscriptionService {
         pcm16Stream: pcm.stream,
         // Must be explicit: the package defaults to 'en'.
         lang: 'zh',
-        initialPrompt: initialPrompt ?? config.initialPrompt,
+        initialPrompt: config.initialPrompt,
         threads: config.threads,
         stepSec: config.stepSec,
         noFallback: config.noFallback,

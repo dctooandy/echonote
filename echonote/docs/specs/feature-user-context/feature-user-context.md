@@ -294,8 +294,6 @@
 - [x] **T5 詞庫管理頁**：完成後移除 `main.dart` 的 `GLOSSARY_SEED`。新增 `GlossaryScreen`（列表、新增、編輯、刪除、釘選、顯示「前 N 個詞會送進轉錄」），在 `HomeScreen` 的 AppBar 加入口。UI 暫定。依賴：T1、T2
   - 2026-10-21 完成，**尚未實機驗證**。清單依 prompt 優先順序排列（排序抽成 `sortByPromptPriority`，和 prompt 共用）；放不進轉錄 prompt 的詞標「只用在摘要」，學到的詞標「從修改中學到」並列出常見誤寫。刪除可復原。新增詞條時也設定 `last_used_at`（規格原本就這樣寫，T1 漏了，一併補上）。`GLOSSARY_SEED` 已移除。
 - [ ] **T6 📱 即時預覽帶詞庫＋重新量測延遲**（T4 完成後恢復，見決定 23）：`kLivePreviewConfig.initialPrompt` 改成執行時由詞庫組出（`LivePreviewConfig` 目前是 `const`，要調整成可以在執行時帶入）。在實機上用和 2026-10-10 相同的方式量測 median run 和 max lag；明顯變慢就退回固定開頭，並把結果寫回規格。依賴：T2
-  - 2026-10-21 程式完成，**等實機量測**。`LiveTranscriptionService.start()` 新增 `initialPrompt` 參數，錄音畫面開始錄音前讀詞庫、用 `buildLivePrompt` 組字（`WHISPER_PROMPT` 不是 `glossary` 時只送固定開頭，因為即時模式沒有固定開頭會漂成簡體）。實際送出的 prompt 印在 `[Live] prompt mode=… initial prompt: …`。
-  - 量測用 **debug 模式**（和 2026-10-10 的基準一致，`[live-metrics]` 只在 debug 輸出）：對照組 `flutter run --dart-define=WHISPER_PROMPT=lead`，實驗組 `flutter run`。
 
 ### 階段 2：Cloud Function（第 ② 層＋筆記所需的 API）
 

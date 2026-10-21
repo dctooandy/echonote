@@ -66,23 +66,4 @@ void main() {
       expect(terms.map((t) => t.term), ['甲', '乙']);
     });
   });
-
-  group('buildLivePrompt', () {
-    test('carries the glossary in glossary mode', () {
-      expect(
-        buildLivePrompt(WhisperPromptMode.glossary, [_term('EchoNote')]),
-        '以下是繁體中文的會議逐字稿，會提到：EchoNote。',
-      );
-    });
-
-    test('keeps the lead in every other mode, as live mode needs it', () {
-      for (final mode in [WhisperPromptMode.none, WhisperPromptMode.lead]) {
-        expect(buildLivePrompt(mode, [_term('EchoNote')]), '以下是繁體中文的會議逐字稿。', reason: mode.name);
-      }
-    });
-
-    test('without a glossary it matches the old fixed preview prompt', () {
-      expect(buildLivePrompt(WhisperPromptMode.glossary, []), '以下是繁體中文的會議逐字稿。');
-    });
-  });
 }

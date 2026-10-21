@@ -5,13 +5,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../models/recording.dart';
-import '../services/glossary_store.dart';
 import '../services/live_transcription_service.dart';
 import '../services/mic_stream_service.dart';
 import '../services/recording_store.dart';
 import '../services/recording_transcriber.dart';
 import '../services/transcription_service.dart';
-import '../services/whisper_prompt.dart';
 import 'meeting_detail_screen.dart';
 
 /// Records from the mic with a live (draft) transcript, then runs the
@@ -133,10 +131,7 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
       final startedAt = DateTime.now();
       final audioFileName = '$id.wav';
       final wavPath = '${(await _store.recordingsDir()).path}/$audioFileName';
-      // A corrupt glossary loads as empty: preview without it.
-      final prompt = buildLivePrompt(kWhisperPromptMode, (await GlossaryStore().load()).terms);
-      debugPrint('[Live] prompt mode=${kWhisperPromptMode.name} initial prompt: $prompt');
-      final rec = await _service.start(wavPath: wavPath, initialPrompt: prompt);
+      final rec = await _service.start(wavPath: wavPath);
       if (!mounted) {
         // Left while loading; nothing worth keeping yet.
         await rec.stop();
