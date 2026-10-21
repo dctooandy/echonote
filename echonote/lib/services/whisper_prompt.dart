@@ -15,15 +15,16 @@ enum WhisperPromptMode {
   glossary;
 
   static WhisperPromptMode parse(String value) =>
-      values.firstWhere((m) => m.name == value, orElse: () => none);
+      values.firstWhere((m) => m.name == value, orElse: () => glossary);
 }
 
-/// Layer ① is off by default: on device, glossary terms came out *less*
-/// accurate with the prompt than without (spec T4, 2026-10-21). Compare on
-/// the same recording with
-///   flutter run --release --dart-define=WHISPER_PROMPT=none|lead|glossary
+/// On by default. On device (spec T4, 2026-10-21) the glossary prompt,
+/// carried into every window, got nearly every glossary term right where
+/// no prompt got none. Compare on the same recording with
+///   flutter run --profile --dart-define=WHISPER_PROMPT=none|lead|glossary
+/// (kept until the T17 acceptance run).
 final kWhisperPromptMode = WhisperPromptMode.parse(
-  const String.fromEnvironment('WHISPER_PROMPT', defaultValue: 'none'),
+  const String.fromEnvironment('WHISPER_PROMPT', defaultValue: 'glossary'),
 );
 
 /// Budget, in characters, for the glossary part of the prompt (the fixed

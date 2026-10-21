@@ -143,8 +143,9 @@ void main() {
     expect(transcription.prompt, '以下是繁體中文的會議逐字稿。');
   });
 
-  test('layer ① is off unless asked for', () {
-    expect(kWhisperPromptMode, WhisperPromptMode.none);
-    expect(WhisperPromptMode.parse('typo'), WhisperPromptMode.none);
+  test('layer ① is on by default', () {
+    expect(kWhisperPromptMode, WhisperPromptMode.glossary);
+    expect(WhisperPromptMode.parse('typo'), WhisperPromptMode.glossary);
+    expect(WhisperPromptMode.parse('none'), WhisperPromptMode.none);
   });
 }

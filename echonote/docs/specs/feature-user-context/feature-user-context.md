@@ -242,7 +242,7 @@
 - [x] **T2 whisper prompt 組字**：純函式 `buildWhisperPrompt(terms, maxChars)`，包含固定開頭、`，會提到：`、`、` 分隔、排序（釘選 → `last_used_at` → `created_at`）、超過 `kGlossaryPromptMaxChars`（暫定 80）就停止。附單元測試，涵蓋空詞庫、剛好到上限、超過上限、排序。依賴：T1
 - [x] **T3 離線轉錄接上 prompt**：`TranscriptionService.transcribe()` 新增 `initialPrompt` 參數並傳給 `WhisperController.transcribe()`；`RecordingTranscriber` 轉錄前讀取詞庫、組出 prompt。匯入、錄音停止後的正式轉錄、重新轉錄三條路徑都要生效。依賴：T2
   - 2026-10-21 完成。追加：在 vendored `whisper_ggml` 接出 `carry_initial_prompt`（C++ 綁定、`TranscribeRequest`、DTO、`WhisperController.transcribe()`），預設開啟。
-- [ ] **T4 📱 實測詞庫效果和字數上限**：取一場真實錄音，列出 10 個專有名詞，比較沒有詞庫、詞庫 80 字、詞庫加長三種情況的**正確命中率**、**幻覺**（錄音沒講卻出現詞庫詞、prompt 被重複）和**轉錄時間**。另外比較 `carry_initial_prompt` 開和關，看**錄音後段**的命中率差異。依結果決定 `kGlossaryPromptMaxChars` 和是否維持開啟，把數字和結論寫回本規格「組成 whisper prompt 的規則」。依賴：T3
+- [x] **T4 📱 實測詞庫效果和字數上限**：取一場真實錄音，列出 10 個專有名詞，比較沒有詞庫、詞庫 80 字、詞庫加長三種情況的**正確命中率**、**幻覺**（錄音沒講卻出現詞庫詞、prompt 被重複）和**轉錄時間**。另外比較 `carry_initial_prompt` 開和關，看**錄音後段**的命中率差異。依結果決定 `kGlossaryPromptMaxChars` 和是否維持開啟，把數字和結論寫回本規格「組成 whisper prompt 的規則」。依賴：T3
   - 詞庫輸入：在 App 的詞庫頁新增（T5 完成後，`GLOSSARY_SEED` 已移除）。
   - 關掉 carry：再加 `--dart-define=WHISPER_CARRY_PROMPT=false`。
   - 實際送出的 prompt 會印在 log：`[Transcriber] prompt mode=… carry=… initial prompt: …`。
@@ -286,14 +286,14 @@
 
     - **D2 最好**：5 個詞幾乎全對，而且錄音後段（05:55、07:47）也對。C2 只有開頭 30 秒對，後段又變回 Porture Strip、AirGoogle，證明 `carry_initial_prompt` 是必要的。
     - 沒有 prompt 外洩（逐字稿裡沒出現「會議逐字稿」「會提到」）。
-    - 待確認：C2 在 01:47 出現「EchoNote是一個會議」，B 同位置是「那我又是一個會議」，D2 同位置是另一句話。要聽原音確認是不是幻覺。
+    - C2 在 01:47 出現「EchoNote是一個會議」，使用者聽原音確認**沒講 EchoNote，是幻覺**。D2 同位置沒有這個問題。之後 T17 要留意詞庫詞的幻覺。
     - 第一次實測變差的原因確定是**詞庫填了中文音譯**，不是第 ① 層本身的問題。
 
 ### 階段 1：詞庫管理＋即時預覽
 
 - [x] **T5 詞庫管理頁**：完成後移除 `main.dart` 的 `GLOSSARY_SEED`。新增 `GlossaryScreen`（列表、新增、編輯、刪除、釘選、顯示「前 N 個詞會送進轉錄」），在 `HomeScreen` 的 AppBar 加入口。UI 暫定。依賴：T1、T2
   - 2026-10-21 完成，**尚未實機驗證**。清單依 prompt 優先順序排列（排序抽成 `sortByPromptPriority`，和 prompt 共用）；放不進轉錄 prompt 的詞標「只用在摘要」，學到的詞標「從修改中學到」並列出常見誤寫。刪除可復原。新增詞條時也設定 `last_used_at`（規格原本就這樣寫，T1 漏了，一併補上）。`GLOSSARY_SEED` 已移除。
-- [ ] **T6 📱 即時預覽帶詞庫＋重新量測延遲**（**暫停**，等 T4 結論，見決定 21）：`kLivePreviewConfig.initialPrompt` 改成執行時由詞庫組出（`LivePreviewConfig` 目前是 `const`，要調整成可以在執行時帶入）。在實機上用和 2026-10-10 相同的方式量測 median run 和 max lag；明顯變慢就退回固定開頭，並把結果寫回規格。依賴：T2
+- [ ] **T6 📱 即時預覽帶詞庫＋重新量測延遲**（T4 完成後恢復，見決定 23）：`kLivePreviewConfig.initialPrompt` 改成執行時由詞庫組出（`LivePreviewConfig` 目前是 `const`，要調整成可以在執行時帶入）。在實機上用和 2026-10-10 相同的方式量測 median run 和 max lag；明顯變慢就退回固定開頭，並把結果寫回規格。依賴：T2
 
 ### 階段 2：Cloud Function（第 ② 層＋筆記所需的 API）
 
@@ -390,3 +390,4 @@
 | 20 | 單字替換要不要詢問 | 不詢問，長度規則從 1～10 字改成 2～10 字 |
 | 21 | 第 ① 層實測讓詞庫的詞更不準（T4 第一次實測） | 第 ① 層預設停用（`WHISPER_PROMPT=none`），用 A～D 四組對照找原因後再決定去留；T6（即時預覽帶詞庫）暫停，等 T4 結論 |
 | 22 | 詞庫頁沒說清楚要填正確寫法（T4 使用者填了中文音譯） | 空詞庫說明和新增欄位加上「填你希望逐字稿出現的寫法（例如 EchoNote），不是它聽起來的音」 |
+| 23 | T4 結論：第 ① 層去留 | 恢復，預設採 D2（詞庫＋`carry_initial_prompt`），`WHISPER_PROMPT` 開關保留到 T17 驗收後移除；`kGlossaryPromptMaxChars` 維持 80（5 個詞遠低於上限，尚無依據調整）。片段變長（188 → 60 段）先實際使用，T17 再判斷跳轉和筆記位置夠不夠準。T6 恢復 |
