@@ -109,4 +109,49 @@ void main() {
     expect(recording.notes.single.id, 'n1');
     expect(recording.analysis!.highlightContexts, {'n1': '討論報價'});
   });
+
+  MeetingAnalysis analysis({Map<String, String>? contexts}) => MeetingAnalysis(
+    overview: '概要',
+    keyPoints: [],
+    todos: [],
+    title: '',
+    attendees: [],
+    agendaItems: [],
+    highlightContexts: contexts,
+  );
+
+  testWidgets('AI context shows under the note it belongs to', (tester) async {
+    await _pump(tester, _recording()..analysis = analysis(contexts: {'n1': '討論報價'}));
+
+    expect(find.text('報價要再確認'), findsOneWidget);
+    expect(find.text('討論報價'), findsOneWidget);
+    expect(find.textContaining('還沒有 AI 補充說明'), findsNothing);
+  });
+
+  testWidgets('notes without AI context prompt a re-analysis', (tester) async {
+    await _pump(tester, _recording()..analysis = analysis());
+
+    expect(find.text('有 1 筆重點還沒有 AI 補充說明，重新分析可補上'), findsOneWidget);
+  });
+
+  testWidgets('no hint before the first analysis', (tester) async {
+    await _pump(tester, _recording());
+
+    expect(find.textContaining('還沒有 AI 補充說明'), findsNothing);
+  });
+
+  testWidgets('transcript marks the line a note falls on', (tester) async {
+    final recording = _recording()
+      ..segments.add(TranscriptSegment(startMs: 60000, endMs: 70000, text: '報價的部分'));
+    await _pump(tester, recording);
+
+    await tester.tap(find.text('逐字稿'));
+    await tester.pumpAndSettle();
+
+    // The note at 01:05 falls in the segment starting at 01:00.
+    final marked = find.widgetWithText(ListTile, '報價的部分');
+    expect(find.descendant(of: marked, matching: find.byIcon(Icons.notes)), findsOneWidget);
+    final unmarked = find.widgetWithText(ListTile, '大家好');
+    expect(find.descendant(of: unmarked, matching: find.byIcon(Icons.notes)), findsNothing);
+  });
 }

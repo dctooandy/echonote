@@ -510,20 +510,60 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
 
   Widget _buildNotesSection() {
     final notes = [...widget.recording.notes]..sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
+    final analysis = widget.recording.analysis;
+    final contexts = analysis?.highlightContexts ?? const {};
+    // Added after the analysis (or skipped by it): re-analysis fills them in.
+    final missing = analysis == null ? 0 : notes.where((n) => !contexts.containsKey(n.id)).length;
+    final theme = Theme.of(context);
     return ListView(
       shrinkWrap: true,
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text('你的重點', style: Theme.of(context).textTheme.titleMedium),
+          child: Text('你的重點', style: theme.textTheme.titleMedium),
         ),
+        if (missing > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: Text(
+              '有 $missing 筆重點還沒有 AI 補充說明，重新分析可補上',
+              style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+            ),
+          ),
         for (final note in notes)
           ListTile(
             dense: true,
             leading: Icon(note.kind == UserNoteKind.star ? Icons.star : Icons.notes),
             title: Text(note.kind == UserNoteKind.star ? '重點標記' : note.text ?? ''),
-            subtitle: Text(formatMs(note.timestampMs)),
+            // The user's words above, the AI's reading below — styled apart
+            // so one is never mistaken for the other.
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(formatMs(note.timestampMs)),
+                if (contexts[note.id] case final aiContext?)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            aiContext,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontStyle: FontStyle.italic,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
             onTap: () => _seekAndPlay(Duration(milliseconds: note.timestampMs)),
             trailing: PopupMenuButton<String>(
               onSelected: (value) {
@@ -617,6 +657,12 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   Widget _buildTranscriptTab() {
     final segments = widget.recording.segments;
     if (!widget.recording.isTranscribed) return _buildUntranscribed();
+    // Same lookup the analysis uses, so a marker sits on the line the AI
+    // was pointed at.
+    final notesBySegment = <int, List<UserNote>>{};
+    for (final note in widget.recording.notes) {
+      notesBySegment.putIfAbsent(segmentIndexFor(note.timestampMs, segments), () => []).add(note);
+    }
     return Column(
       children: [
         Padding(
@@ -642,10 +688,24 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
             itemCount: segments.length,
             itemBuilder: (context, index) {
               final segment = segments[index];
+              final notes = notesBySegment[index] ?? const [];
               return ListTile(
                 dense: true,
                 leading: Text(formatMs(segment.startMs)),
                 title: Text(segment.text),
+                trailing: notes.isEmpty
+                    ? null
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final note in notes)
+                            Icon(
+                              note.kind == UserNoteKind.star ? Icons.star : Icons.notes,
+                              size: 18,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                        ],
+                      ),
                 onTap: () => _seekAndPlay(Duration(milliseconds: segment.startMs)),
               );
             },
