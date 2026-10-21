@@ -66,13 +66,15 @@ class GlossaryTerm {
 const kGlossaryTermMaxChars = 20;
 const kGlossaryMaxTerms = 200;
 
-/// Characters that would break the whisper prompt's `、`-separated list.
-final _forbiddenChars = RegExp(r'[、，,。\n\r]');
+/// A line break would split the term in the one-per-line list sent to
+/// Claude. Punctuation is allowed: names like `Apple, Inc.` need it, and in
+/// the whisper prompt it only reads as part of the text.
+final _forbiddenChars = RegExp(r'[\n\r]');
 
 enum GlossaryTermError {
   empty('請輸入詞條'),
   tooLong('詞條最多 $kGlossaryTermMaxChars 字'),
-  forbiddenChar('詞條不能包含「、」「，」「。」或換行'),
+  forbiddenChar('詞條不能換行'),
   duplicate('詞條已存在'),
   glossaryFull('詞庫最多 $kGlossaryMaxTerms 條');
 

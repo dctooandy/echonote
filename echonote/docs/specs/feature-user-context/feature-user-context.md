@@ -214,7 +214,7 @@
 - **詞庫是空的**：prompt 只用固定開頭；`analyzeMeeting` 不帶 `glossary`。
 - **詞條重複**：新增時正確寫法相同（去掉前後空白後比對）就擋下，提示「已存在」。
 - **詞條或詞庫超過上限**（單條 20 字、整份 200 條）：新增時擋下並提示。
-- **詞條含有 `、`、`，`、`。` 或換行**：儲存前擋下或去除，以免破壞 prompt 格式。
+- **詞條含有換行**：儲存前擋下，因為送給 Claude 的詞庫是一行一個詞。標點符號（`、`、`，`、`,`、`。` 等）可以使用，例如公司全名 `Apple, Inc.`（決定 25）。
 - **`glossary.json` 損毀**：視為空詞庫並繼續轉錄，**不覆寫**損毀的檔案（避免使用者資料永久遺失），在詞庫頁顯示錯誤。
 - **詞庫太大**：超過 `kGlossaryPromptMaxChars` 的詞不會進入 whisper prompt，但仍然全部送給 Claude。
 - **重新轉錄失敗**：沿用 `RecordingTranscriber` 現有的保證，失敗時原本的逐字稿、修改、筆記都不動。
@@ -238,7 +238,7 @@
 
 ### 階段 0：詞庫基礎＋第 ① 層（先做，後面的設計都依賴實測出來的字數上限）
 
-- [x] **T1 詞庫資料層**：新增 `GlossaryTerm` model 和 `GlossaryStore`，讀寫 `Documents/glossary.json`。包含：檔案不存在時當作空詞庫；JSON 損毀時當作空詞庫且**不覆寫**；重複詞條（去掉前後空白後比對）擋下；單條 20 字、整份 200 條的上限；拒絕含 `、`、`，`、`。` 或換行的詞條。附單元測試（`test/services/glossary_store_test.dart`）。
+- [x] **T1 詞庫資料層**：新增 `GlossaryTerm` model 和 `GlossaryStore`，讀寫 `Documents/glossary.json`。包含：檔案不存在時當作空詞庫；JSON 損毀時當作空詞庫且**不覆寫**；重複詞條（去掉前後空白後比對）擋下；單條 20 字、整份 200 條的上限；拒絕含換行的詞條（原本也擋 `、`、`，`、`。`，依決定 25 放寬）。附單元測試（`test/services/glossary_store_test.dart`）。
 - [x] **T2 whisper prompt 組字**：純函式 `buildWhisperPrompt(terms, maxChars)`，包含固定開頭、`，會提到：`、`、` 分隔、排序（釘選 → `last_used_at` → `created_at`）、超過 `kGlossaryPromptMaxChars`（暫定 80）就停止。附單元測試，涵蓋空詞庫、剛好到上限、超過上限、排序。依賴：T1
 - [x] **T3 離線轉錄接上 prompt**：`TranscriptionService.transcribe()` 新增 `initialPrompt` 參數並傳給 `WhisperController.transcribe()`；`RecordingTranscriber` 轉錄前讀取詞庫、組出 prompt。匯入、錄音停止後的正式轉錄、重新轉錄三條路徑都要生效。依賴：T2
   - 2026-10-21 完成。追加：在 vendored `whisper_ggml` 接出 `carry_initial_prompt`（C++ 綁定、`TranscribeRequest`、DTO、`WhisperController.transcribe()`），預設開啟。
@@ -404,3 +404,4 @@
 | 22 | 詞庫頁沒說清楚要填正確寫法（T4 使用者填了中文音譯） | 空詞庫說明和新增欄位加上「填你希望逐字稿出現的寫法（例如 EchoNote），不是它聽起來的音」 |
 | 23 | T4 結論：第 ① 層去留 | 恢復，預設採 D2（詞庫＋`carry_initial_prompt`），`WHISPER_PROMPT` 開關保留到 T17 驗收後移除；`kGlossaryPromptMaxChars` 維持 80（5 個詞遠低於上限，尚無依據調整）。片段變長（188 → 60 段）先實際使用，T17 再判斷跳轉和筆記位置夠不夠準。T6 恢復 |
 | 24 | T6 即時預覽要不要帶詞庫 | 不帶。實測 median 解碼時間多 29%，超過 20% 門檻；`2a04233` 已 revert。即時預覽的重複迴圈另列後續項目 |
+| 25 | 詞條能不能有標點（驗收 T5 時使用者提出） | 只擋換行，`、`、`，`、`,`、`。` 都可以用，讓 `Apple, Inc.` 這類名稱能放進詞庫；whisper prompt 裡的標點只是文字的一部分，影響很小 |

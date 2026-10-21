@@ -80,7 +80,7 @@ void main() {
     });
 
     test('learn rejects an invalid term', () async {
-      expect(await store.learn('台積、電', '太基電'), GlossaryTermError.forbiddenChar);
+      expect(await store.learn('台積\n電', '太基電'), GlossaryTermError.forbiddenChar);
       expect((await store.load()).terms, isEmpty);
     });
 
@@ -126,9 +126,15 @@ void main() {
       expect(validateNewTerm('字' * 21, []), GlossaryTermError.tooLong);
     });
 
-    test('rejects characters that would break the prompt list', () {
-      for (final bad in ['台積、電', '台積，電', '台積,電', '台積。電', '台積\n電']) {
+    test('rejects a line break inside the term', () {
+      for (final bad in ['台積\n電', '台積\r電']) {
         expect(validateNewTerm(bad, []), GlossaryTermError.forbiddenChar, reason: bad);
+      }
+    });
+
+    test('accepts punctuation, as names need it', () {
+      for (final ok in ['Apple, Inc.', '台積，電', '台積、電', '台積。電', 'Yahoo!']) {
+        expect(validateNewTerm(ok, []), isNull, reason: ok);
       }
     });
 
