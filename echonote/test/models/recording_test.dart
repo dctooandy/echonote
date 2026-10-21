@@ -73,4 +73,70 @@ void main() {
       expect(Recording.fromJson(recording.toJson()).elapsedSeconds, 7);
     });
   });
+
+  group('user context fields', () {
+    test('legacy entry reads with empty notes and no flags', () {
+      final recording = Recording.fromJson(_legacyJson());
+
+      expect(recording.notes, isEmpty);
+      expect(recording.transcriptStaleAnalysis, isFalse);
+      expect(recording.dismissedReplacements, isEmpty);
+      expect(recording.segments.single.edited, isFalse);
+    });
+
+    test('legacy analysis reads with no highlight contexts', () {
+      final json = _legacyJson()
+        ..['analysis'] = {
+          'summary': {'overview': '概要', 'key_points': []},
+          'todos': [],
+          'structured_minutes': {'title': '', 'attendees': [], 'agenda_items': []},
+        };
+
+      expect(Recording.fromJson(json).analysis!.highlightContexts, isEmpty);
+    });
+
+    test('notes, flags, edits and highlight contexts round-trip', () {
+      final recording = Recording.fromJson(_legacyJson())
+        ..notes.addAll([
+          UserNote(
+            id: 'n1',
+            timestampMs: 1200,
+            kind: UserNoteKind.star,
+            createdAt: DateTime(2026, 10, 21, 9),
+          ),
+          UserNote(
+            id: 'n2',
+            timestampMs: 5000,
+            kind: UserNoteKind.text,
+            text: '報價要再確認',
+            createdAt: DateTime(2026, 10, 21, 9, 1),
+          ),
+        ])
+        ..transcriptStaleAnalysis = true
+        ..dismissedReplacements.add('太基電→台積電')
+        ..analysis = MeetingAnalysis(
+          overview: '',
+          keyPoints: [],
+          todos: [],
+          title: '',
+          attendees: [],
+          agendaItems: [],
+          highlightContexts: {'n1': '討論報價'},
+        );
+      recording.segments.single
+        ..text = '大家早'
+        ..edited = true;
+
+      final restored = Recording.fromJson(recording.toJson());
+      expect(restored.notes.map((n) => n.kind), [UserNoteKind.star, UserNoteKind.text]);
+      expect(restored.notes.first.text, isNull);
+      expect(restored.notes.last.text, '報價要再確認');
+      expect(restored.notes.last.timestampMs, 5000);
+      expect(restored.transcriptStaleAnalysis, isTrue);
+      expect(restored.dismissedReplacements, ['太基電→台積電']);
+      expect(restored.segments.single.text, '大家早');
+      expect(restored.segments.single.edited, isTrue);
+      expect(restored.analysis!.highlightContexts, {'n1': '討論報價'});
+    });
+  });
 }

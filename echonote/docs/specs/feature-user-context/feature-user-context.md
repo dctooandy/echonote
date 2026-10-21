@@ -262,7 +262,7 @@
 
 ### 階段 3：資料模型（筆記、編輯、過時標記）
 
-- [ ] **T9 `Recording` 相關 model 擴充**（`lib/models/recording.dart`）：
+- [x] **T9 `Recording` 相關 model 擴充**（`lib/models/recording.dart`）：
   - `Recording` 新增 `notes`、`transcript_stale_analysis`、`dismissed_replacements`；
   - 新增 `UserNote`；
   - `TranscriptSegment.text` 改成可修改，並新增 `edited`；
