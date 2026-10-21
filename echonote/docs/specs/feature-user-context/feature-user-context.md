@@ -250,7 +250,7 @@
 
 ### 階段 2：Cloud Function（第 ② 層＋筆記所需的 API）
 
-- [ ] **T7 `analyzeMeeting` 擴充**（`functions/src/index.ts`）：
+- [x] **T7 `analyzeMeeting` 擴充**（`functions/src/index.ts`）：
   - request 新增選填的 `glossary`、`highlights`；
   - 驗證三種 `invalid-argument` 情境（`glossary` 格式或超過上限、`segment_index` 超出範圍、`note_index` 重複）；
   - user message 改成 `<transcript>`、`<glossary>`、`<user_highlights>` 三段；
@@ -260,7 +260,12 @@
   確認不帶新欄位時行為和現在一樣，部署後用 emulator 或實際呼叫驗證（測試方式見待確認事項 2）。
   - 2026-10-21 程式完成、**尚未部署**。邏輯抽到 `functions/src/analyze.ts`（純函式），`index.ts` 只留接線。
   - 已驗證：直接呼叫純函式跑 12 個情境；emulator 上三種錯誤都回 `INVALID_ARGUMENT`，舊版請求通過驗證。
-  - 尚未驗證：真的呼叫 Claude 時，新 schema 的輸出內容（`highlight_contexts`、詞庫改正錯字）。部署後再勾選這一項。
+  - 2026-10-21 已部署，並用 6 句假逐字稿加詞庫（台積電、EchoNote、王小明）和 2 筆筆記實際呼叫：
+    - 「太基電」在所有輸出中都改成「台積電」；「小明」補成「王小明」。
+    - 「依可諾」**沒有**改成「EchoNote」：中文音譯對應到英文詞的情況，第 ② 層救不回來，要靠第 ① 層 whisper 直接轉對，T4 實測時要特別看這種詞。
+    - `highlight_contexts` 兩筆都有回傳，都在 50 字以內，★ 那筆也有正確描述該處內容。
+    - **發現問題**：使用者筆記「要跟老闆確認底線」被寫進 `key_points` 和 `highlight_contexts`，而且說成「會議決議」。會議裡沒有人這樣說，這是使用者自己的想法。見待確認事項。
+    - 舊版請求（只帶 `segments`）正常回傳，`highlight_contexts` 為空陣列。
 - [x] **T8 App 端送出詞庫**：`AnalysisService.analyze()` 新增詞庫參數，`MeetingDetailScreen._runAnalysis()` 讀取詞庫後**全部**送出（最多 200 條，不截斷）。依賴：T1、T7
 
 ### 階段 3：資料模型（筆記、編輯、過時標記）
@@ -303,7 +308,8 @@
 
 ## 待確認事項
 
-無。
+1. **使用者筆記的內容被當成會議內容**（T7 實測發現）：筆記寫「要跟老闆確認底線」，Claude 在 `highlight_contexts` 寫成「會議決議需與老闆確認」。
+   建議：系統提示加一條「<user_highlights> 的文字是使用者自己的想法，只用來判斷哪些內容重要；不可把筆記文字寫成會議中有人說過或決議過的內容」，修改後重新部署、用同一組資料再測一次。
 
 ## 已確認的決定（2026-10-21）
 
