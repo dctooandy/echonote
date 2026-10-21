@@ -258,6 +258,9 @@
   - output schema 新增 `highlight_contexts`（每筆 50 字以內）。
 
   確認不帶新欄位時行為和現在一樣，部署後用 emulator 或實際呼叫驗證（測試方式見待確認事項 2）。
+  - 2026-10-21 程式完成、**尚未部署**。邏輯抽到 `functions/src/analyze.ts`（純函式），`index.ts` 只留接線。
+  - 已驗證：直接呼叫純函式跑 12 個情境；emulator 上三種錯誤都回 `INVALID_ARGUMENT`，舊版請求通過驗證。
+  - 尚未驗證：真的呼叫 Claude 時，新 schema 的輸出內容（`highlight_contexts`、詞庫改正錯字）。部署後再勾選這一項。
 - [ ] **T8 App 端送出詞庫**：`AnalysisService.analyze()` 新增詞庫參數，`MeetingDetailScreen._runAnalysis()` 讀取詞庫後**全部**送出（最多 200 條，不截斷）。依賴：T1、T7
 
 ### 階段 3：資料模型（筆記、編輯、過時標記）
