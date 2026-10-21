@@ -45,6 +45,7 @@ void main() {
     await open(tester);
 
     expect(find.textContaining('加入人名、公司名'), findsOneWidget);
+    expect(find.textContaining('不是它聽起來的音'), findsOneWidget);
   });
 
   testWidgets('the first term can be added to an empty glossary', (tester) async {

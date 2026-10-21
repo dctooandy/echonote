@@ -137,7 +137,9 @@ class _GlossaryScreenState extends State<GlossaryScreen> {
         child: Padding(
           padding: EdgeInsets.all(24),
           child: Text(
-            '加入人名、公司名、產品名等專有名詞，轉錄和摘要會優先使用正確寫法。\n修改逐字稿時也可以直接把正確寫法加進來。',
+            '加入人名、公司名、產品名等專有名詞的正確寫法，轉錄和摘要會優先使用。\n'
+            '請填你希望逐字稿出現的寫法（例如 EchoNote），不是它聽起來的音（例如「一可諾」）。\n'
+            '修改逐字稿時也可以直接把正確寫法加進來。',
             textAlign: TextAlign.center,
           ),
         ),
@@ -229,7 +231,11 @@ class _TermDialogState extends State<_TermDialog> {
       content: TextField(
         controller: _controller,
         autofocus: true,
-        decoration: InputDecoration(hintText: '例如：台積電', errorText: _error),
+        decoration: InputDecoration(
+          hintText: '例如：EchoNote、台積電',
+          helperText: '填正確寫法，不是聽起來的音',
+          errorText: _error,
+        ),
         onChanged: (_) {
           if (_error != null) setState(() => _error = null);
         },
