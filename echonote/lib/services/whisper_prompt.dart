@@ -56,6 +56,13 @@ List<GlossaryTerm> selectPromptTerms(
   return selected;
 }
 
+/// The live preview's prompt. Live decoding runs with no_context, so the
+/// prompt is all the context it gets and is never pushed out; without at
+/// least the lead it drifts into Simplified Chinese, so modes other than
+/// [WhisperPromptMode.glossary] still send the lead.
+String buildLivePrompt(WhisperPromptMode mode, List<GlossaryTerm> terms) =>
+    buildWhisperPrompt(mode == WhisperPromptMode.glossary ? terms : const []);
+
 /// `以下是繁體中文的會議逐字稿，會提到：A、B、C。`, or just the lead sentence when
 /// no term fits.
 String buildWhisperPrompt(List<GlossaryTerm> terms, {int maxChars = kGlossaryPromptMaxChars}) {
