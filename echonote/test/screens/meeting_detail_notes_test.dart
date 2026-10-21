@@ -200,4 +200,35 @@ void main() {
 
     expect(find.text('用目前詞庫重新轉錄'), findsNothing);
   });
+
+  testWidgets('long-pressing a transcript line edits it', (tester) async {
+    final recording = _recording();
+    await _pump(tester, recording);
+    await tester.tap(find.text('逐字稿'));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('大家好'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), ' 大家早 ');
+    await tester.tap(find.text('儲存'));
+    await tester.pumpAndSettle();
+
+    expect(recording.segments.single.text, '大家早');
+    expect(recording.segments.single.edited, isTrue);
+    expect(find.text('大家早'), findsOneWidget);
+  });
+
+  testWidgets('saving an unchanged line does not mark it edited', (tester) async {
+    final recording = _recording();
+    await _pump(tester, recording);
+    await tester.tap(find.text('逐字稿'));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('大家好'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('儲存'));
+    await tester.pumpAndSettle();
+
+    expect(recording.segments.single.edited, isFalse);
+  });
 }

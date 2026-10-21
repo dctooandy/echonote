@@ -304,6 +304,31 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     return (text == null || text.isEmpty) ? null : text;
   }
 
+  /// Tap seeks, so editing is on long press.
+  Future<void> _editSegment(TranscriptSegment segment) async {
+    final controller = TextEditingController(text: segment.text);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('修改逐字稿 ${formatMs(segment.startMs)}'),
+        content: TextField(controller: controller, autofocus: true, maxLines: 4),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('儲存'),
+          ),
+        ],
+      ),
+    );
+    final text = result?.trim();
+    if (text == null || text.isEmpty || text == segment.text) return;
+    segment
+      ..text = text
+      ..edited = true;
+    _persist();
+  }
+
   Future<void> _addAttendee(MeetingAnalysis analysis) async {
     final controller = TextEditingController();
     final result = await showDialog<String>(
@@ -769,6 +794,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
                         ],
                       ),
                 onTap: () => _seekAndPlay(Duration(milliseconds: segment.startMs)),
+                onLongPress: () => _editSegment(segment),
               );
             },
           ),
