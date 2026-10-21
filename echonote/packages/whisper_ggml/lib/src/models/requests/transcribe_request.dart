@@ -45,6 +45,17 @@ abstract class TranscribeRequest with _$TranscribeRequest {
     /// of every previous version of this package.
     @Default(false) bool noContext,
 
+    /// Sets `whisper_full_params.carry_initial_prompt` on the native side.
+    ///
+    /// By default whisper.cpp only seeds the first 30 s window with
+    /// [initialPrompt]; later windows are conditioned on previously decoded
+    /// text, which soon pushes the prompt out. When `true`, the prompt is
+    /// prepended to every window, so vocabulary hints hold for the whole
+    /// recording.
+    ///
+    /// Default `false` matches whisper.cpp's default.
+    @Default(false) bool carryInitialPrompt,
+
     /// Sets `whisper_full_params.suppress_non_speech_tokens` on the
     /// native side.
     ///

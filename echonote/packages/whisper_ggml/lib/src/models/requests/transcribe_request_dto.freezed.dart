@@ -41,6 +41,8 @@ mixin _$TranscribeRequestDto {
   String? get initialPrompt;
   @JsonKey(name: 'no_context')
   bool get noContext;
+  @JsonKey(name: 'carry_initial_prompt')
+  bool get carryInitialPrompt;
   @JsonKey(name: 'suppress_non_speech_tokens')
   bool get suppressNonSpeechTokens;
 
@@ -92,6 +94,8 @@ mixin _$TranscribeRequestDto {
                 other.initialPrompt == initialPrompt) &&
             (identical(other.noContext, noContext) ||
                 other.noContext == noContext) &&
+            (identical(other.carryInitialPrompt, carryInitialPrompt) ||
+                other.carryInitialPrompt == carryInitialPrompt) &&
             (identical(
                     other.suppressNonSpeechTokens, suppressNonSpeechTokens) ||
                 other.suppressNonSpeechTokens == suppressNonSpeechTokens) &&
@@ -101,30 +105,32 @@ mixin _$TranscribeRequestDto {
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
-      runtimeType,
-      audio,
-      model,
-      isTranslate,
-      threads,
-      isVerbose,
-      language,
-      isSpecialTokens,
-      isNoTimestamps,
-      nProcessors,
-      splitOnWord,
-      noFallback,
-      isRealtime,
-      diarize,
-      speedUp,
-      initialPrompt,
-      noContext,
-      suppressNonSpeechTokens,
-      progressCallback);
+  int get hashCode => Object.hashAll([
+        runtimeType,
+        audio,
+        model,
+        isTranslate,
+        threads,
+        isVerbose,
+        language,
+        isSpecialTokens,
+        isNoTimestamps,
+        nProcessors,
+        splitOnWord,
+        noFallback,
+        isRealtime,
+        diarize,
+        speedUp,
+        initialPrompt,
+        noContext,
+        carryInitialPrompt,
+        suppressNonSpeechTokens,
+        progressCallback
+      ]);
 
   @override
   String toString() {
-    return 'TranscribeRequestDto(audio: $audio, model: $model, isTranslate: $isTranslate, threads: $threads, isVerbose: $isVerbose, language: $language, isSpecialTokens: $isSpecialTokens, isNoTimestamps: $isNoTimestamps, nProcessors: $nProcessors, splitOnWord: $splitOnWord, noFallback: $noFallback, isRealtime: $isRealtime, diarize: $diarize, speedUp: $speedUp, initialPrompt: $initialPrompt, noContext: $noContext, suppressNonSpeechTokens: $suppressNonSpeechTokens, progressCallback: $progressCallback)';
+    return 'TranscribeRequestDto(audio: $audio, model: $model, isTranslate: $isTranslate, threads: $threads, isVerbose: $isVerbose, language: $language, isSpecialTokens: $isSpecialTokens, isNoTimestamps: $isNoTimestamps, nProcessors: $nProcessors, splitOnWord: $splitOnWord, noFallback: $noFallback, isRealtime: $isRealtime, diarize: $diarize, speedUp: $speedUp, initialPrompt: $initialPrompt, noContext: $noContext, carryInitialPrompt: $carryInitialPrompt, suppressNonSpeechTokens: $suppressNonSpeechTokens, progressCallback: $progressCallback)';
   }
 }
 
@@ -151,6 +157,7 @@ abstract mixin class $TranscribeRequestDtoCopyWith<$Res> {
       @JsonKey(name: 'speed_up') bool speedUp,
       @JsonKey(name: 'initial_prompt') String? initialPrompt,
       @JsonKey(name: 'no_context') bool noContext,
+      @JsonKey(name: 'carry_initial_prompt') bool carryInitialPrompt,
       @JsonKey(name: 'suppress_non_speech_tokens') bool suppressNonSpeechTokens,
       @JsonKey(name: 'progress_callback') int? progressCallback});
 }
@@ -184,6 +191,7 @@ class _$TranscribeRequestDtoCopyWithImpl<$Res>
     Object? speedUp = null,
     Object? initialPrompt = freezed,
     Object? noContext = null,
+    Object? carryInitialPrompt = null,
     Object? suppressNonSpeechTokens = null,
     Object? progressCallback = freezed,
   }) {
@@ -251,6 +259,10 @@ class _$TranscribeRequestDtoCopyWithImpl<$Res>
       noContext: null == noContext
           ? _self.noContext
           : noContext // ignore: cast_nullable_to_non_nullable
+              as bool,
+      carryInitialPrompt: null == carryInitialPrompt
+          ? _self.carryInitialPrompt
+          : carryInitialPrompt // ignore: cast_nullable_to_non_nullable
               as bool,
       suppressNonSpeechTokens: null == suppressNonSpeechTokens
           ? _self.suppressNonSpeechTokens
@@ -374,6 +386,7 @@ extension TranscribeRequestDtoPatterns on TranscribeRequestDto {
             @JsonKey(name: 'speed_up') bool speedUp,
             @JsonKey(name: 'initial_prompt') String? initialPrompt,
             @JsonKey(name: 'no_context') bool noContext,
+            @JsonKey(name: 'carry_initial_prompt') bool carryInitialPrompt,
             @JsonKey(name: 'suppress_non_speech_tokens')
             bool suppressNonSpeechTokens,
             @JsonKey(name: 'progress_callback') int? progressCallback)?
@@ -400,6 +413,7 @@ extension TranscribeRequestDtoPatterns on TranscribeRequestDto {
             _that.speedUp,
             _that.initialPrompt,
             _that.noContext,
+            _that.carryInitialPrompt,
             _that.suppressNonSpeechTokens,
             _that.progressCallback);
       case _:
@@ -439,6 +453,7 @@ extension TranscribeRequestDtoPatterns on TranscribeRequestDto {
             @JsonKey(name: 'speed_up') bool speedUp,
             @JsonKey(name: 'initial_prompt') String? initialPrompt,
             @JsonKey(name: 'no_context') bool noContext,
+            @JsonKey(name: 'carry_initial_prompt') bool carryInitialPrompt,
             @JsonKey(name: 'suppress_non_speech_tokens')
             bool suppressNonSpeechTokens,
             @JsonKey(name: 'progress_callback') int? progressCallback)
@@ -464,6 +479,7 @@ extension TranscribeRequestDtoPatterns on TranscribeRequestDto {
             _that.speedUp,
             _that.initialPrompt,
             _that.noContext,
+            _that.carryInitialPrompt,
             _that.suppressNonSpeechTokens,
             _that.progressCallback);
       case _:
@@ -502,6 +518,7 @@ extension TranscribeRequestDtoPatterns on TranscribeRequestDto {
             @JsonKey(name: 'speed_up') bool speedUp,
             @JsonKey(name: 'initial_prompt') String? initialPrompt,
             @JsonKey(name: 'no_context') bool noContext,
+            @JsonKey(name: 'carry_initial_prompt') bool carryInitialPrompt,
             @JsonKey(name: 'suppress_non_speech_tokens')
             bool suppressNonSpeechTokens,
             @JsonKey(name: 'progress_callback') int? progressCallback)?
@@ -527,6 +544,7 @@ extension TranscribeRequestDtoPatterns on TranscribeRequestDto {
             _that.speedUp,
             _that.initialPrompt,
             _that.noContext,
+            _that.carryInitialPrompt,
             _that.suppressNonSpeechTokens,
             _that.progressCallback);
       case _:
@@ -555,6 +573,7 @@ class _TranscribeRequestDto extends TranscribeRequestDto {
       @JsonKey(name: 'speed_up') required this.speedUp,
       @JsonKey(name: 'initial_prompt') this.initialPrompt,
       @JsonKey(name: 'no_context') this.noContext = false,
+      @JsonKey(name: 'carry_initial_prompt') this.carryInitialPrompt = false,
       @JsonKey(name: 'suppress_non_speech_tokens')
       this.suppressNonSpeechTokens = false,
       @JsonKey(name: 'progress_callback') this.progressCallback})
@@ -605,6 +624,9 @@ class _TranscribeRequestDto extends TranscribeRequestDto {
   @override
   @JsonKey(name: 'no_context')
   final bool noContext;
+  @override
+  @JsonKey(name: 'carry_initial_prompt')
+  final bool carryInitialPrompt;
   @override
   @JsonKey(name: 'suppress_non_speech_tokens')
   final bool suppressNonSpeechTokens;
@@ -663,6 +685,8 @@ class _TranscribeRequestDto extends TranscribeRequestDto {
                 other.initialPrompt == initialPrompt) &&
             (identical(other.noContext, noContext) ||
                 other.noContext == noContext) &&
+            (identical(other.carryInitialPrompt, carryInitialPrompt) ||
+                other.carryInitialPrompt == carryInitialPrompt) &&
             (identical(
                     other.suppressNonSpeechTokens, suppressNonSpeechTokens) ||
                 other.suppressNonSpeechTokens == suppressNonSpeechTokens) &&
@@ -672,30 +696,32 @@ class _TranscribeRequestDto extends TranscribeRequestDto {
 
   @JsonKey(includeFromJson: false, includeToJson: false)
   @override
-  int get hashCode => Object.hash(
-      runtimeType,
-      audio,
-      model,
-      isTranslate,
-      threads,
-      isVerbose,
-      language,
-      isSpecialTokens,
-      isNoTimestamps,
-      nProcessors,
-      splitOnWord,
-      noFallback,
-      isRealtime,
-      diarize,
-      speedUp,
-      initialPrompt,
-      noContext,
-      suppressNonSpeechTokens,
-      progressCallback);
+  int get hashCode => Object.hashAll([
+        runtimeType,
+        audio,
+        model,
+        isTranslate,
+        threads,
+        isVerbose,
+        language,
+        isSpecialTokens,
+        isNoTimestamps,
+        nProcessors,
+        splitOnWord,
+        noFallback,
+        isRealtime,
+        diarize,
+        speedUp,
+        initialPrompt,
+        noContext,
+        carryInitialPrompt,
+        suppressNonSpeechTokens,
+        progressCallback
+      ]);
 
   @override
   String toString() {
-    return 'TranscribeRequestDto(audio: $audio, model: $model, isTranslate: $isTranslate, threads: $threads, isVerbose: $isVerbose, language: $language, isSpecialTokens: $isSpecialTokens, isNoTimestamps: $isNoTimestamps, nProcessors: $nProcessors, splitOnWord: $splitOnWord, noFallback: $noFallback, isRealtime: $isRealtime, diarize: $diarize, speedUp: $speedUp, initialPrompt: $initialPrompt, noContext: $noContext, suppressNonSpeechTokens: $suppressNonSpeechTokens, progressCallback: $progressCallback)';
+    return 'TranscribeRequestDto(audio: $audio, model: $model, isTranslate: $isTranslate, threads: $threads, isVerbose: $isVerbose, language: $language, isSpecialTokens: $isSpecialTokens, isNoTimestamps: $isNoTimestamps, nProcessors: $nProcessors, splitOnWord: $splitOnWord, noFallback: $noFallback, isRealtime: $isRealtime, diarize: $diarize, speedUp: $speedUp, initialPrompt: $initialPrompt, noContext: $noContext, carryInitialPrompt: $carryInitialPrompt, suppressNonSpeechTokens: $suppressNonSpeechTokens, progressCallback: $progressCallback)';
   }
 }
 
@@ -724,6 +750,7 @@ abstract mixin class _$TranscribeRequestDtoCopyWith<$Res>
       @JsonKey(name: 'speed_up') bool speedUp,
       @JsonKey(name: 'initial_prompt') String? initialPrompt,
       @JsonKey(name: 'no_context') bool noContext,
+      @JsonKey(name: 'carry_initial_prompt') bool carryInitialPrompt,
       @JsonKey(name: 'suppress_non_speech_tokens') bool suppressNonSpeechTokens,
       @JsonKey(name: 'progress_callback') int? progressCallback});
 }
@@ -757,6 +784,7 @@ class __$TranscribeRequestDtoCopyWithImpl<$Res>
     Object? speedUp = null,
     Object? initialPrompt = freezed,
     Object? noContext = null,
+    Object? carryInitialPrompt = null,
     Object? suppressNonSpeechTokens = null,
     Object? progressCallback = freezed,
   }) {
@@ -824,6 +852,10 @@ class __$TranscribeRequestDtoCopyWithImpl<$Res>
       noContext: null == noContext
           ? _self.noContext
           : noContext // ignore: cast_nullable_to_non_nullable
+              as bool,
+      carryInitialPrompt: null == carryInitialPrompt
+          ? _self.carryInitialPrompt
+          : carryInitialPrompt // ignore: cast_nullable_to_non_nullable
               as bool,
       suppressNonSpeechTokens: null == suppressNonSpeechTokens
           ? _self.suppressNonSpeechTokens

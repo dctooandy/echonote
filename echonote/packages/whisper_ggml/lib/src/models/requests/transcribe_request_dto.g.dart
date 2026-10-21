@@ -25,6 +25,7 @@ _TranscribeRequestDto _$TranscribeRequestDtoFromJson(
       speedUp: json['speed_up'] as bool,
       initialPrompt: json['initial_prompt'] as String?,
       noContext: json['no_context'] as bool? ?? false,
+      carryInitialPrompt: json['carry_initial_prompt'] as bool? ?? false,
       suppressNonSpeechTokens:
           json['suppress_non_speech_tokens'] as bool? ?? false,
       progressCallback: (json['progress_callback'] as num?)?.toInt(),
@@ -49,6 +50,7 @@ Map<String, dynamic> _$TranscribeRequestDtoToJson(
       'speed_up': instance.speedUp,
       'initial_prompt': instance.initialPrompt,
       'no_context': instance.noContext,
+      'carry_initial_prompt': instance.carryInitialPrompt,
       'suppress_non_speech_tokens': instance.suppressNonSpeechTokens,
       'progress_callback': instance.progressCallback,
     };
