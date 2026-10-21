@@ -3,6 +3,29 @@ import '../models/glossary.dart';
 /// Kept in every prompt: without it whisper drifts into Simplified Chinese.
 const kTranscriptPromptLead = '以下是繁體中文的會議逐字稿';
 
+/// What offline transcription sends whisper as its initial prompt.
+enum WhisperPromptMode {
+  /// No prompt: whisper's own behavior, as before the glossary existed.
+  none,
+
+  /// Only [kTranscriptPromptLead].
+  lead,
+
+  /// The lead plus the glossary (layer ①).
+  glossary;
+
+  static WhisperPromptMode parse(String value) =>
+      values.firstWhere((m) => m.name == value, orElse: () => none);
+}
+
+/// Layer ① is off by default: on device, glossary terms came out *less*
+/// accurate with the prompt than without (spec T4, 2026-10-21). Compare on
+/// the same recording with
+///   flutter run --release --dart-define=WHISPER_PROMPT=none|lead|glossary
+final kWhisperPromptMode = WhisperPromptMode.parse(
+  const String.fromEnvironment('WHISPER_PROMPT', defaultValue: 'none'),
+);
+
 /// Budget, in characters, for the glossary part of the prompt (the fixed
 /// lead and separators around it aren't counted). Whisper caps the prompt
 /// at ~224 tokens and a CJK character can take more than one, so this is a

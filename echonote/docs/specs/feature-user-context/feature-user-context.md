@@ -245,13 +245,25 @@
 - [ ] **T4 📱 實測詞庫效果和字數上限**：取一場真實錄音，列出 10 個專有名詞，比較沒有詞庫、詞庫 80 字、詞庫加長三種情況的**正確命中率**、**幻覺**（錄音沒講卻出現詞庫詞、prompt 被重複）和**轉錄時間**。另外比較 `carry_initial_prompt` 開和關，看**錄音後段**的命中率差異。依結果決定 `kGlossaryPromptMaxChars` 和是否維持開啟，把數字和結論寫回本規格「組成 whisper prompt 的規則」。依賴：T3
   - 詞庫輸入：在 App 的詞庫頁新增（T5 完成後，`GLOSSARY_SEED` 已移除）。
   - 關掉 carry：再加 `--dart-define=WHISPER_CARRY_PROMPT=false`。
-  - 實際送出的 prompt 會印在 log：`[Transcriber] initial prompt: …`。
+  - 實際送出的 prompt 會印在 log：`[Transcriber] prompt mode=… carry=… initial prompt: …`。
+  - **2026-10-21 第一次實測（使用者）**：錄音「手機應用開發技術介紹」，詞庫 3 個詞。結果**詞庫裡的詞本身反而轉錯**，一般字句沒有明顯變化。詞庫只有 3 個詞，prompt 很短，「詞庫擠掉前文空間」不太可能是主因；比較可能是 whisper 本來就聽不出這些詞，或 prompt 讓它往奇怪的寫法偏。
+  - 因此第 ① 層**預設停用**（`WHISPER_PROMPT` 預設 `none`，等於這個分支以前的行為），改用下面的四組對照找原因。第 ② 層、第 ③ 層不受影響。
+  - 四組對照（同一場錄音、同一份詞庫，每組重新 build 一次）：
+
+    | 組 | 指令 | 送給 whisper 的 prompt |
+    |---|---|---|
+    | A | `flutter run --release` | 不送 |
+    | B | `flutter run --release --dart-define=WHISPER_PROMPT=lead` | 只有固定開頭 |
+    | C | `flutter run --release --dart-define=WHISPER_PROMPT=glossary --dart-define=WHISPER_CARRY_PROMPT=false` | 固定開頭＋詞庫，只影響開頭 30 秒 |
+    | D | `flutter run --release --dart-define=WHISPER_PROMPT=glossary` | 固定開頭＋詞庫，每 30 秒都帶 |
+
+  - 判讀：D、C 比 A 好就恢復第 ① 層並選較好的那組；都不比 A 好就把第 ① 層移出 P1，詞庫只用在摘要和學詞。
 
 ### 階段 1：詞庫管理＋即時預覽
 
 - [x] **T5 詞庫管理頁**：完成後移除 `main.dart` 的 `GLOSSARY_SEED`。新增 `GlossaryScreen`（列表、新增、編輯、刪除、釘選、顯示「前 N 個詞會送進轉錄」），在 `HomeScreen` 的 AppBar 加入口。UI 暫定。依賴：T1、T2
   - 2026-10-21 完成，**尚未實機驗證**。清單依 prompt 優先順序排列（排序抽成 `sortByPromptPriority`，和 prompt 共用）；放不進轉錄 prompt 的詞標「只用在摘要」，學到的詞標「從修改中學到」並列出常見誤寫。刪除可復原。新增詞條時也設定 `last_used_at`（規格原本就這樣寫，T1 漏了，一併補上）。`GLOSSARY_SEED` 已移除。
-- [ ] **T6 📱 即時預覽帶詞庫＋重新量測延遲**：`kLivePreviewConfig.initialPrompt` 改成執行時由詞庫組出（`LivePreviewConfig` 目前是 `const`，要調整成可以在執行時帶入）。在實機上用和 2026-10-10 相同的方式量測 median run 和 max lag；明顯變慢就退回固定開頭，並把結果寫回規格。依賴：T2
+- [ ] **T6 📱 即時預覽帶詞庫＋重新量測延遲**（**暫停**，等 T4 結論，見決定 21）：`kLivePreviewConfig.initialPrompt` 改成執行時由詞庫組出（`LivePreviewConfig` 目前是 `const`，要調整成可以在執行時帶入）。在實機上用和 2026-10-10 相同的方式量測 median run 和 max lag；明顯變慢就退回固定開頭，並把結果寫回規格。依賴：T2
 
 ### 階段 2：Cloud Function（第 ② 層＋筆記所需的 API）
 
@@ -346,3 +358,4 @@
 | 18 | 使用者筆記被當成會議內容（T7 實測發現） | 系統提示加上「筆記只標示重要位置，不可寫成會議發言或決議」（`270540c`，已部署）。重測後不再寫成「會議決議」，但筆記的意思仍以「需要與內部確認降價底線」的形式出現。殘留問題留到 T17 用真實會議判斷是否還要處理 |
 | 19 | diff 只抓到半個詞（「太基」→「台積」）怎麼辦（T16 實作時發現） | 正確寫法做成可編輯欄位，錯誤寫法依使用者補的字自動推算；「修正其他 N 處」用推算後的完整錯誤寫法比對 |
 | 20 | 單字替換要不要詢問 | 不詢問，長度規則從 1～10 字改成 2～10 字 |
+| 21 | 第 ① 層實測讓詞庫的詞更不準（T4 第一次實測） | 第 ① 層預設停用（`WHISPER_PROMPT=none`），用 A～D 四組對照找原因後再決定去留；T6（即時預覽帶詞庫）暫停，等 T4 結論 |

@@ -7,9 +7,12 @@ import '../services/whisper_prompt.dart';
 /// The global glossary. Listed in prompt priority order, so the user sees
 /// which terms make it into transcription.
 class GlossaryScreen extends StatefulWidget {
-  const GlossaryScreen({super.key, this.store});
+  const GlossaryScreen({super.key, this.store, this.promptMode});
 
   final GlossaryStore? store;
+
+  /// Defaults to [kWhisperPromptMode].
+  final WhisperPromptMode? promptMode;
 
   @override
   State<GlossaryScreen> createState() => _GlossaryScreenState();
@@ -141,7 +144,9 @@ class _GlossaryScreenState extends State<GlossaryScreen> {
       );
     }
     final ordered = sortByPromptPriority(_terms);
-    final inPrompt = selectPromptTerms(_terms);
+    final usedInTranscription =
+        (widget.promptMode ?? kWhisperPromptMode) == WhisperPromptMode.glossary;
+    final inPrompt = usedInTranscription ? selectPromptTerms(_terms) : _terms;
     final theme = Theme.of(context);
     return ListView(
       padding: const EdgeInsets.only(bottom: 88),
@@ -149,8 +154,10 @@ class _GlossaryScreenState extends State<GlossaryScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
           child: Text(
-            '前 ${inPrompt.length} 個詞會送進語音轉錄（上限 $kGlossaryPromptMaxChars 字）。'
-            '釘選的詞優先，其次是最近用過的。全部的詞都會用在摘要。',
+            usedInTranscription
+                ? '前 ${inPrompt.length} 個詞會送進語音轉錄（上限 $kGlossaryPromptMaxChars 字）。'
+                      '釘選的詞優先，其次是最近用過的。全部的詞都會用在摘要。'
+                : '詞庫目前只用在摘要：語音轉錄暫時不使用詞庫（效果測試中）。',
             style: theme.textTheme.bodySmall,
           ),
         ),
