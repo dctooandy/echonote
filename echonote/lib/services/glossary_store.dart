@@ -63,7 +63,12 @@ class GlossaryStore {
     final now = DateTime.now();
     await save([
       ...loaded.terms,
-      GlossaryTerm(id: now.microsecondsSinceEpoch.toString(), term: raw.trim(), createdAt: now),
+      GlossaryTerm(
+        id: now.microsecondsSinceEpoch.toString(),
+        term: raw.trim(),
+        createdAt: now,
+        lastUsedAt: now,
+      ),
     ]);
     return null;
   }

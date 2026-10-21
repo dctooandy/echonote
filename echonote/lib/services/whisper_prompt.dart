@@ -9,18 +9,20 @@ const kTranscriptPromptLead = '以下是繁體中文的會議逐字稿';
 /// provisional value to re-measure on device (spec task T4).
 const kGlossaryPromptMaxChars = 80;
 
-/// The terms that fit into the prompt, highest priority first: pinned, then
-/// most recently used, then most recently added. Stops at the first term
-/// that would exceed [maxChars] rather than skipping it, so a lower
-/// priority term never displaces a higher one.
+/// A copy of [terms], highest priority first: pinned, then most recently
+/// used, then most recently added.
+List<GlossaryTerm> sortByPromptPriority(List<GlossaryTerm> terms) => [...terms]..sort(_byPriority);
+
+/// The terms that fit into the prompt, in [sortByPromptPriority] order.
+/// Stops at the first term that would exceed [maxChars] rather than
+/// skipping it, so a lower priority term never displaces a higher one.
 List<GlossaryTerm> selectPromptTerms(
   List<GlossaryTerm> terms, {
   int maxChars = kGlossaryPromptMaxChars,
 }) {
-  final sorted = [...terms]..sort(_byPriority);
   final selected = <GlossaryTerm>[];
   var used = 0;
-  for (final term in sorted) {
+  for (final term in sortByPromptPriority(terms)) {
     // `、` between terms counts toward the budget.
     final cost = term.term.runes.length + (selected.isEmpty ? 0 : 1);
     if (used + cost > maxChars) break;

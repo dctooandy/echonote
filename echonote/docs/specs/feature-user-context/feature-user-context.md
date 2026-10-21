@@ -243,13 +243,14 @@
 - [x] **T3 離線轉錄接上 prompt**：`TranscriptionService.transcribe()` 新增 `initialPrompt` 參數並傳給 `WhisperController.transcribe()`；`RecordingTranscriber` 轉錄前讀取詞庫、組出 prompt。匯入、錄音停止後的正式轉錄、重新轉錄三條路徑都要生效。依賴：T2
   - 2026-10-21 完成。追加：在 vendored `whisper_ggml` 接出 `carry_initial_prompt`（C++ 綁定、`TranscribeRequest`、DTO、`WhisperController.transcribe()`），預設開啟。
 - [ ] **T4 📱 實測詞庫效果和字數上限**：取一場真實錄音，列出 10 個專有名詞，比較沒有詞庫、詞庫 80 字、詞庫加長三種情況的**正確命中率**、**幻覺**（錄音沒講卻出現詞庫詞、prompt 被重複）和**轉錄時間**。另外比較 `carry_initial_prompt` 開和關，看**錄音後段**的命中率差異。依結果決定 `kGlossaryPromptMaxChars` 和是否維持開啟，把數字和結論寫回本規格「組成 whisper prompt 的規則」。依賴：T3
-  - 詞庫輸入：`flutter run --release --dart-define=GLOSSARY_SEED=詞1、詞2、詞3`（啟動時寫入，重複的會略過）。
+  - 詞庫輸入：在 App 的詞庫頁新增（T5 完成後，`GLOSSARY_SEED` 已移除）。
   - 關掉 carry：再加 `--dart-define=WHISPER_CARRY_PROMPT=false`。
   - 實際送出的 prompt 會印在 log：`[Transcriber] initial prompt: …`。
 
 ### 階段 1：詞庫管理＋即時預覽
 
-- [ ] **T5 詞庫管理頁**：完成後移除 `main.dart` 的 `GLOSSARY_SEED`。新增 `GlossaryScreen`（列表、新增、編輯、刪除、釘選、顯示「前 N 個詞會送進轉錄」），在 `HomeScreen` 的 AppBar 加入口。UI 暫定。依賴：T1、T2
+- [x] **T5 詞庫管理頁**：完成後移除 `main.dart` 的 `GLOSSARY_SEED`。新增 `GlossaryScreen`（列表、新增、編輯、刪除、釘選、顯示「前 N 個詞會送進轉錄」），在 `HomeScreen` 的 AppBar 加入口。UI 暫定。依賴：T1、T2
+  - 2026-10-21 完成，**尚未實機驗證**。清單依 prompt 優先順序排列（排序抽成 `sortByPromptPriority`，和 prompt 共用）；放不進轉錄 prompt 的詞標「只用在摘要」，學到的詞標「從修改中學到」並列出常見誤寫。刪除可復原。新增詞條時也設定 `last_used_at`（規格原本就這樣寫，T1 漏了，一併補上）。`GLOSSARY_SEED` 已移除。
 - [ ] **T6 📱 即時預覽帶詞庫＋重新量測延遲**：`kLivePreviewConfig.initialPrompt` 改成執行時由詞庫組出（`LivePreviewConfig` 目前是 `const`，要調整成可以在執行時帶入）。在實機上用和 2026-10-10 相同的方式量測 median run 和 max lag；明顯變慢就退回固定開頭，並把結果寫回規格。依賴：T2
 
 ### 階段 2：Cloud Function（第 ② 層＋筆記所需的 API）
@@ -296,7 +297,7 @@
 ### 階段 5：重新轉錄、逐字稿編輯、第 ③ 層
 
 - [x] **T14 用目前詞庫重新轉錄**：已轉錄的錄音在 AppBar 選單新增入口；確認對話框依有沒有 `edited` 片段顯示不同警告；已有分析就設 `transcript_stale_analysis = true`，摘要頁顯示「分析可能過時」提示列和「重新分析」；轉錄失敗時原資料不動（沿用 `RecordingTranscriber` 的保證）。依賴：T3、T9
-  - 2026-10-21 完成，**尚未實機驗證**。「可能過時」標記改在 `RecordingTranscriber` 設定（轉錄成功且已有分析時），一次寫檔。提示列放在播放列下方、所有分頁都看得到（待辦和會議紀錄一樣會過時），不只摘要頁。重新轉錄進度改顯示在播放列下方，舊逐字稿在完成前照常可看。
+  - 2026-10-21 完成，實機驗收通過。「可能過時」標記改在 `RecordingTranscriber` 設定（轉錄成功且已有分析時），一次寫檔。提示列放在播放列下方、所有分頁都看得到（待辦和會議紀錄一樣會過時），不只摘要頁。重新轉錄進度改顯示在播放列下方，舊逐字稿在完成前照常可看。
 - [x] **T15 逐字稿片段編輯**：長按片段跳出編輯對話框（點擊維持跳轉播放），儲存後標記 `edited = true` 並存檔。依賴：T9
   - 2026-10-21 完成。內容沒變（或清空）時不存、不標 `edited`。
 - [x] **T16 第 ③ 層學詞**：
@@ -308,7 +309,7 @@
   - 有命中時更新 `last_used_at`。
 
   依賴：T1、T15
-  - 2026-10-21 完成，**尚未實機驗證**，觸發規則依決定 19、20 修訂（見「第 ③ 層詢問的觸發規則」）。對話框做成自己管理輸入框生命週期的 widget：原本關閉動畫還沒結束就釋放了輸入框的 controller，debug 版會報錯，測試時發現並修正。
+  - 2026-10-21 完成，實機驗收通過，觸發規則依決定 19、20 修訂（見「第 ③ 層詢問的觸發規則」）。對話框做成自己管理輸入框生命週期的 widget：原本關閉動畫還沒結束就釋放了輸入框的 controller，debug 版會報錯，測試時發現並修正。
 
 ### 階段 6：驗收與收尾
 

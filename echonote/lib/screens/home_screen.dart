@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/recording.dart';
 import '../services/recording_store.dart';
 import '../widgets/confirm_delete_dialog.dart';
+import 'glossary_screen.dart';
 import 'import_screen.dart';
 import 'live_record_screen.dart';
 import 'meeting_detail_screen.dart';
@@ -74,7 +75,18 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('echonote')),
+      appBar: AppBar(
+        title: const Text('echonote'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.menu_book_outlined),
+            tooltip: '詞庫',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const GlossaryScreen()),
+            ),
+          ),
+        ],
+      ),
       floatingActionButton: _ExpandableFab(
         onImport: _importRecording,
         onRecord: _startLiveRecording,
