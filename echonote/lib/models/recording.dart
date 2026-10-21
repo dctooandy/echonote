@@ -81,6 +81,28 @@ class UserNote {
         'text': text,
         'created_at': createdAt.toIso8601String(),
       };
+
+  /// Pins the note inside a recording of [durationMs]: a live recording can
+  /// end up shorter than the moment a note was taken (e.g. a failed write).
+  UserNote clampedTo(int durationMs) => timestampMs <= durationMs
+      ? this
+      : UserNote(id: id, timestampMs: durationMs, kind: kind, text: text, createdAt: createdAt);
+}
+
+/// Adds a ★ at [timestampMs] to [notes] unless one is already within a
+/// second of it, so a double tap is one mark. Returns whether it added one.
+bool addStarNote(List<UserNote> notes, int timestampMs) {
+  final duplicate = notes.any(
+    (n) => n.kind == UserNoteKind.star && (n.timestampMs - timestampMs).abs() < 1000,
+  );
+  if (duplicate) return false;
+  notes.add(UserNote(
+    id: DateTime.now().millisecondsSinceEpoch.toString(),
+    timestampMs: timestampMs,
+    kind: UserNoteKind.star,
+    createdAt: DateTime.now(),
+  ));
+  return true;
 }
 
 class Todo {

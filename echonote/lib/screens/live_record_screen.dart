@@ -55,6 +55,14 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
   bool _nearLimit = false;
   int _transcribeProgress = 0;
 
+  /// Kept in memory until recording ends, then saved with the recording.
+  final List<UserNote> _notes = [];
+
+  /// Recording position when the note button was pressed; non-null while
+  /// the note input is open.
+  int? _draftMs;
+  final _draftController = TextEditingController();
+
   /// Saved (untranscribed) recording waiting for the app to come back to the
   /// foreground before transcribing — transcription runs in the foreground
   /// only.
@@ -75,6 +83,7 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
     // screen goes anyway, stop — _onRecordingDone still saves the audio.
     _rec?.stop();
     _scroll.dispose();
+    _draftController.dispose();
     super.dispose();
   }
 
@@ -172,6 +181,44 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
     });
   }
 
+  /// Position in the WAV being written, so a note lines up with the audio.
+  int get _positionMs => ((_rec?.sentSeconds ?? 0) * 1000).round();
+
+  void _addStar() {
+    final ms = _positionMs;
+    if (addStarNote(_notes, ms)) setState(() {});
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('已標記 ${_formatElapsed(Duration(milliseconds: ms))}')));
+  }
+
+  /// The note is timed when the user starts it, not when they finish typing.
+  void _openDraft() => setState(() => _draftMs = _positionMs);
+
+  /// Saves the open note if it has text; an empty one is dropped.
+  void _commitDraft() {
+    final ms = _draftMs;
+    if (ms == null) return;
+    final text = _draftController.text.trim();
+    if (text.isNotEmpty) {
+      _notes.add(UserNote(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        timestampMs: ms,
+        kind: UserNoteKind.text,
+        text: text,
+        createdAt: DateTime.now(),
+      ));
+    }
+    _draftController.clear();
+    _draftMs = null;
+    if (mounted) setState(() {});
+  }
+
+  void _cancelDraft() {
+    _draftController.clear();
+    setState(() => _draftMs = null);
+  }
+
   Future<void> _stop() async {
     if (_phase != _Phase.recording) return;
     _setPhase(_Phase.finalizing);
@@ -188,6 +235,8 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
     DateTime startedAt,
   ) async {
     _ticker?.cancel();
+    // However recording ended, a half-written note with text is kept.
+    _commitDraft();
     _endNote = switch (result.reason) {
       LiveEndReason.stopped => null,
       LiveEndReason.interrupted => '錄音被來電或其他 App 中斷，已保存到中斷前的內容',
@@ -220,6 +269,7 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
       audioFileName: audioFileName,
       segments: [],
       source: RecordingSource.live,
+      notes: [for (final note in _notes) note.clampedTo(result.audioDuration.inMilliseconds)],
     );
     try {
       await _store.save(recording);
@@ -419,7 +469,55 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
           ),
         ),
         const SizedBox(height: 12),
+        if (_draftMs != null) _buildDraft() else _buildNoteButtons(),
+        const SizedBox(height: 8),
+        // Stays visible while a note is open: the input sits above it and
+        // the keyboard shrinks the preview, not this.
         FilledButton.icon(onPressed: _stop, icon: const Icon(Icons.stop), label: const Text('停止')),
+      ],
+    );
+  }
+
+  Widget _buildNoteButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _addStar,
+            icon: const Icon(Icons.star_outline),
+            label: const Text('標記重點'),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _openDraft,
+            icon: const Icon(Icons.edit_note),
+            label: Text(_notes.isEmpty ? '筆記' : '筆記（已記 ${_notes.length}）'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDraft() {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _draftController,
+            autofocus: true,
+            maxLines: 2,
+            minLines: 1,
+            decoration: InputDecoration(
+              isDense: true,
+              border: const OutlineInputBorder(),
+              hintText: '${_formatElapsed(Duration(milliseconds: _draftMs!))} 的重點是…',
+            ),
+          ),
+        ),
+        IconButton(icon: const Icon(Icons.close), tooltip: '取消', onPressed: _cancelDraft),
+        IconButton(icon: const Icon(Icons.check), tooltip: '儲存筆記', onPressed: _commitDraft),
       ],
     );
   }

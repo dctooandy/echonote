@@ -139,4 +139,56 @@ void main() {
       expect(restored.analysis!.highlightContexts, {'n1': '討論報價'});
     });
   });
+
+  group('addStarNote', () {
+    test('adds a star at the given time', () {
+      final notes = <UserNote>[];
+
+      expect(addStarNote(notes, 5000), isTrue);
+      expect(notes.single.kind, UserNoteKind.star);
+      expect(notes.single.timestampMs, 5000);
+      expect(notes.single.text, isNull);
+    });
+
+    test('a second tap within a second is the same mark', () {
+      final notes = <UserNote>[];
+      addStarNote(notes, 5000);
+
+      expect(addStarNote(notes, 5999), isFalse);
+      expect(addStarNote(notes, 4001), isFalse);
+      expect(notes, hasLength(1));
+    });
+
+    test('a second apart is a new mark', () {
+      final notes = <UserNote>[];
+      addStarNote(notes, 5000);
+
+      expect(addStarNote(notes, 6000), isTrue);
+      expect(notes, hasLength(2));
+    });
+
+    test('a text note nearby does not block a star', () {
+      final notes = [
+        UserNote(id: 't', timestampMs: 5000, kind: UserNoteKind.text, text: '備註', createdAt: DateTime(2026)),
+      ];
+
+      expect(addStarNote(notes, 5000), isTrue);
+    });
+  });
+
+  group('UserNote.clampedTo', () {
+    final note = UserNote(id: 'n', timestampMs: 9000, kind: UserNoteKind.text, text: '晚了', createdAt: DateTime(2026));
+
+    test('a note inside the recording is unchanged', () {
+      expect(identical(note.clampedTo(9000), note), isTrue);
+    });
+
+    test('a note past the end moves to the end, keeping the rest', () {
+      final clamped = note.clampedTo(7000);
+
+      expect(clamped.timestampMs, 7000);
+      expect(clamped.id, 'n');
+      expect(clamped.text, '晚了');
+    });
+  });
 }

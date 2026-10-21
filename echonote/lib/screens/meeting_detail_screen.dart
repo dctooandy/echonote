@@ -207,20 +207,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
 
   void _addStar() {
     final ms = _positionMs;
-    final notes = widget.recording.notes;
-    // Repeated taps within a second are one mark.
-    final duplicate = notes.any(
-      (n) => n.kind == UserNoteKind.star && (n.timestampMs - ms).abs() < 1000,
-    );
-    if (!duplicate) {
-      notes.add(UserNote(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        timestampMs: ms,
-        kind: UserNoteKind.star,
-        createdAt: DateTime.now(),
-      ));
-      _persist();
-    }
+    if (addStarNote(widget.recording.notes, ms)) _persist();
     _showSnack('已標記 ${formatMs(ms)}');
   }
 
