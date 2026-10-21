@@ -30,9 +30,10 @@ class RecordingTranscriber {
   final GlossaryStore _glossary;
 
   /// On success fills in [recording]'s segments and elapsed time and saves
-  /// it. Throws [NoSpeechDetectedException] when nothing was recognized, or
-  /// the transcription error; in both cases [recording] is left untouched
-  /// (still untranscribed) and nothing is written.
+  /// it; an existing analysis is kept but flagged as possibly stale. Throws
+  /// [NoSpeechDetectedException] when nothing was recognized, or the
+  /// transcription error; in both cases [recording] is left untouched
+  /// (its previous transcript, if any, included) and nothing is written.
   Future<void> transcribe(Recording recording, {void Function(int percent)? onProgress}) async {
     // A corrupt glossary loads as empty: transcribe without it rather than
     // fail.
@@ -47,7 +48,8 @@ class RecordingTranscriber {
 
     recording
       ..segments = result.segments
-      ..elapsedSeconds = result.elapsed.inSeconds;
+      ..elapsedSeconds = result.elapsed.inSeconds
+      ..transcriptStaleAnalysis = recording.analysis != null;
     await _store.save(recording);
   }
 }

@@ -110,8 +110,32 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     }
   }
 
-  /// For a recording saved without a transcript (live recording whose
-  /// offline pass failed or found nothing, or was cut short by backgrounding).
+  /// Re-running a transcript that exists replaces it, edits included, so
+  /// ask first.
+  Future<void> _confirmRetranscribe() async {
+    final edited = widget.recording.segments.where((s) => s.edited).length;
+    final hasAnalysis = widget.recording.analysis != null;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('用目前詞庫重新轉錄？'),
+        content: Text([
+          if (edited > 0) '你修改過的 $edited 處逐字稿會被覆蓋。' else '目前的逐字稿會被取代。',
+          if (hasAnalysis) '分析結果會保留，但可能和新的逐字稿對不上，之後可以重新分析。',
+          '你的重點不受影響。轉錄期間請保持 App 開啟。',
+        ].join('\n\n')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('重新轉錄')),
+        ],
+      ),
+    );
+    if (ok == true) await _retranscribe();
+  }
+
+  /// Transcribes a recording saved without a transcript (live recording
+  /// whose offline pass failed or found nothing, or was cut short by
+  /// backgrounding), or replaces an existing one with the current glossary.
   Future<void> _retranscribe() async {
     if (_isTranscribing) return;
     setState(() {
@@ -328,10 +352,19 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
               // into this recording.
               enabled: !_isAnalyzing && !_isTranscribing,
               onSelected: (value) {
+                if (value == 'retranscribe') _confirmRetranscribe();
                 if (value == 'delete') _delete();
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(
+              itemBuilder: (_) => [
+                if (widget.recording.isTranscribed)
+                  const PopupMenuItem(
+                    value: 'retranscribe',
+                    child: ListTile(
+                      leading: Icon(Icons.subtitles_outlined),
+                      title: Text('用目前詞庫重新轉錄'),
+                    ),
+                  ),
+                const PopupMenuItem(
                   value: 'delete',
                   child: ListTile(
                     leading: Icon(Icons.delete_outline, color: Colors.red),
@@ -355,6 +388,11 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
         body: Column(
           children: [
             _buildPlaybackBar(),
+            // The untranscribed view has its own progress; this covers
+            // replacing an existing transcript.
+            if (_isTranscribing && widget.recording.isTranscribed) _buildRetranscribeProgress(),
+            if (analysis != null && widget.recording.transcriptStaleAnalysis && !_isTranscribing)
+              _buildStaleAnalysisBanner(),
             Expanded(
               child: TabBarView(
                 children: [
@@ -412,6 +450,43 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildRetranscribeProgress() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _transcribeProgress > 0
+                ? '重新轉錄中… $_transcribeProgress%（請保持 App 開啟）'
+                : '準備重新轉錄…',
+          ),
+          const SizedBox(height: 4),
+          LinearProgressIndicator(value: _transcribeProgress > 0 ? _transcribeProgress / 100 : null),
+        ],
+      ),
+    );
+  }
+
+  /// Shown on every tab: todos and minutes go stale as much as the summary.
+  Widget _buildStaleAnalysisBanner() {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 16, right: 8),
+        child: Row(
+          children: [
+            const Icon(Icons.info_outline, size: 20),
+            const SizedBox(width: 8),
+            const Expanded(child: Text('逐字稿已更新，分析結果可能過時')),
+            TextButton(onPressed: _isAnalyzing ? null : _runAnalysis, child: const Text('重新分析')),
+          ],
+        ),
+      ),
     );
   }
 

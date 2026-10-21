@@ -87,4 +87,29 @@ void main() {
     expect(transcription.prompt, '以下是繁體中文的會議逐字稿。');
     expect(recording.isTranscribed, isTrue);
   });
+
+  test('re-transcribing an analyzed recording flags the analysis as stale', () async {
+    final recording = _recording()
+      ..analysis = MeetingAnalysis(
+        overview: '',
+        keyPoints: [],
+        todos: [],
+        title: '',
+        attendees: [],
+        agendaItems: [],
+      );
+
+    await transcriber.transcribe(recording);
+
+    expect(recording.transcriptStaleAnalysis, isTrue);
+    expect(recording.analysis, isNotNull);
+  });
+
+  test('a first transcription has nothing to flag', () async {
+    final recording = _recording();
+
+    await transcriber.transcribe(recording);
+
+    expect(recording.transcriptStaleAnalysis, isFalse);
+  });
 }

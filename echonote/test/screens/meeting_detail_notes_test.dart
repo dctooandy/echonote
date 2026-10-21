@@ -154,4 +154,50 @@ void main() {
     final unmarked = find.widgetWithText(ListTile, '大家好');
     expect(find.descendant(of: unmarked, matching: find.byIcon(Icons.notes)), findsNothing);
   });
+
+  testWidgets('stale analysis shows a banner on every tab', (tester) async {
+    await _pump(tester, _recording()
+      ..analysis = analysis()
+      ..transcriptStaleAnalysis = true);
+
+    expect(find.text('逐字稿已更新，分析結果可能過時'), findsOneWidget);
+    await tester.tap(find.text('待辦'));
+    await tester.pumpAndSettle();
+    expect(find.text('逐字稿已更新，分析結果可能過時'), findsOneWidget);
+  });
+
+  testWidgets('no banner when the analysis is current', (tester) async {
+    await _pump(tester, _recording()..analysis = analysis());
+
+    expect(find.text('逐字稿已更新，分析結果可能過時'), findsNothing);
+  });
+
+  testWidgets('re-transcribe warns about edited lines and can be cancelled', (tester) async {
+    final recording = _recording()..analysis = analysis();
+    recording.segments.single
+      ..text = '大家早'
+      ..edited = true;
+    await _pump(tester, recording);
+
+    await tester.tap(find.descendant(of: find.byType(AppBar), matching: find.byIcon(Icons.more_vert)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('用目前詞庫重新轉錄'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('你修改過的 1 處逐字稿會被覆蓋'), findsOneWidget);
+    expect(find.textContaining('分析結果會保留'), findsOneWidget);
+
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(recording.segments.single.text, '大家早');
+  });
+
+  testWidgets('untranscribed recordings have no re-transcribe menu item', (tester) async {
+    await _pump(tester, _recording()..segments.clear());
+
+    await tester.tap(find.descendant(of: find.byType(AppBar), matching: find.byIcon(Icons.more_vert)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('用目前詞庫重新轉錄'), findsNothing);
+  });
 }
