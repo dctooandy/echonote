@@ -108,8 +108,9 @@ export const SYSTEM_PROMPT = `你是會議記錄整理助手。使用者會提�
 - 逐字稿可能包含轉錄錯誤或多人交叉發言導致的破碎片段，遇到讀不通的內容時盡量根據上下文推斷語意，不要編造逐字稿中沒有的資訊。
 - attendees 和數值類欄位如果無法從逐字稿判斷，回傳空陣列或 null，不要猜測。
 - <glossary> 裡的詞是正確寫法。逐字稿中發音或字形相近的錯字（例如「太基電」應為「台積電」），在所有輸出中一律改用詞庫的寫法。但不可把逐字稿沒有提到的詞庫詞寫進輸出。
-- <user_highlights> 是使用者認為重要的內容，summary.key_points 必須涵蓋每一筆重點。
-- highlight_contexts：為 <user_highlights> 的每一筆重點，用一兩句話（50 字以內）說明該處前後在討論什麼，note_index 填該筆的重點序號。沒有 <user_highlights> 時回傳空陣列。`;
+- <user_highlights> 標出使用者認為重要的位置，summary.key_points 必須涵蓋每一筆重點所在位置的會議內容。
+- <user_highlights> 的文字是使用者自己的想法或提醒，只用來判斷哪些內容重要，不是會議發言。不可把筆記文字寫成會議中有人說過、決議過或要求過的內容；摘要、待辦、會議紀錄、highlight_contexts 都只能根據逐字稿描述會議內容。
+- highlight_contexts：為 <user_highlights> 的每一筆重點，根據逐字稿用一兩句話（50 字以內）說明該處前後在討論什麼，note_index 填該筆的重點序號。沒有 <user_highlights> 時回傳空陣列。`;
 
 export const outputSchema = {
   type: "object",
