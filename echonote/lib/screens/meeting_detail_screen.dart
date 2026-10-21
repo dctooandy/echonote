@@ -196,6 +196,103 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     }
   }
 
+  /// Where the user is in the recording, for a new note.
+  int get _positionMs => _audioPlayer.position.inMilliseconds;
+
+  void _showSnack(String message, {SnackBarAction? action}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message), action: action));
+  }
+
+  void _addStar() {
+    final ms = _positionMs;
+    final notes = widget.recording.notes;
+    // Repeated taps within a second are one mark.
+    final duplicate = notes.any(
+      (n) => n.kind == UserNoteKind.star && (n.timestampMs - ms).abs() < 1000,
+    );
+    if (!duplicate) {
+      notes.add(UserNote(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        timestampMs: ms,
+        kind: UserNoteKind.star,
+        createdAt: DateTime.now(),
+      ));
+      _persist();
+    }
+    _showSnack('已標記 ${formatMs(ms)}');
+  }
+
+  Future<void> _addTextNote() async {
+    // Taken before the dialog opens: the note is about what was just heard,
+    // not about where playback is once the user finishes typing.
+    final ms = _positionMs;
+    final text = await _promptNoteText(title: '筆記 ${formatMs(ms)}');
+    if (text == null) return;
+    widget.recording.notes.add(UserNote(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      timestampMs: ms,
+      kind: UserNoteKind.text,
+      text: text,
+      createdAt: DateTime.now(),
+    ));
+    _persist();
+  }
+
+  /// Text notes only: a ★ has no text, and the timestamp is fixed (delete
+  /// and re-add to move it).
+  Future<void> _editNote(UserNote note) async {
+    final text = await _promptNoteText(title: '編輯筆記 ${formatMs(note.timestampMs)}', initial: note.text);
+    if (text == null) return;
+    note.text = text;
+    _persist();
+  }
+
+  void _deleteNote(UserNote note) {
+    final contexts = widget.recording.analysis?.highlightContexts;
+    final aiContext = contexts?.remove(note.id);
+    widget.recording.notes.remove(note);
+    _persist();
+    _showSnack(
+      '已刪除${note.kind == UserNoteKind.star ? '標記' : '筆記'}',
+      action: SnackBarAction(
+        label: '復原',
+        onPressed: () {
+          widget.recording.notes.add(note);
+          if (aiContext != null) contexts![note.id] = aiContext;
+          _persist();
+        },
+      ),
+    );
+  }
+
+  /// Returns the trimmed text, or null when cancelled or left empty.
+  Future<String?> _promptNoteText({required String title, String? initial}) async {
+    final controller = TextEditingController(text: initial);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 4,
+          decoration: const InputDecoration(hintText: '這裡的重點是…'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('儲存'),
+          ),
+        ],
+      ),
+    );
+    final text = result?.trim();
+    return (text == null || text.isEmpty) ? null : text;
+  }
+
   Future<void> _addAttendee(MeetingAnalysis analysis) async {
     final controller = TextEditingController();
     final result = await showDialog<String>(
@@ -313,6 +410,16 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                IconButton(
+                  icon: const Icon(Icons.star_outline),
+                  tooltip: '標記重點',
+                  onPressed: _addStar,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.edit_note),
+                  tooltip: '新增筆記',
+                  onPressed: _addTextNote,
+                ),
               ],
             ),
           ),
@@ -384,7 +491,57 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     );
   }
 
+  /// The user's notes sit above the analysis and show without one: they
+  /// are the user's own, not AI output.
   Widget _buildSummaryTab(MeetingAnalysis? analysis) {
+    final summary = _buildSummary(analysis);
+    if (widget.recording.notes.isEmpty) return summary;
+    return Column(
+      children: [
+        ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.3),
+          child: _buildNotesSection(),
+        ),
+        const Divider(height: 1),
+        Expanded(child: summary),
+      ],
+    );
+  }
+
+  Widget _buildNotesSection() {
+    final notes = [...widget.recording.notes]..sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
+    return ListView(
+      shrinkWrap: true,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text('你的重點', style: Theme.of(context).textTheme.titleMedium),
+        ),
+        for (final note in notes)
+          ListTile(
+            dense: true,
+            leading: Icon(note.kind == UserNoteKind.star ? Icons.star : Icons.notes),
+            title: Text(note.kind == UserNoteKind.star ? '重點標記' : note.text ?? ''),
+            subtitle: Text(formatMs(note.timestampMs)),
+            onTap: () => _seekAndPlay(Duration(milliseconds: note.timestampMs)),
+            trailing: PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'edit') _editNote(note);
+                if (value == 'delete') _deleteNote(note);
+              },
+              itemBuilder: (_) => [
+                if (note.kind == UserNoteKind.text)
+                  const PopupMenuItem(value: 'edit', child: Text('編輯')),
+                const PopupMenuItem(value: 'delete', child: Text('刪除')),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildSummary(MeetingAnalysis? analysis) {
     return _analysisGate(analysis, (a) {
       final copyText = ([a.overview, ...a.keyPoints.map((p) => '• $p')]).join('\n');
       return ListView(
