@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/recording.dart';
 import '../services/recording_store.dart';
 import '../services/recording_transcriber.dart';
+import '../services/screen_awake.dart';
 import '../services/transcription_service.dart';
 import 'meeting_detail_screen.dart';
 
@@ -28,7 +29,16 @@ class _ImportScreenState extends State<ImportScreen> {
   @override
   void initState() {
     super.initState();
+    // Transcription only runs in the foreground, so don't let the screen
+    // lock while it does (spec feature-keep-screen-awake).
+    ScreenAwake.instance.hold(this);
     _run();
+  }
+
+  @override
+  void dispose() {
+    ScreenAwake.instance.release(this);
+    super.dispose();
   }
 
   Future<void> _run() async {
@@ -68,6 +78,7 @@ class _ImportScreenState extends State<ImportScreen> {
       try {
         await copiedAudio?.delete();
       } catch (_) {}
+      ScreenAwake.instance.release(this);
       if (mounted) setState(() => _error = '$e');
     }
   }

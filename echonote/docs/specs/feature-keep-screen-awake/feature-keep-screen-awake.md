@@ -93,15 +93,16 @@ App 內部新增「保持螢幕開啟」的開關，iOS 對應 `UIApplication.sh
     - [x] `flutter test`、`flutter analyze`、`flutter build ios` 通過
   - 2026-10-22 完成。iOS 的 channel 寫在 `AppDelegate.swift` 裡（新增 Swift 檔要改 Xcode 專案檔，不值得）；Android 寫在 `MainActivity.kt`。平台呼叫排成佇列依序執行，最後要求的狀態為準；呼叫失敗只記 log，下一次變化時重試。`flutter build ios`、`flutter build apk --debug` 都通過。
 
-- [ ] **T2 三個畫面接上開關，並修改停止說明**
+- [x] **T2 三個畫面接上開關，並修改停止說明**
   - 做完能看到：即時錄音從 `preparing` 到轉錄完成都不自動鎖定，`error` 或離開畫面就恢復；匯入後轉錄、詳細頁重新轉錄期間也不鎖定；錄音因切到背景停止時顯示「錄音已停止並保存（鎖定螢幕或切換 App 會停止錄音）」
   - 被誰卡住：T1
   - 主要會動的檔案：`lib/screens/live_record_screen.dart`、`lib/screens/import_screen.dart`、`lib/screens/meeting_detail_screen.dart`、對應的 widget 測試
   - 軌道：可獨立進行
   - 驗收：
-    - [ ] 各狀態的持有／釋放符合「目標與範圍」，`dispose` 一定釋放
-    - [ ] 說明文字已更新
-    - [ ] `flutter test`、`flutter analyze` 通過
+    - [x] 各狀態的持有／釋放符合「目標與範圍」，`dispose` 一定釋放
+    - [x] 說明文字已更新
+    - [x] `flutter test`、`flutter analyze` 通過
+  - 2026-10-22 完成。錄音畫面的狀態改成經過 setter，每次切換狀態都同步開關，不用在每個 `_Phase` 賦值處各寫一次。匯入畫面從開啟就持有，失敗時釋放；詳細頁只在重新轉錄期間持有（`finally` 釋放）。新增 3 個錄音畫面 widget 測試（錄音中持有、離開釋放；放棄錄音釋放；切到背景停止時顯示新說明，錄音太短進入 `error` 也釋放），全部 145 個通過。匯入和重新轉錄要跑真的 whisper，沒寫 widget 測試，留給 T3 實機確認。
 
 - [ ] **T3 📱 實機驗證**
   - 做完能看到：自動鎖定 30 秒的設定下，錄音和轉錄期間螢幕不熄、結束後恢復；低電量模式的行為；結果寫回本規格

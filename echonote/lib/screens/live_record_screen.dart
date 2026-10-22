@@ -8,6 +8,7 @@ import '../services/live_transcription_service.dart';
 import '../services/mic_stream_service.dart';
 import '../services/recording_store.dart';
 import '../services/recording_transcriber.dart';
+import '../services/screen_awake.dart';
 import '../services/settings_store.dart';
 import '../services/transcription_service.dart';
 import '../services/wav_replay_mic.dart';
@@ -55,7 +56,33 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
   final _scroll = ScrollController();
   late final AppLifecycleListener _lifecycle;
 
-  _Phase _phase = _Phase.checkingPermission;
+  _Phase _phaseValue = _Phase.checkingPermission;
+  _Phase get _phase => _phaseValue;
+
+  /// Every phase change goes through here, so the screen stays awake for
+  /// exactly the phases that would stop if the app left the foreground.
+  set _phase(_Phase phase) {
+    _phaseValue = phase;
+    _syncScreenAwake();
+  }
+
+  /// From preparing to the end of transcription (spec
+  /// feature-keep-screen-awake); not while waiting on the permission
+  /// dialog, nor on an error.
+  static const _awakePhases = {
+    _Phase.preparing,
+    _Phase.recording,
+    _Phase.finalizing,
+    _Phase.transcribing,
+  };
+
+  void _syncScreenAwake() {
+    if (_awakePhases.contains(_phase)) {
+      ScreenAwake.instance.hold(this);
+    } else {
+      ScreenAwake.instance.release(this);
+    }
+  }
   String? _prepareStatus;
   String? _error;
 
@@ -108,6 +135,7 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
 
   @override
   void dispose() {
+    ScreenAwake.instance.release(this);
     _lifecycle.dispose();
     _ticker?.cancel();
     // Normally impossible (back is intercepted while recording); if the
@@ -329,7 +357,7 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
     _endNote = switch (result.reason) {
       LiveEndReason.stopped => null,
       LiveEndReason.interrupted => '錄音被來電或其他 App 中斷，已保存到中斷前的內容',
-      LiveEndReason.backgrounded => 'App 進入背景，錄音已停止並保存',
+      LiveEndReason.backgrounded => '錄音已停止並保存（鎖定螢幕或切換 App 會停止錄音）',
       LiveEndReason.writeFailed => '寫入錄音檔失敗（可能是儲存空間不足），已保存寫入成功的部分',
       LiveEndReason.limitReached => '已達 2 小時上限，錄音自動停止',
       LiveEndReason.micError => '麥克風發生錯誤，錄音已停止',
