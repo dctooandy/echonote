@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:echonote/screens/live_record_screen.dart';
 import 'package:echonote/services/live_transcription_service.dart';
 import 'package:echonote/services/mic_stream_service.dart';
+import 'package:echonote/services/screen_awake.dart';
 import 'package:echonote/services/settings_store.dart';
 import 'package:echonote/services/wav_writer.dart';
 import 'package:echonote/widgets/level_waveform.dart';
@@ -99,8 +100,11 @@ void main() {
   late Directory dir;
   late _FakeMic mic;
   late SettingsStore settings;
+  late List<bool> awakeCalls;
 
   setUp(() async {
+    awakeCalls = [];
+    ScreenAwake.instance = ScreenAwake(setKeepAwake: (on) async => awakeCalls.add(on));
     dir = await Directory.systemTemp.createTemp('live_screen_test');
     PathProviderPlatform.instance = _FakePathProvider(dir.path);
     mic = _FakeMic();
@@ -271,6 +275,48 @@ void main() {
     expect(find.byType(LiveRecordScreen), findsOneWidget);
     expect(find.text('停止'), findsOneWidget);
     expect(saved().whereType<File>().where((f) => f.path.endsWith('.wav')), hasLength(1));
+    await leave(tester);
+  });
+
+  testWidgets('the screen stays awake while recording and sleeps again after leaving', (tester) async {
+    await open(tester);
+
+    expect(find.text('停止'), findsOneWidget);
+    expect(ScreenAwake.instance.isOn, isTrue);
+    expect(awakeCalls, [true]);
+
+    await leave(tester);
+    expect(ScreenAwake.instance.isOn, isFalse);
+    expect(awakeCalls, [true, false]);
+  });
+
+  testWidgets('discarding the recording lets the screen sleep again', (tester) async {
+    await openPushed(tester);
+    expect(ScreenAwake.instance.isOn, isTrue);
+
+    await tester.tap(find.byType(BackButton));
+    await settle(tester);
+    await tester.tap(find.text('放棄錄音'));
+    await settle(tester);
+    await tester.tap(find.text('放棄'));
+    await settle(tester);
+
+    expect(find.byType(LiveRecordScreen), findsNothing);
+    expect(ScreenAwake.instance.isOn, isFalse);
+  });
+
+  testWidgets('stopped by going to the background: says why, and an error lets the screen sleep', (tester) async {
+    await open(tester);
+    mic.chunks
+      ..add(Uint8List(3200))
+      ..addError(MicStreamException(MicStreamErrorCode.backgrounded));
+    // Like the native side: report why, then end the stream.
+    await tester.runAsync(mic.chunks.close);
+    await settle(tester);
+
+    // Too short to keep, so it lands on the error message.
+    expect(find.textContaining('錄音已停止並保存（鎖定螢幕或切換 App 會停止錄音）'), findsOneWidget);
+    expect(ScreenAwake.instance.isOn, isFalse);
     await leave(tester);
   });
 }

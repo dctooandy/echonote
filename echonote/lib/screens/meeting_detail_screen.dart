@@ -13,6 +13,7 @@ import '../services/correction_learning.dart';
 import '../services/glossary_store.dart';
 import '../services/recording_store.dart';
 import '../services/recording_transcriber.dart';
+import '../services/screen_awake.dart';
 import '../utils/format.dart';
 import '../widgets/confirm_delete_dialog.dart';
 import '../widgets/glossary_term_dialog.dart';
@@ -53,6 +54,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
 
   @override
   void dispose() {
+    ScreenAwake.instance.release(this);
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -145,6 +147,9 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       _isTranscribing = true;
       _transcribeProgress = 0;
     });
+    // Transcription only runs in the foreground (spec
+    // feature-keep-screen-awake).
+    ScreenAwake.instance.hold(this);
     try {
       await _transcriber.transcribe(
         widget.recording,
@@ -156,6 +161,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('轉錄失敗: $e')));
     } finally {
+      ScreenAwake.instance.release(this);
       if (mounted) setState(() => _isTranscribing = false);
     }
   }
