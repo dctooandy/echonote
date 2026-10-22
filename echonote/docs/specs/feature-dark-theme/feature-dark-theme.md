@@ -234,15 +234,16 @@ flowchart LR
   T5 --> T6
 ```
 
-- [ ] **T1 主題基礎**
+- [x] **T1 主題基礎**
   - 做完能看到：整個 App 變成深色，按鈕、卡片、標籤、勾選框、對話框是圓形或膠囊形；寫死的 16 處顏色改用主題的顏色；設定檔可以存主題和慣用手
   - 被誰卡住：無，可以直接開工
   - 主要會動的檔案：`lib/theme/app_theme.dart`（新）、`lib/services/app_settings.dart`（新）、`lib/services/settings_store.dart`、`lib/main.dart`、有寫死顏色的 6 個檔案、對應測試
   - 驗收：
-    - [ ] 深淺兩套主要顏色符合規格的表；`ThemeExtension` 有琥珀、綠、紅
-    - [ ] `settings.json` 的主題和慣用手可以讀寫，預設深色、右手，值不認得就用預設，不蓋掉 `live_preview`
-    - [ ] 程式裡不再有 `Colors.red`、`Colors.grey`、`Colors.orange` 這類寫死的顏色
-    - [ ] `flutter test`、`flutter analyze` 通過
+    - [x] 深淺兩套主要顏色符合規格的表；`ThemeExtension` 有琥珀、綠、紅
+    - [x] `settings.json` 的主題和慣用手可以讀寫，預設深色、右手，值不認得就用預設，不蓋掉 `live_preview`
+    - [x] 程式裡不再有 `Colors.red`、`Colors.grey`、`Colors.orange` 這類寫死的顏色
+    - [x] `flutter test`、`flutter analyze` 通過
+  - 2026-10-22 完成。`ColorScheme` 自訂、不用 `fromSeed`：主色＝青、錯誤＝紅、`tertiaryContainer`＝琥珀淡底（詳細頁「分析可能過時」原本就用它）；琥珀、綠和各個淡色底放在 `AppColors`（`ThemeExtension`）。`AppSettings` 在 `runApp` 前讀一次，用 `AppSettingsScope`（`InheritedNotifier`）往下傳，沒有安裝時用預設值，現有只測單一畫面的測試不用改。紅點、放棄錄音、刪除都用主題的錯誤色（紅）。新增測試 8 個，全部 168 個通過。
 
 - [ ] **T2 設定頁**
   - 做完能看到：首頁右上角的齒輪進入設定頁，可以選主題（深色、淺色、跟隨系統）和慣用手，選了馬上生效；設定頁有詞庫入口

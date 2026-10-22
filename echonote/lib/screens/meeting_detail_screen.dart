@@ -478,11 +478,11 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
                       title: Text('用目前詞庫重新轉錄'),
                     ),
                   ),
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: 'delete',
                   child: ListTile(
-                    leading: Icon(Icons.delete_outline, color: Colors.red),
-                    title: Text('刪除', style: TextStyle(color: Colors.red)),
+                    leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
+                    title: Text('刪除', style: TextStyle(color: Theme.of(context).colorScheme.error)),
                   ),
                 ),
               ],
@@ -630,7 +630,10 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
             ),
             if (_isTranscribing) ...[
               const SizedBox(height: 8),
-              const Text('請保持 App 開啟直到轉錄完成', style: TextStyle(color: Colors.grey)),
+              Text(
+                '請保持 App 開啟直到轉錄完成',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              ),
             ],
           ],
         ),

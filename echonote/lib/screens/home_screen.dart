@@ -163,10 +163,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 key: ValueKey(recording.id),
                 direction: DismissDirection.endToStart,
                 background: Container(
-                  color: Colors.red,
+                  color: Theme.of(context).colorScheme.error,
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: const Icon(Icons.delete, color: Colors.white),
+                  child: Icon(Icons.delete, color: Theme.of(context).colorScheme.onError),
                 ),
                 confirmDismiss: (_) => confirmDeleteRecording(context, recording),
                 onDismissed: (_) async {

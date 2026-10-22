@@ -12,6 +12,7 @@ import '../services/screen_awake.dart';
 import '../services/settings_store.dart';
 import '../services/transcription_service.dart';
 import '../services/wav_replay_mic.dart';
+import '../theme/app_theme.dart';
 import '../widgets/level_waveform.dart';
 import '../widgets/recording_dot.dart';
 import 'meeting_detail_screen.dart';
@@ -454,7 +455,7 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
           // Set apart from the other two: it deletes the recording.
           TextButton(
             onPressed: () => Navigator.pop(context, _LeaveChoice.discard),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
             child: const Text('放棄錄音'),
           ),
           const SizedBox(width: 16),
@@ -493,7 +494,7 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
             child: const Text('放棄'),
           ),
         ],
@@ -717,7 +718,10 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
           const SizedBox(height: 16),
           Text(_transcribeProgress > 0 ? '轉錄中… $_transcribeProgress%' : '準備中…'),
           const SizedBox(height: 8),
-          const Text('請保持 App 開啟直到轉錄完成', style: TextStyle(color: Colors.grey)),
+          Text(
+            '請保持 App 開啟直到轉錄完成',
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          ),
         ],
       ),
     );
@@ -728,7 +732,7 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.error_outline, size: 48, color: Colors.red),
+          Icon(Icons.error_outline, size: 48, color: Theme.of(context).colorScheme.error),
           const SizedBox(height: 16),
           Text(_error ?? '發生錯誤', textAlign: TextAlign.center),
           const SizedBox(height: 16),
@@ -743,10 +747,10 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
       padding: const EdgeInsets.only(top: 8),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: Colors.orange),
+          Icon(icon, size: 18, color: AppColors.of(context).amber),
           const SizedBox(width: 6),
           Expanded(
-            child: Text(text, style: const TextStyle(color: Colors.orange)),
+            child: Text(text, style: TextStyle(color: AppColors.of(context).amber)),
           ),
         ],
       ),

@@ -13,7 +13,7 @@ Future<bool> confirmDeleteRecording(BuildContext context, Recording recording) a
         TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
         TextButton(
           onPressed: () => Navigator.pop(context, true),
-          style: TextButton.styleFrom(foregroundColor: Colors.red),
+          style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
           child: const Text('刪除'),
         ),
       ],
