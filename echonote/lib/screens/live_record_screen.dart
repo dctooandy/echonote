@@ -31,6 +31,8 @@ class LiveRecordScreen extends StatefulWidget {
   State<LiveRecordScreen> createState() => _LiveRecordScreenState();
 }
 
+enum _LeaveChoice { keepRecording, stopAndSave, discard }
+
 enum _Phase {
   checkingPermission,
   permissionDenied,
@@ -79,6 +81,10 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
 
   /// Non-null while the preview model downloads or loads.
   String? _previewLoading;
+
+  /// The user chose to throw this recording away: once it stops, delete it
+  /// instead of saving.
+  bool _discarding = false;
 
   /// Kept in memory until recording ends, then saved with the recording.
   final List<UserNote> _notes = [];
@@ -312,6 +318,12 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
     DateTime startedAt,
   ) async {
     _ticker?.cancel();
+    if (_discarding) {
+      // As if it was never recorded: nothing saved, nothing transcribed.
+      await _deleteQuietly(wavPath);
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
     // However recording ended, a half-written note with text is kept.
     _commitDraft();
     _endNote = switch (result.reason) {
@@ -404,18 +416,61 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
   }
 
   Future<void> _confirmLeave() async {
-    final stop = await showDialog<bool>(
+    final choice = await showDialog<_LeaveChoice>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('正在錄音'),
         content: const Text('要停止錄音並保存嗎？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('繼續錄音')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('停止並存檔')),
+          // Set apart from the other two: it deletes the recording.
+          TextButton(
+            onPressed: () => Navigator.pop(context, _LeaveChoice.discard),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('放棄錄音'),
+          ),
+          const SizedBox(width: 16),
+          TextButton(
+            onPressed: () => Navigator.pop(context, _LeaveChoice.keepRecording),
+            child: const Text('繼續錄音'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, _LeaveChoice.stopAndSave),
+            child: const Text('停止並存檔'),
+          ),
         ],
       ),
     );
-    if (stop == true) await _stop();
+    switch (choice) {
+      case _LeaveChoice.stopAndSave:
+        await _stop();
+      case _LeaveChoice.discard:
+        if (await _confirmDiscard()) {
+          _discarding = true;
+          await _stop();
+        }
+      case _LeaveChoice.keepRecording || null:
+        break;
+    }
+  }
+
+  /// Deleting can't be undone, so ask once more.
+  Future<bool> _confirmDiscard() async {
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('確定放棄？'),
+        content: const Text('這段錄音和筆記都會刪除，無法復原。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('放棄'),
+          ),
+        ],
+      ),
+    );
+    return discard ?? false;
   }
 
   static Future<void> _deleteQuietly(String path) async {

@@ -109,11 +109,13 @@ void main() {
 
   tearDown(() => dir.delete(recursive: true));
 
-  /// Lets real file I/O (WAV, settings) finish between frames.
+  /// Lets real file I/O (WAV, settings) finish between frames. Each frame
+  /// also moves fake time on, so route and dialog transitions complete;
+  /// left half-way they slow every later runAsync to a crawl.
   Future<void> settle(WidgetTester tester) async {
     for (var i = 0; i < 25; i++) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
     }
   }
 
@@ -201,6 +203,74 @@ void main() {
     expect(find.textContaining('無法開啟即時文字，錄音照常進行'), findsOneWidget);
     expect(find.text('停止'), findsOneWidget);
     expect(await tester.runAsync(settings.livePreview), isFalse);
+    await leave(tester);
+  });
+
+  /// Opens the screen on top of a home page, so going back is a real pop.
+  Future<void> openPushed(WidgetTester tester) async {
+    final service = _FakeService(mic);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => LiveRecordScreen(mic: mic, service: service, settings: settings),
+              ),
+            ),
+            child: const Text('首頁'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('首頁'));
+    await settle(tester);
+    mic.chunks.add(Uint8List(3200));
+    await settle(tester);
+  }
+
+  List<FileSystemEntity> saved() => [
+    ...Directory('${dir.path}/recordings').listSync(),
+    if (Directory('${dir.path}/history').existsSync()) ...Directory('${dir.path}/history').listSync(),
+  ];
+
+  testWidgets('going back offers to discard, and asks again before deleting', (tester) async {
+    await openPushed(tester);
+
+    // Not pageBack(): it waits for animations to settle, and the breathing
+    // recording dot never does.
+    await tester.tap(find.byType(BackButton));
+    await settle(tester);
+    expect(find.text('放棄錄音'), findsOneWidget);
+    expect(find.text('繼續錄音'), findsOneWidget);
+    expect(find.text('停止並存檔'), findsOneWidget);
+
+    await tester.tap(find.text('放棄錄音'));
+    await settle(tester);
+    expect(find.text('這段錄音和筆記都會刪除，無法復原。'), findsOneWidget);
+
+    await tester.tap(find.text('放棄'));
+    await settle(tester);
+
+    expect(find.byType(LiveRecordScreen), findsNothing, reason: 'back on the home page');
+    expect(saved(), isEmpty, reason: 'no WAV, no history entry');
+  });
+
+  testWidgets('cancelling the second question keeps recording', (tester) async {
+    await openPushed(tester);
+
+    // Not pageBack(): it waits for animations to settle, and the breathing
+    // recording dot never does.
+    await tester.tap(find.byType(BackButton));
+    await settle(tester);
+    await tester.tap(find.text('放棄錄音'));
+    await settle(tester);
+    await tester.tap(find.text('取消'));
+    await settle(tester);
+
+    expect(find.byType(LiveRecordScreen), findsOneWidget);
+    expect(find.text('停止'), findsOneWidget);
+    expect(saved().whereType<File>().where((f) => f.path.endsWith('.wav')), hasLength(1));
     await leave(tester);
   });
 }
