@@ -26,4 +26,17 @@ void main() {
       expect(formatLength(400), '0:01');
     });
   });
+
+  group('formatListDate', () {
+    final now = DateTime(2026, 10, 22, 9);
+
+    test('this year: month/day and time to the minute', () {
+      expect(formatListDate(DateTime(2026, 10, 22, 14, 30, 5), now), '10/22 14:30');
+      expect(formatListDate(DateTime(2026, 1, 3, 8, 5), now), '1/3 08:05');
+    });
+
+    test('another year keeps the year', () {
+      expect(formatListDate(DateTime(2025, 12, 31, 23, 59), now), '2025/12/31 23:59');
+    });
+  });
 }

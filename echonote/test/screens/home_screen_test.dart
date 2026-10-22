@@ -61,7 +61,7 @@ void main() {
     }
   }
 
-  testWidgets('each entry shows its length after the date, when known', (tester) async {
+  testWidgets('each entry shows its length under the status, when known', (tester) async {
     writeEntry('1', durationMs: 44 * 60000 + 12000);
     writeEntry('2', durationMs: 3600000 + 5 * 60000 + 30000);
     writeEntry('3');
@@ -69,9 +69,10 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: HomeScreen(durationProbe: _FakeProbe({}))));
     await settle(tester);
 
-    expect(find.text('2026-10-22 14:30:05 · 44:12'), findsOneWidget);
-    expect(find.text('2026-10-22 14:30:05 · 1:05:30'), findsOneWidget);
-    expect(find.text('2026-10-22 14:30:05'), findsOneWidget, reason: 'no length yet: date only');
+    expect(find.text('44:12'), findsOneWidget);
+    expect(find.text('1:05:30'), findsOneWidget);
+    expect(find.text('未轉錄'), findsNWidgets(3), reason: 'the status stays, length or not');
+    expect(find.textContaining('14:30'), findsNWidgets(3), reason: 'the date alone, under the title');
   });
 
   Map<String, dynamic> saved(String id) =>
@@ -88,9 +89,9 @@ void main() {
     await settle(tester); // one file read and write per entry
 
     expect(probe.asked, unorderedEquals(['2.wav', '3.wav']), reason: 'a known length is not read again');
-    expect(find.text('2026-10-22 14:30:05 · 5:03'), findsOneWidget);
+    expect(find.text('5:03'), findsOneWidget);
     expect(saved('2')['duration_ms'], 5 * 60000 + 3000);
     expect(saved('3').containsKey('duration_ms'), isFalse, reason: 'unreadable: nothing saved');
-    expect(find.text('2026-10-22 14:30:05'), findsOneWidget);
+    expect(find.text('1:00'), findsOneWidget);
   });
 }

@@ -97,12 +97,26 @@ class _HomeScreenState extends State<HomeScreen> {
     _reload();
   }
 
-  /// Date, then the length once it's known (spec
+  /// Status, with the length under it once it's known (spec
   /// feature-recording-duration).
-  static String _subtitle(Recording recording) {
-    final date = '${recording.createdAt.toLocal()}'.split('.').first;
+  Widget _trailing(BuildContext context, Recording recording) {
     final ms = recording.durationMs;
-    return ms == null ? date : '$date · ${formatLength(ms)}';
+    if (ms == null) return Text(_statusLabel(recording));
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(_statusLabel(recording)),
+        Text(
+          formatLength(ms),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.primary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
   }
 
   String _statusLabel(Recording recording) {
@@ -179,8 +193,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         : Icons.description_outlined,
                   ),
                   title: Text(recording.displayTitle),
-                  subtitle: Text(_subtitle(recording)),
-                  trailing: Text(_statusLabel(recording)),
+                  subtitle: Text(formatListDate(recording.createdAt.toLocal(), DateTime.now())),
+                  trailing: _trailing(context, recording),
                   onTap: () async {
                     await Navigator.of(context).push(
                       MaterialPageRoute(

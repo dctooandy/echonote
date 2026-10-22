@@ -18,3 +18,11 @@ String formatLength(int ms) {
   final s = (total % 60).toString().padLeft(2, '0');
   return h > 0 ? '$h:${m.toString().padLeft(2, '0')}:$s' : '$m:$s';
 }
+
+/// When a recording was made, for the list: down to the minute, with the
+/// year only when it isn't [now]'s.
+String formatListDate(DateTime t, DateTime now) {
+  String two(int n) => n.toString().padLeft(2, '0');
+  final day = '${t.month}/${t.day} ${two(t.hour)}:${two(t.minute)}';
+  return t.year == now.year ? day : '${t.year}/$day';
+}
