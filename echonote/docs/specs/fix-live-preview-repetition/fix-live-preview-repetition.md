@@ -100,17 +100,18 @@ flowchart LR
     - [x] `flutter test`、`flutter analyze` 通過
   - 2026-10-22 完成。分隔字元用明確的字元範圍（不用 Unicode 類別），讓 C++ 版能完全一致。T6 的經常迴圈中間夾一個殘字「經」，所以收成兩段、留下「經常經經常經」，可以接受。
 
-- [ ] **T2 重播 WAV 取代麥克風（debug 專用）**
+- [x] **T2 重播 WAV 取代麥克風（debug 專用）**
   - 做完能看到：`flutter run --dart-define=LIVE_REPLAY_WAV=<錄音檔名>` 啟動後，開始即時錄音時改用即時速度播放 App 裡那段錄音的 WAV，每 100 ms 一段，同一段音訊可以反覆重跑
   - 被誰卡住：無，可以直接開工
   - 主要會動的檔案：`lib/services/wav_replay_mic.dart`（新，和 `MicStreamService` 相同的 `start()`／`stop()` 介面）、`lib/screens/live_record_screen.dart`（有開關時把它傳給 `LiveTranscriptionService(mic: …)`，略過麥克風權限）、`test/services/wav_replay_mic_test.dart`（新）
   - 軌道：可獨立進行
   - 驗收：
-    - [ ] 跳過 44 bytes 檔頭，依 16 kHz mono PCM16 切成 100 ms 一段；檔案讀完就結束串流，等同按下停止
-    - [ ] 節奏可注入（測試用不等真實時間），預設即時速度
-    - [ ] 找不到檔案時錄音畫面顯示錯誤，不改用麥克風
-    - [ ] 沒設開關時行為和現在完全一樣
-    - [ ] `flutter test`、`flutter analyze` 通過
+    - [x] 跳過 44 bytes 檔頭，依 16 kHz mono PCM16 切成 100 ms 一段；檔案讀完就結束串流，等同按下停止
+    - [x] 節奏可注入（測試用不等真實時間），預設即時速度
+    - [x] 找不到檔案時錄音畫面顯示錯誤，不改用麥克風
+    - [x] 沒設開關時行為和現在完全一樣
+    - [x] `flutter test`、`flutter analyze` 通過
+  - 2026-10-22 完成。`WavReplayMic` 繼承 `MicStreamService`，錄音畫面有開關時把同一個實例同時用在權限查詢和 `LiveTranscriptionService`（原本是兩個實例，權限查詢不碰錄音狀態，所以沒有行為差異）。App 裡看不到檔名，所以找不到檔案時，錯誤訊息和 log 會列出所有可重播的「檔名（錄音名稱）」。重播會照常存成一筆新的即時錄音。
 
 - [ ] **T3 原生端在定稿前收合（B）＋`LIVE_COLLAPSE` 開關**
   - 做完能看到：重複迴圈不會再永久留在已定稿的預覽裡；`--dart-define=LIVE_COLLAPSE=false` 會同時關掉 A 和 B，同一個 build 就能做前後對照

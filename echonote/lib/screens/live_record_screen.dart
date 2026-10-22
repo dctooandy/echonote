@@ -10,6 +10,7 @@ import '../services/mic_stream_service.dart';
 import '../services/recording_store.dart';
 import '../services/recording_transcriber.dart';
 import '../services/transcription_service.dart';
+import '../services/wav_replay_mic.dart';
 import 'meeting_detail_screen.dart';
 
 /// Records from the mic with a live (draft) transcript, then runs the
@@ -33,8 +34,12 @@ enum _Phase {
 }
 
 class _LiveRecordScreenState extends State<LiveRecordScreen> {
-  final _mic = MicStreamService();
-  final _service = LiveTranscriptionService();
+  /// A replayed WAV stands in for the mic in debug comparisons (see
+  /// [kLiveReplayWav]); it reports the permission as granted.
+  final MicStreamService _mic = kLiveReplayWav.isEmpty
+      ? MicStreamService()
+      : WavReplayMic(kLiveReplayWav);
+  late final _service = LiveTranscriptionService(mic: _mic);
   final _store = RecordingStore();
   late final _transcriber = RecordingTranscriber(store: _store);
   final _scroll = ScrollController();
