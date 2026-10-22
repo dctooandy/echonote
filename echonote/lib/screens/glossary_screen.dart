@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/glossary.dart';
 import '../services/glossary_store.dart';
 import '../services/whisper_prompt.dart';
+import '../widgets/glossary_term_dialog.dart';
 
 /// The global glossary. Listed in prompt priority order, so the user sees
 /// which terms make it into transcription.
@@ -103,7 +104,7 @@ class _GlossaryScreenState extends State<GlossaryScreen> {
   }) {
     return showDialog<String>(
       context: context,
-      builder: (context) => _TermDialog(title: title, initial: initial, others: others),
+      builder: (context) => GlossaryTermDialog(title: title, initial: initial, others: others),
     );
   }
 
@@ -190,61 +191,5 @@ class _GlossaryScreenState extends State<GlossaryScreen> {
       if (term.aliases.isNotEmpty) '常見誤寫：${term.aliases.join('、')}',
     ];
     return parts.isEmpty ? null : Text(parts.join(' · '));
-  }
-}
-
-/// Owns its text controller, so the field outlives the closing animation.
-class _TermDialog extends StatefulWidget {
-  const _TermDialog({required this.title, required this.others, this.initial});
-
-  final String title;
-  final String? initial;
-  final List<GlossaryTerm> others;
-
-  @override
-  State<_TermDialog> createState() => _TermDialogState();
-}
-
-class _TermDialogState extends State<_TermDialog> {
-  late final _controller = TextEditingController(text: widget.initial);
-  String? _error;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final error = validateNewTerm(_controller.text, widget.others);
-    if (error != null) {
-      setState(() => _error = error.message);
-      return;
-    }
-    Navigator.pop(context, _controller.text.trim());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.title),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        decoration: InputDecoration(
-          hintText: '例如：EchoNote、台積電',
-          helperText: '填正確寫法，不是聽起來的音',
-          errorText: _error,
-        ),
-        onChanged: (_) {
-          if (_error != null) setState(() => _error = null);
-        },
-        onSubmitted: (_) => _submit(),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-        TextButton(onPressed: _submit, child: const Text('儲存')),
-      ],
-    );
   }
 }

@@ -296,11 +296,37 @@ void main() {
     expect(find.text('記住這個寫法？'), findsNothing);
   });
 
-  testWidgets('a single-character fix asks nothing', (tester) async {
+  testWidgets('an edit that is not offered says it was saved and offers a manual add', (tester) async {
     await _pump(tester, withLines(['他說好']));
 
     await correct(tester, '他說好', '她說好');
 
     expect(find.text('記住這個寫法？'), findsNothing);
+    expect(find.text('已修改'), findsOneWidget);
+    expect(find.text('加入詞庫'), findsOneWidget);
+  });
+
+  testWidgets('the manual add opens the glossary dialog', (tester) async {
+    await _pump(tester, withLines(['第二個 Apple 叫 Full Snap']));
+    await correct(tester, '第二個 Apple 叫 Full Snap', '第二個 Apple 叫 FullSnap App');
+
+    await tester.tap(find.text('加入詞庫'));
+    // Loading the glossary is real file I/O.
+    for (var i = 0; i < 5; i++) {
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
+    }
+    await tester.pumpAndSettle();
+
+    expect(find.text('填正確寫法，不是聽起來的音'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'FoodSnap');
+    await tester.tap(find.text('儲存'));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
+    }
+    await tester.pumpAndSettle();
+
+    expect(find.text('已把「FoodSnap」加入詞庫'), findsOneWidget);
   });
 }

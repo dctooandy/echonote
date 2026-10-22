@@ -15,6 +15,7 @@ import '../services/recording_store.dart';
 import '../services/recording_transcriber.dart';
 import '../utils/format.dart';
 import '../widgets/confirm_delete_dialog.dart';
+import '../widgets/glossary_term_dialog.dart';
 
 class MeetingDetailScreen extends StatefulWidget {
   const MeetingDetailScreen({super.key, required this.recording});
@@ -332,7 +333,38 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     _persist();
     if (replacement != null && !widget.recording.dismissedReplacements.contains(replacement.key)) {
       await _offerToLearn(replacement, segment);
+      return;
     }
+    // Only a single 2–10 character replacement is offered automatically;
+    // otherwise say the edit was saved and leave adding a term to the user,
+    // so a missing prompt never looks like a broken feature.
+    _showSnack(
+      '已修改',
+      action: SnackBarAction(label: '加入詞庫', onPressed: _addTermManually),
+    );
+  }
+
+  Future<void> _addTermManually() async {
+    final loaded = await _glossary.load();
+    if (!mounted) return;
+    if (loaded.isCorrupt) {
+      _showSnack('${const GlossaryCorruptException()}');
+      return;
+    }
+    final term = await showDialog<String>(
+      context: context,
+      builder: (context) => GlossaryTermDialog(title: '加入詞庫', others: loaded.terms),
+    );
+    if (term == null) return;
+    final GlossaryTermError? error;
+    try {
+      error = await _glossary.add(term);
+    } on GlossaryCorruptException catch (e) {
+      if (mounted) _showSnack('$e');
+      return;
+    }
+    if (!mounted) return;
+    _showSnack(error?.message ?? '已把「$term」加入詞庫');
   }
 
   /// Asks whether a correction is a term worth learning. The detected span
