@@ -126,8 +126,13 @@ flowchart LR
   - 2026-10-22 完成，**尚未實機驗證**。C++ 測試讀共用測試資料 11 個案例全部和 Dart 一致，另加 3 個原生情境（跨定稿邊界的迴圈、尾端 40 字以前的文字不動、殘缺 UTF-8 不出錯）；執行方式寫在 `test_native/collapse_repetitions_test.cpp` 開頭。`flutter build ios` 通過。
   - debug 的 `[live-metrics]` 摘要改成三項：`collapse on/off`、`loops at commits`（原生在定稿時收掉幾個，各次辨識加總）、`loops in preview`（最後的預覽文字裡還剩幾個；關閉收合時就是預覽原本會顯示的迴圈數）。
   - 原生端遇到殘缺的 UTF-8 會換成 U+FFFD，不會讓 JSON 輸出失敗。
+  - 2026-10-22 修正：停止時最後一次收合（`stream_stop()`）原本沒有回報次數，第一次 T4 實測顯示「0」但預覽其實已經收合。改成 `streamFinal` 帶 `loops_collapsed`，worker 轉成一筆只有次數的 metrics；`LiveRecording` 不把它算進延遲中位數。摘要欄位改名為 `loops collapsed natively`、`loops left in preview`。
 
 - [ ] **T4 📱 實機驗證**
+  - 2026-10-22 第一次實測（使用者）：4 次都是 `collapse on`，沒有關閉收合的對照組。
+    - T6 對照組那段 WAV：重播得到和 T6 **完全相同**的文字（重播可以穩定重現）；結尾的「經常」×60 已收成「經常經經常經」。median total_ms 522／504，max lag 1.6 s（T6 基準 503／1.6 s）。
+    - 第二段 WAV：內容不是 T6 實驗組（沒有 Helps 迴圈），本來就沒有迴圈；median 451／442，max lag 0.8～0.9 s。
+    - 迴圈數都顯示 0，是上面那個計數 bug。
   - 做完能看到：同一段音訊、開關開與關的迴圈數與延遲對照表，寫回本規格
   - 被誰卡住：T2、T3
   - 主要會動的檔案：本規格文件

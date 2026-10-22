@@ -270,6 +270,12 @@ void _liveWorker(SendPort toMain) {
       case 'stop':
         final Map<String, dynamic> result = parse(stopFn());
         pcm.dispose();
+        // [echonote] Loops collapsed in the final text, reported like the
+        // per-run count so the app's total covers the last window too.
+        final Object? loops = result['loops_collapsed'];
+        if (loops is int && loops > 0) {
+          toMain.send(['metrics', <String, dynamic>{'loops_collapsed': loops}]);
+        }
         toMain.send([
           'final',
           result['@type'] == 'error' ? lastPartial : result['text'] as String,

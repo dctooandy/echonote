@@ -764,9 +764,14 @@ extern "C"
         }
 
         jsonResult["@type"] = "streamFinal";
-        jsonResult["text"] = g_stream.collapse_repetitions
-            ? echonote::append_collapsed(g_stream.committed, g_stream.last_text).text
-            : g_stream.committed + g_stream.last_text;
+        if (g_stream.collapse_repetitions) {
+            echonote::CollapseResult merged =
+                echonote::append_collapsed(g_stream.committed, g_stream.last_text);
+            jsonResult["text"] = merged.text;
+            jsonResult["loops_collapsed"] = merged.collapsed;
+        } else {
+            jsonResult["text"] = g_stream.committed + g_stream.last_text;
+        }
 
         whisper_free(g_stream.ctx);
         g_stream.ctx = nullptr;

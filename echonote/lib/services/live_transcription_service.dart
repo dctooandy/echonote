@@ -212,6 +212,9 @@ class LiveRecording {
       },
     );
     _session.metrics.listen((m) {
+      _loopsCollapsedNatively += (m['loops_collapsed'] as num?)?.toInt() ?? 0;
+      // The final report carries only the loop count, not a run's timings.
+      if (!m.containsKey('total_ms')) return;
       if (kDebugMode) _runs.add(m);
       final fedSec = (m['fed_sec'] as num?)?.toDouble();
       if (fedSec != null) _onLag(sentSeconds - fedSec);
@@ -326,16 +329,17 @@ class LiveRecording {
   // so preview settings (audio_ctx etc.) can be compared on a device.
   final List<Map<String, dynamic>> _runs = [];
   double _maxLag = 0;
+  int _loopsCollapsedNatively = 0;
 
   String _collapse(String text) => kLiveCollapse ? collapseRepetitions(text).text : text;
 
-  /// Loops removed natively at commits, plus those left in [rawPreview] (the
-  /// window not yet committed, or everything when collapsing is off — then
-  /// the count shows what the preview would otherwise have hidden).
+  /// Loops the native side removed (at commits and in the final text), and
+  /// those still in [rawPreview] — with collapsing off, the loops the
+  /// preview would otherwise have hidden.
   void _logRuns(String rawPreview) {
     if (_runs.isEmpty) return;
     final collapsed = collapseRepetitions(rawPreview);
-    final atCommits = _runs.fold<int>(0, (n, m) => n + ((m['loops_collapsed'] as num?)?.toInt() ?? 0));
+
     double median(String key) {
       final v = [for (final m in _runs) (m[key] as num?)?.toDouble() ?? 0]..sort();
       return v[v.length ~/ 2];
@@ -350,7 +354,8 @@ class LiveRecording {
       'median window_sec ${median('window_sec').toStringAsFixed(1)}, '
       'max lag ${_maxLag.toStringAsFixed(1)} s, '
       'collapse ${kLiveCollapse ? 'on' : 'off'}, '
-      'loops at commits $atCommits, loops in preview ${collapsed.collapsed}',
+      'loops collapsed natively $_loopsCollapsedNatively, '
+      'loops left in preview ${collapsed.collapsed}',
     );
     debugPrint('[live-metrics] preview: ${_collapse(rawPreview)}');
   }
