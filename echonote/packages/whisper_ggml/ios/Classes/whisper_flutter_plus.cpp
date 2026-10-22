@@ -142,6 +142,9 @@ struct whisper_params
     bool split_on_word = false;
     // whisper_full_params.no_context: disable cross-segment text conditioning.
     bool no_context = false;
+    // whisper_full_params.carry_initial_prompt: prepend initial_prompt to
+    // every 30 s window instead of letting past text push it out.
+    bool carry_initial_prompt = false;
     // whisper_full_params.suppress_non_speech_tokens: drop [BLANK_AUDIO]-style annotations.
     bool suppress_nst = false;
 
@@ -186,6 +189,10 @@ json transcribe(json jsonBody)
     if (jsonBody.contains("no_context") && jsonBody["no_context"].is_boolean())
     {
         params.no_context = jsonBody["no_context"].get<bool>();
+    }
+    if (jsonBody.contains("carry_initial_prompt") && jsonBody["carry_initial_prompt"].is_boolean())
+    {
+        params.carry_initial_prompt = jsonBody["carry_initial_prompt"].get<bool>();
     }
     if (jsonBody.contains("suppress_non_speech_tokens") && jsonBody["suppress_non_speech_tokens"].is_boolean())
     {
@@ -333,6 +340,7 @@ json transcribe(json jsonBody)
             wparams.initial_prompt = params.prompt.c_str();
         }
         wparams.no_context = params.no_context;
+        wparams.carry_initial_prompt = params.carry_initial_prompt;
         wparams.suppress_nst = params.suppress_nst;
 
         if (params.split_on_word) {

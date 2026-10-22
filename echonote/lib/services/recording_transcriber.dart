@@ -1,6 +1,10 @@
+import 'package:flutter/foundation.dart';
+
 import '../models/recording.dart';
+import 'glossary_store.dart';
 import 'recording_store.dart';
 import 'transcription_service.dart';
+import 'whisper_prompt.dart';
 
 class NoSpeechDetectedException implements Exception {
   const NoSpeechDetectedException();
@@ -13,27 +17,39 @@ class NoSpeechDetectedException implements Exception {
 /// recordings directory. Shared by import, live recording (after stop) and
 /// "re-transcribe".
 class RecordingTranscriber {
-  RecordingTranscriber({TranscriptionService? transcription, RecordingStore? store})
-    : _transcription = transcription ?? TranscriptionService(),
-      _store = store ?? RecordingStore();
+  RecordingTranscriber({
+    TranscriptionService? transcription,
+    RecordingStore? store,
+    GlossaryStore? glossary,
+  }) : _transcription = transcription ?? TranscriptionService(),
+       _store = store ?? RecordingStore(),
+       _glossary = glossary ?? GlossaryStore();
 
   final TranscriptionService _transcription;
   final RecordingStore _store;
+  final GlossaryStore _glossary;
 
   /// On success fills in [recording]'s segments and elapsed time and saves
-  /// it. Throws [NoSpeechDetectedException] when nothing was recognized, or
-  /// the transcription error; in both cases [recording] is left untouched
-  /// (still untranscribed) and nothing is written.
+  /// it; an existing analysis is kept but flagged as possibly stale. Throws
+  /// [NoSpeechDetectedException] when nothing was recognized, or the
+  /// transcription error; in both cases [recording] is left untouched
+  /// (its previous transcript, if any, included) and nothing is written.
   Future<void> transcribe(Recording recording, {void Function(int percent)? onProgress}) async {
+    // A corrupt glossary loads as empty: transcribe without it rather than
+    // fail.
+    final prompt = buildWhisperPrompt((await _glossary.load()).terms);
+    debugPrint('[Transcriber] initial prompt: $prompt');
     final result = await _transcription.transcribe(
       audioPath: await _store.resolveAudioPath(recording),
+      initialPrompt: prompt,
       onProgress: onProgress,
     );
     if (result.segments.isEmpty) throw const NoSpeechDetectedException();
 
     recording
       ..segments = result.segments
-      ..elapsedSeconds = result.elapsed.inSeconds;
+      ..elapsedSeconds = result.elapsed.inSeconds
+      ..transcriptStaleAnalysis = recording.analysis != null;
     await _store.save(recording);
   }
 }

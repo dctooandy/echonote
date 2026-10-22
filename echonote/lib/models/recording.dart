@@ -1,17 +1,108 @@
 class TranscriptSegment {
-  TranscriptSegment({required this.startMs, required this.endMs, required this.text});
+  TranscriptSegment({
+    required this.startMs,
+    required this.endMs,
+    required this.text,
+    this.edited = false,
+  });
 
   final int startMs;
   final int endMs;
-  final String text;
+  String text;
+
+  /// The user changed [text]. Re-transcribing replaces every segment, so
+  /// this is what the confirmation warns about.
+  bool edited;
 
   factory TranscriptSegment.fromJson(Map<String, dynamic> json) => TranscriptSegment(
         startMs: json['start_ms'] as int,
         endMs: json['end_ms'] as int,
         text: json['text'] as String,
+        edited: json['edited'] as bool? ?? false,
       );
 
-  Map<String, dynamic> toJson() => {'start_ms': startMs, 'end_ms': endMs, 'text': text};
+  Map<String, dynamic> toJson() => {
+        'start_ms': startMs,
+        'end_ms': endMs,
+        'text': text,
+        'edited': edited,
+      };
+}
+
+/// Stored as `star` / `text`.
+enum UserNoteKind {
+  /// A moment marked as important, with no text.
+  star('star'),
+  text('text');
+
+  const UserNoteKind(this.jsonValue);
+
+  final String jsonValue;
+
+  static UserNoteKind fromJson(String? value) =>
+      values.firstWhere((k) => k.jsonValue == value, orElse: () => text);
+}
+
+/// A highlight the user marked while recording or playing back. The AI
+/// never rewrites it, and re-analysis keeps it.
+class UserNote {
+  UserNote({
+    required this.id,
+    required this.timestampMs,
+    required this.kind,
+    required this.createdAt,
+    this.text,
+  });
+
+  final String id;
+
+  /// Position in the recording. Only the timestamp is kept: segments are
+  /// replaced on re-transcription, so the segment it falls in is looked up
+  /// at analysis time.
+  final int timestampMs;
+  final UserNoteKind kind;
+
+  /// Null for [UserNoteKind.star].
+  String? text;
+  final DateTime createdAt;
+
+  factory UserNote.fromJson(Map<String, dynamic> json) => UserNote(
+        id: json['id'] as String,
+        timestampMs: json['timestamp_ms'] as int,
+        kind: UserNoteKind.fromJson(json['kind'] as String?),
+        text: json['text'] as String?,
+        createdAt: DateTime.parse(json['created_at'] as String),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'timestamp_ms': timestampMs,
+        'kind': kind.jsonValue,
+        'text': text,
+        'created_at': createdAt.toIso8601String(),
+      };
+
+  /// Pins the note inside a recording of [durationMs]: a live recording can
+  /// end up shorter than the moment a note was taken (e.g. a failed write).
+  UserNote clampedTo(int durationMs) => timestampMs <= durationMs
+      ? this
+      : UserNote(id: id, timestampMs: durationMs, kind: kind, text: text, createdAt: createdAt);
+}
+
+/// Adds a ★ at [timestampMs] to [notes] unless one is already within a
+/// second of it, so a double tap is one mark. Returns whether it added one.
+bool addStarNote(List<UserNote> notes, int timestampMs) {
+  final duplicate = notes.any(
+    (n) => n.kind == UserNoteKind.star && (n.timestampMs - timestampMs).abs() < 1000,
+  );
+  if (duplicate) return false;
+  notes.add(UserNote(
+    id: DateTime.now().millisecondsSinceEpoch.toString(),
+    timestampMs: timestampMs,
+    kind: UserNoteKind.star,
+    createdAt: DateTime.now(),
+  ));
+  return true;
 }
 
 class Todo {
@@ -82,7 +173,8 @@ class MeetingAnalysis {
     required this.title,
     required this.attendees,
     required this.agendaItems,
-  });
+    Map<String, String>? highlightContexts,
+  }) : highlightContexts = highlightContexts ?? {};
 
   final String overview;
   final List<String> keyPoints;
@@ -90,6 +182,10 @@ class MeetingAnalysis {
   String title;
   List<String> attendees;
   final List<AgendaItem> agendaItems;
+
+  /// AI's note on what was being discussed at each [UserNote], keyed by
+  /// note id. Shown apart from the user's own text; replaced on re-analysis.
+  final Map<String, String> highlightContexts;
 
   factory MeetingAnalysis.fromJson(Map<String, dynamic> json) {
     final summary = json['summary'] as Map<String, dynamic>? ?? {};
@@ -105,6 +201,8 @@ class MeetingAnalysis {
       agendaItems: (minutes['agenda_items'] as List<dynamic>? ?? [])
           .map((a) => AgendaItem.fromJson(a as Map<String, dynamic>))
           .toList(),
+      highlightContexts:
+          (json['highlight_contexts'] as Map<String, dynamic>? ?? {}).cast<String, String>(),
     );
   }
 
@@ -116,6 +214,7 @@ class MeetingAnalysis {
           'attendees': attendees,
           'agenda_items': agendaItems.map((a) => a.toJson()).toList(),
         },
+        'highlight_contexts': highlightContexts,
       };
 }
 
@@ -144,7 +243,11 @@ class Recording {
     required this.segments,
     this.source = RecordingSource.imported,
     this.analysis,
-  });
+    List<UserNote>? notes,
+    this.transcriptStaleAnalysis = false,
+    List<String>? dismissedReplacements,
+  }) : notes = notes ?? [],
+       dismissedReplacements = dismissedReplacements ?? [];
 
   final String id;
   final String audioName;
@@ -163,6 +266,15 @@ class Recording {
   List<TranscriptSegment> segments;
   final RecordingSource source;
   MeetingAnalysis? analysis;
+  final List<UserNote> notes;
+
+  /// The transcript changed (re-transcribed, or a correction applied across
+  /// it) after [analysis] was made. Cleared by re-analysis.
+  bool transcriptStaleAnalysis;
+
+  /// Transcript corrections the user declined to learn, as `old→new`; not
+  /// offered again for this recording.
+  final List<String> dismissedReplacements;
 
   bool get isTranscribed => segments.isNotEmpty;
 
@@ -183,6 +295,12 @@ class Recording {
         analysis: json['analysis'] != null
             ? MeetingAnalysis.fromJson(json['analysis'] as Map<String, dynamic>)
             : null,
+        notes: (json['notes'] as List<dynamic>? ?? [])
+            .map((n) => UserNote.fromJson(n as Map<String, dynamic>))
+            .toList(),
+        transcriptStaleAnalysis: json['transcript_stale_analysis'] as bool? ?? false,
+        dismissedReplacements:
+            (json['dismissed_replacements'] as List<dynamic>? ?? []).cast<String>(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -195,5 +313,8 @@ class Recording {
         'segments': segments.map((s) => s.toJson()).toList(),
         'source': source.jsonValue,
         'analysis': analysis?.toJson(),
+        'notes': notes.map((n) => n.toJson()).toList(),
+        'transcript_stale_analysis': transcriptStaleAnalysis,
+        'dismissed_replacements': dismissedReplacements,
       };
 }

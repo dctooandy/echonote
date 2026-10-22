@@ -53,6 +53,17 @@ mixin _$TranscribeRequest {
   /// of every previous version of this package.
   bool get noContext;
 
+  /// Sets `whisper_full_params.carry_initial_prompt` on the native side.
+  ///
+  /// By default whisper.cpp only seeds the first 30 s window with
+  /// [initialPrompt]; later windows are conditioned on previously decoded
+  /// text, which soon pushes the prompt out. When `true`, the prompt is
+  /// prepended to every window, so vocabulary hints hold for the whole
+  /// recording.
+  ///
+  /// Default `false` matches whisper.cpp's default.
+  bool get carryInitialPrompt;
+
   /// Sets `whisper_full_params.suppress_non_speech_tokens` on the
   /// native side.
   ///
@@ -107,6 +118,8 @@ mixin _$TranscribeRequest {
                 other.initialPrompt == initialPrompt) &&
             (identical(other.noContext, noContext) ||
                 other.noContext == noContext) &&
+            (identical(other.carryInitialPrompt, carryInitialPrompt) ||
+                other.carryInitialPrompt == carryInitialPrompt) &&
             (identical(
                     other.suppressNonSpeechTokens, suppressNonSpeechTokens) ||
                 other.suppressNonSpeechTokens == suppressNonSpeechTokens));
@@ -131,11 +144,12 @@ mixin _$TranscribeRequest {
       realtimeStream,
       initialPrompt,
       noContext,
+      carryInitialPrompt,
       suppressNonSpeechTokens);
 
   @override
   String toString() {
-    return 'TranscribeRequest(audio: $audio, isTranslate: $isTranslate, threads: $threads, isVerbose: $isVerbose, language: $language, isSpecialTokens: $isSpecialTokens, isNoTimestamps: $isNoTimestamps, isRealtime: $isRealtime, nProcessors: $nProcessors, splitOnWord: $splitOnWord, noFallback: $noFallback, diarize: $diarize, speedUp: $speedUp, realtimeStream: $realtimeStream, initialPrompt: $initialPrompt, noContext: $noContext, suppressNonSpeechTokens: $suppressNonSpeechTokens)';
+    return 'TranscribeRequest(audio: $audio, isTranslate: $isTranslate, threads: $threads, isVerbose: $isVerbose, language: $language, isSpecialTokens: $isSpecialTokens, isNoTimestamps: $isNoTimestamps, isRealtime: $isRealtime, nProcessors: $nProcessors, splitOnWord: $splitOnWord, noFallback: $noFallback, diarize: $diarize, speedUp: $speedUp, realtimeStream: $realtimeStream, initialPrompt: $initialPrompt, noContext: $noContext, carryInitialPrompt: $carryInitialPrompt, suppressNonSpeechTokens: $suppressNonSpeechTokens)';
   }
 }
 
@@ -162,6 +176,7 @@ abstract mixin class $TranscribeRequestCopyWith<$Res> {
       Stream<String>? realtimeStream,
       String? initialPrompt,
       bool noContext,
+      bool carryInitialPrompt,
       bool suppressNonSpeechTokens});
 }
 
@@ -194,6 +209,7 @@ class _$TranscribeRequestCopyWithImpl<$Res>
     Object? realtimeStream = freezed,
     Object? initialPrompt = freezed,
     Object? noContext = null,
+    Object? carryInitialPrompt = null,
     Object? suppressNonSpeechTokens = null,
   }) {
     return _then(_self.copyWith(
@@ -260,6 +276,10 @@ class _$TranscribeRequestCopyWithImpl<$Res>
       noContext: null == noContext
           ? _self.noContext
           : noContext // ignore: cast_nullable_to_non_nullable
+              as bool,
+      carryInitialPrompt: null == carryInitialPrompt
+          ? _self.carryInitialPrompt
+          : carryInitialPrompt // ignore: cast_nullable_to_non_nullable
               as bool,
       suppressNonSpeechTokens: null == suppressNonSpeechTokens
           ? _self.suppressNonSpeechTokens
@@ -379,6 +399,7 @@ extension TranscribeRequestPatterns on TranscribeRequest {
             Stream<String>? realtimeStream,
             String? initialPrompt,
             bool noContext,
+            bool carryInitialPrompt,
             bool suppressNonSpeechTokens)?
         $default, {
     required TResult orElse(),
@@ -403,6 +424,7 @@ extension TranscribeRequestPatterns on TranscribeRequest {
             _that.realtimeStream,
             _that.initialPrompt,
             _that.noContext,
+            _that.carryInitialPrompt,
             _that.suppressNonSpeechTokens);
       case _:
         return orElse();
@@ -441,6 +463,7 @@ extension TranscribeRequestPatterns on TranscribeRequest {
             Stream<String>? realtimeStream,
             String? initialPrompt,
             bool noContext,
+            bool carryInitialPrompt,
             bool suppressNonSpeechTokens)
         $default,
   ) {
@@ -464,6 +487,7 @@ extension TranscribeRequestPatterns on TranscribeRequest {
             _that.realtimeStream,
             _that.initialPrompt,
             _that.noContext,
+            _that.carryInitialPrompt,
             _that.suppressNonSpeechTokens);
       case _:
         throw StateError('Unexpected subclass');
@@ -501,6 +525,7 @@ extension TranscribeRequestPatterns on TranscribeRequest {
             Stream<String>? realtimeStream,
             String? initialPrompt,
             bool noContext,
+            bool carryInitialPrompt,
             bool suppressNonSpeechTokens)?
         $default,
   ) {
@@ -524,6 +549,7 @@ extension TranscribeRequestPatterns on TranscribeRequest {
             _that.realtimeStream,
             _that.initialPrompt,
             _that.noContext,
+            _that.carryInitialPrompt,
             _that.suppressNonSpeechTokens);
       case _:
         return null;
@@ -551,6 +577,7 @@ class _TranscribeRequest extends TranscribeRequest {
       this.realtimeStream = null,
       this.initialPrompt = null,
       this.noContext = false,
+      this.carryInitialPrompt = false,
       this.suppressNonSpeechTokens = false})
       : super._();
 
@@ -624,6 +651,19 @@ class _TranscribeRequest extends TranscribeRequest {
   @JsonKey()
   final bool noContext;
 
+  /// Sets `whisper_full_params.carry_initial_prompt` on the native side.
+  ///
+  /// By default whisper.cpp only seeds the first 30 s window with
+  /// [initialPrompt]; later windows are conditioned on previously decoded
+  /// text, which soon pushes the prompt out. When `true`, the prompt is
+  /// prepended to every window, so vocabulary hints hold for the whole
+  /// recording.
+  ///
+  /// Default `false` matches whisper.cpp's default.
+  @override
+  @JsonKey()
+  final bool carryInitialPrompt;
+
   /// Sets `whisper_full_params.suppress_non_speech_tokens` on the
   /// native side.
   ///
@@ -680,6 +720,8 @@ class _TranscribeRequest extends TranscribeRequest {
                 other.initialPrompt == initialPrompt) &&
             (identical(other.noContext, noContext) ||
                 other.noContext == noContext) &&
+            (identical(other.carryInitialPrompt, carryInitialPrompt) ||
+                other.carryInitialPrompt == carryInitialPrompt) &&
             (identical(
                     other.suppressNonSpeechTokens, suppressNonSpeechTokens) ||
                 other.suppressNonSpeechTokens == suppressNonSpeechTokens));
@@ -704,11 +746,12 @@ class _TranscribeRequest extends TranscribeRequest {
       realtimeStream,
       initialPrompt,
       noContext,
+      carryInitialPrompt,
       suppressNonSpeechTokens);
 
   @override
   String toString() {
-    return 'TranscribeRequest(audio: $audio, isTranslate: $isTranslate, threads: $threads, isVerbose: $isVerbose, language: $language, isSpecialTokens: $isSpecialTokens, isNoTimestamps: $isNoTimestamps, isRealtime: $isRealtime, nProcessors: $nProcessors, splitOnWord: $splitOnWord, noFallback: $noFallback, diarize: $diarize, speedUp: $speedUp, realtimeStream: $realtimeStream, initialPrompt: $initialPrompt, noContext: $noContext, suppressNonSpeechTokens: $suppressNonSpeechTokens)';
+    return 'TranscribeRequest(audio: $audio, isTranslate: $isTranslate, threads: $threads, isVerbose: $isVerbose, language: $language, isSpecialTokens: $isSpecialTokens, isNoTimestamps: $isNoTimestamps, isRealtime: $isRealtime, nProcessors: $nProcessors, splitOnWord: $splitOnWord, noFallback: $noFallback, diarize: $diarize, speedUp: $speedUp, realtimeStream: $realtimeStream, initialPrompt: $initialPrompt, noContext: $noContext, carryInitialPrompt: $carryInitialPrompt, suppressNonSpeechTokens: $suppressNonSpeechTokens)';
   }
 }
 
@@ -737,6 +780,7 @@ abstract mixin class _$TranscribeRequestCopyWith<$Res>
       Stream<String>? realtimeStream,
       String? initialPrompt,
       bool noContext,
+      bool carryInitialPrompt,
       bool suppressNonSpeechTokens});
 }
 
@@ -769,6 +813,7 @@ class __$TranscribeRequestCopyWithImpl<$Res>
     Object? realtimeStream = freezed,
     Object? initialPrompt = freezed,
     Object? noContext = null,
+    Object? carryInitialPrompt = null,
     Object? suppressNonSpeechTokens = null,
   }) {
     return _then(_TranscribeRequest(
@@ -835,6 +880,10 @@ class __$TranscribeRequestCopyWithImpl<$Res>
       noContext: null == noContext
           ? _self.noContext
           : noContext // ignore: cast_nullable_to_non_nullable
+              as bool,
+      carryInitialPrompt: null == carryInitialPrompt
+          ? _self.carryInitialPrompt
+          : carryInitialPrompt // ignore: cast_nullable_to_non_nullable
               as bool,
       suppressNonSpeechTokens: null == suppressNonSpeechTokens
           ? _self.suppressNonSpeechTokens
