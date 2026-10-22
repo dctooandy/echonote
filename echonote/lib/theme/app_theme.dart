@@ -266,5 +266,23 @@ ThemeData buildAppTheme(Brightness brightness) {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
     dividerTheme: DividerThemeData(color: p.line),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: p.background,
+      surfaceTintColor: Colors.transparent,
+      indicatorColor: p.accentSoft,
+      height: 66,
+      iconTheme: WidgetStateProperty.resolveWith(
+        (states) => IconThemeData(
+          color: states.contains(WidgetState.selected) ? p.accent : p.textMuted,
+        ),
+      ),
+      labelTextStyle: WidgetStateProperty.resolveWith(
+        (states) => TextStyle(
+          fontSize: 12,
+          color: states.contains(WidgetState.selected) ? p.text : p.textMuted,
+          fontWeight: states.contains(WidgetState.selected) ? FontWeight.w600 : null,
+        ),
+      ),
+    ),
   );
 }

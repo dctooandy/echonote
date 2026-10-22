@@ -9,14 +9,17 @@ import 'package:share_plus/share_plus.dart';
 import '../models/glossary.dart';
 import '../models/recording.dart';
 import '../services/analysis_service.dart';
+import '../services/app_settings.dart';
 import '../services/correction_learning.dart';
 import '../services/glossary_store.dart';
 import '../services/recording_store.dart';
 import '../services/recording_transcriber.dart';
 import '../services/screen_awake.dart';
+import '../theme/app_theme.dart';
 import '../utils/format.dart';
 import '../widgets/confirm_delete_dialog.dart';
 import '../widgets/glossary_term_dialog.dart';
+import '../widgets/round_icon_button.dart';
 
 class MeetingDetailScreen extends StatefulWidget {
   const MeetingDetailScreen({super.key, required this.recording});
@@ -88,9 +91,9 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   Future<void> _runAnalysis() async {
     if (_isAnalyzing) return;
     if (!AnalysisService.available) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(Platform.isAndroid ? 'Android 版尚未支援分析' : '分析服務無法使用')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(Platform.isAndroid ? 'Android 版尚未支援分析' : '分析服務無法使用')));
       return;
     }
     setState(() => _isAnalyzing = true);
@@ -115,6 +118,24 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     }
   }
 
+  /// A new analysis replaces the old one whole, todo ticks included, and
+  /// calls the cloud service, so ask first (spec feature-dark-theme,
+  /// decision 1).
+  Future<void> _confirmReanalyze() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('重新分析？'),
+        content: const Text('會用目前的逐字稿重新產生摘要、待辦和結構化紀錄，取代現在的結果，待辦的勾選也會重來。\n\n你的重點不受影響。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('重新分析')),
+        ],
+      ),
+    );
+    if (ok == true) await _runAnalysis();
+  }
+
   /// Re-running a transcript that exists replaces it, edits included, so
   /// ask first.
   Future<void> _confirmRetranscribe() async {
@@ -124,11 +145,13 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('用目前詞庫重新轉錄？'),
-        content: Text([
-          if (edited > 0) '你修改過的 $edited 處逐字稿會被覆蓋。' else '目前的逐字稿會被取代。',
-          if (hasAnalysis) '分析結果會保留，但可能和新的逐字稿對不上，之後可以重新分析。',
-          '你的重點不受影響。轉錄期間請保持 App 開啟。',
-        ].join('\n\n')),
+        content: Text(
+          [
+            if (edited > 0) '你修改過的 $edited 處逐字稿會被覆蓋。' else '目前的逐字稿會被取代。',
+            if (hasAnalysis) '分析結果會保留，但可能和新的逐字稿對不上，之後可以重新分析。',
+            '你的重點不受影響。轉錄期間請保持 App 開啟。',
+          ].join('\n\n'),
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
           TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('重新轉錄')),
@@ -185,9 +208,8 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已複製到剪貼簿')));
   }
 
-  String get _transcriptText => widget.recording.segments
-      .map((s) => '[${formatMs(s.startMs)}] ${s.text}')
-      .join('\n');
+  String get _transcriptText =>
+      widget.recording.segments.map((s) => '[${formatMs(s.startMs)}] ${s.text}').join('\n');
 
   /// Writes the transcript to a temp .txt file and hands it to the OS share
   /// sheet — lets the user save it into Files, AirDrop it, send it via
@@ -250,20 +272,25 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     final ms = _positionMs;
     final text = await _promptNoteText(title: '筆記 ${formatMs(ms)}');
     if (text == null) return;
-    widget.recording.notes.add(UserNote(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      timestampMs: ms,
-      kind: UserNoteKind.text,
-      text: text,
-      createdAt: DateTime.now(),
-    ));
+    widget.recording.notes.add(
+      UserNote(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        timestampMs: ms,
+        kind: UserNoteKind.text,
+        text: text,
+        createdAt: DateTime.now(),
+      ),
+    );
     _persist();
   }
 
   /// Text notes only: a ★ has no text, and the timestamp is fixed (delete
   /// and re-add to move it).
   Future<void> _editNote(UserNote note) async {
-    final text = await _promptNoteText(title: '編輯筆記 ${formatMs(note.timestampMs)}', initial: note.text);
+    final text = await _promptNoteText(
+      title: '編輯筆記 ${formatMs(note.timestampMs)}',
+      initial: note.text,
+    );
     if (text == null) return;
     note.text = text;
     _persist();
@@ -443,65 +470,38 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final analysis = widget.recording.analysis;
+    final busy = _isAnalyzing || _isTranscribing;
     return DefaultTabController(
       length: 4,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(widget.recording.displayTitle),
+          title: Text(widget.recording.displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+          // Seldom used and costly to hit by mistake, so up here, out of the
+          // thumb's way; each asks first (spec feature-dark-theme).
           actions: [
             if (analysis != null && widget.recording.isTranscribed)
-              IconButton(
-                icon: _isAnalyzing
-                    ? const SizedBox(
-                        height: 16,
-                        width: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.refresh),
+              RoundIconButton(
+                icon: Icons.auto_awesome,
                 tooltip: '重新分析',
-                onPressed: _isAnalyzing ? null : _runAnalysis,
+                onPressed: busy ? null : _confirmReanalyze,
               ),
-            PopupMenuButton<String>(
-              // Not while a transcription/analysis is about to write back
-              // into this recording.
-              enabled: !_isAnalyzing && !_isTranscribing,
-              onSelected: (value) {
-                if (value == 'retranscribe') _confirmRetranscribe();
-                if (value == 'delete') _delete();
-              },
-              itemBuilder: (_) => [
-                if (widget.recording.isTranscribed)
-                  const PopupMenuItem(
-                    value: 'retranscribe',
-                    child: ListTile(
-                      leading: Icon(Icons.subtitles_outlined),
-                      title: Text('用目前詞庫重新轉錄'),
-                    ),
-                  ),
-                PopupMenuItem(
-                  value: 'delete',
-                  child: ListTile(
-                    leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
-                    title: Text('刪除', style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                  ),
-                ),
-              ],
+            if (widget.recording.isTranscribed)
+              RoundIconButton(
+                icon: Icons.subtitles_outlined,
+                tooltip: '用目前詞庫重新轉錄',
+                onPressed: busy ? null : _confirmRetranscribe,
+              ),
+            RoundIconButton(
+              icon: Icons.delete_outline,
+              tooltip: '刪除',
+              color: Theme.of(context).colorScheme.error,
+              onPressed: busy ? null : _delete,
             ),
+            const SizedBox(width: 9),
           ],
-          bottom: const TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            tabs: [
-              Tab(text: '摘要'),
-              Tab(text: '待辦'),
-              Tab(text: '逐字稿'),
-              Tab(text: '結構化紀錄'),
-            ],
-          ),
         ),
         body: Column(
           children: [
-            _buildPlaybackBar(),
             // The untranscribed view has its own progress; this covers
             // replacing an existing transcript.
             if (_isTranscribing && widget.recording.isTranscribed) _buildRetranscribeProgress(),
@@ -517,50 +517,71 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
                 ],
               ),
             ),
+            _buildPlaybackBar(),
           ],
         ),
+        // Tabs at the bottom, within the thumb's reach; swiping still works.
+        bottomNavigationBar: const _TabNavigationBar(),
       ),
     );
   }
 
-  /// Playback controls shown above every tab (not just 逐字稿) — tapping a
+  /// Playback controls shown under every tab (not just 逐字稿) — tapping a
   /// todo or agenda item to jump to its timestamp starts playback from
   /// whichever tab is open, so the pause control needs to be reachable from
-  /// all of them, not just the transcript tab.
+  /// all of them. A pill just above the tabs, play under the thumb.
   Widget _buildPlaybackBar() {
+    final scheme = Theme.of(context).colorScheme;
+    final leftHanded = AppSettingsScope.of(context).handedness == Handedness.left;
     return StreamBuilder<PlayerState>(
       stream: _audioPlayer.playerStateStream,
       builder: (context, snapshot) {
         final playing = snapshot.data?.playing ?? false;
-        return Material(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: Icon(playing ? Icons.pause_circle : Icons.play_circle),
-                  iconSize: 36,
-                  onPressed: () => _toggleManualPlayback(playing),
-                ),
-                const Expanded(
-                  child: Text(
-                    '點擊逐字稿／待辦／議程項目可跳轉播放，隨時可在此暫停',
-                    overflow: TextOverflow.ellipsis,
+        final children = [
+          RoundIconButton(icon: Icons.star_outline, tooltip: '標記重點', onPressed: _addStar),
+          RoundIconButton(icon: Icons.edit_note, tooltip: '新增筆記', onPressed: _addTextNote),
+          Expanded(
+            child: StreamBuilder<Duration>(
+              stream: _audioPlayer.positionStream,
+              builder: (context, position) {
+                final total = _audioPlayer.duration?.inMilliseconds ?? widget.recording.durationMs;
+                return Text(
+                  [
+                    formatMs(position.data?.inMilliseconds ?? 0),
+                    if (total != null) formatMs(total),
+                  ].join(' / '),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.star_outline),
-                  tooltip: '標記重點',
-                  onPressed: _addStar,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.edit_note),
-                  tooltip: '新增筆記',
-                  onPressed: _addTextNote,
+                );
+              },
+            ),
+          ),
+          IconButton.filled(
+            icon: Icon(playing ? Icons.pause : Icons.play_arrow, size: 26),
+            tooltip: playing ? '暫停' : '播放',
+            style: IconButton.styleFrom(fixedSize: const Size.square(44)),
+            onPressed: () => _toggleManualPlayback(playing),
+          ),
+        ];
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+          child: Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainer,
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: [
+                BoxShadow(
+                  color: scheme.shadow.withValues(alpha: 0.25),
+                  blurRadius: 12,
+                  offset: const Offset(0, 3),
                 ),
               ],
             ),
+            child: Row(children: leftHanded ? children.reversed.toList() : children),
           ),
         );
       },
@@ -573,13 +594,11 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            _transcribeProgress > 0
-                ? '重新轉錄中… $_transcribeProgress%（請保持 App 開啟）'
-                : '準備重新轉錄…',
-          ),
+          Text(_transcribeProgress > 0 ? '重新轉錄中… $_transcribeProgress%（請保持 App 開啟）' : '準備重新轉錄…'),
           const SizedBox(height: 4),
-          LinearProgressIndicator(value: _transcribeProgress > 0 ? _transcribeProgress / 100 : null),
+          LinearProgressIndicator(
+            value: _transcribeProgress > 0 ? _transcribeProgress / 100 : null,
+          ),
         ],
       ),
     );
@@ -587,19 +606,31 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
 
   /// Shown on every tab: todos and minutes go stale as much as the summary.
   Widget _buildStaleAnalysisBanner() {
-    final theme = Theme.of(context);
-    return Material(
-      color: theme.colorScheme.tertiaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.only(left: 16, right: 8),
-        child: Row(
-          children: [
-            const Icon(Icons.info_outline, size: 20),
-            const SizedBox(width: 8),
-            const Expanded(child: Text('逐字稿已更新，分析結果可能過時')),
-            TextButton(onPressed: _isAnalyzing ? null : _runAnalysis, child: const Text('重新分析')),
-          ],
-        ),
+    final colors = AppColors.of(context);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: colors.amberSoft,
+        borderRadius: BorderRadius.circular(kCardRadius),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: 20, color: colors.amber),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text('逐字稿已更新，分析結果可能過時', style: TextStyle(color: colors.amber)),
+          ),
+          FilledButton(
+            onPressed: _isAnalyzing ? null : _confirmReanalyze,
+            style: FilledButton.styleFrom(
+              backgroundColor: colors.amber,
+              foregroundColor: Theme.of(context).colorScheme.surface,
+              visualDensity: VisualDensity.compact,
+            ),
+            child: const Text('重新分析'),
+          ),
+        ],
       ),
     );
   }
@@ -681,14 +712,14 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
           constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.3),
           child: _buildNotesSection(),
         ),
-        const Divider(height: 1),
         Expanded(child: summary),
       ],
     );
   }
 
   Widget _buildNotesSection() {
-    final notes = [...widget.recording.notes]..sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
+    final notes = [...widget.recording.notes]
+      ..sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
     final analysis = widget.recording.analysis;
     final contexts = analysis?.highlightContexts ?? const {};
     // Added after the analysis (or skipped by it): re-analysis fills them in.
@@ -699,7 +730,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 4),
           child: Text('你的重點', style: theme.textTheme.titleMedium),
         ),
         if (missing > 0)
@@ -711,52 +742,67 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
             ),
           ),
         for (final note in notes)
-          ListTile(
-            dense: true,
-            leading: Icon(note.kind == UserNoteKind.star ? Icons.star : Icons.notes),
-            title: Text(note.kind == UserNoteKind.star ? '重點標記' : note.text ?? ''),
-            // The user's words above, the AI's reading below — styled apart
-            // so one is never mistaken for the other.
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(formatMs(note.timestampMs)),
-                if (contexts[note.id] case final aiContext?)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            aiContext,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              fontStyle: FontStyle.italic,
-                              color: theme.colorScheme.primary,
+          Card(
+            child: ListTile(
+              leading: _noteIcon(note),
+              title: Text(note.kind == UserNoteKind.star ? '重點標記' : note.text ?? ''),
+              // The user's words above, the AI's reading below — styled apart
+              // so one is never mistaken for the other.
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 4),
+                  Align(alignment: Alignment.centerLeft, child: _TimePill(note.timestampMs)),
+                  if (contexts[note.id] case final aiContext?)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.auto_awesome, size: 14, color: theme.colorScheme.primary),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              aiContext,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontStyle: FontStyle.italic,
+                                color: theme.colorScheme.primary,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-              ],
-            ),
-            onTap: () => _seekAndPlay(Duration(milliseconds: note.timestampMs)),
-            trailing: PopupMenuButton<String>(
-              onSelected: (value) {
-                if (value == 'edit') _editNote(note);
-                if (value == 'delete') _deleteNote(note);
-              },
-              itemBuilder: (_) => [
-                if (note.kind == UserNoteKind.text)
-                  const PopupMenuItem(value: 'edit', child: Text('編輯')),
-                const PopupMenuItem(value: 'delete', child: Text('刪除')),
-              ],
+                ],
+              ),
+              onTap: () => _seekAndPlay(Duration(milliseconds: note.timestampMs)),
+              trailing: PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'edit') _editNote(note);
+                  if (value == 'delete') _deleteNote(note);
+                },
+                itemBuilder: (_) => [
+                  if (note.kind == UserNoteKind.text)
+                    const PopupMenuItem(value: 'edit', child: Text('編輯')),
+                  const PopupMenuItem(value: 'delete', child: Text('刪除')),
+                ],
+              ),
             ),
           ),
       ],
+    );
+  }
+
+  /// Star in amber, a written note in grey, each on a round base.
+  Widget _noteIcon(UserNote note) {
+    final star = note.kind == UserNoteKind.star;
+    final colors = AppColors.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    return CircleAvatar(
+      radius: 16,
+      backgroundColor: star ? colors.amberSoft : scheme.surfaceContainerHighest,
+      foregroundColor: star ? colors.amber : scheme.onSurfaceVariant,
+      child: Icon(star ? Icons.star : Icons.notes, size: 18),
     );
   }
 
@@ -764,19 +810,41 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     return _analysisGate(analysis, (a) {
       final copyText = ([a.overview, ...a.keyPoints.map((p) => '• $p')]).join('\n');
       return ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
-          Row(
-            children: [
-              Text('摘要', style: Theme.of(context).textTheme.titleLarge),
-              const Spacer(),
-              IconButton(icon: const Icon(Icons.copy, size: 20), onPressed: () => _copy(copyText)),
-            ],
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text('摘要', style: Theme.of(context).textTheme.titleLarge),
+                      const Spacer(),
+                      RoundIconButton(
+                        icon: Icons.copy,
+                        tooltip: '複製摘要',
+                        onPressed: () => _copy(copyText),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SelectableText(a.overview),
+                        const SizedBox(height: 8),
+                        for (final point in a.keyPoints) SelectableText('• $point'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(height: 8),
-          SelectableText(a.overview),
-          const SizedBox(height: 8),
-          for (final point in a.keyPoints) SelectableText('• $point'),
         ],
       );
     });
@@ -785,47 +853,61 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   Widget _buildTodosTab(MeetingAnalysis? analysis) {
     return _analysisGate(analysis, (a) {
       if (a.todos.isEmpty) return const Center(child: Text('沒有待辦事項'));
-      debugPrint('[Detail] todo timestamps: '
-          '${a.todos.map((t) => t.sourceTimestampMs).toList()}');
+      debugPrint(
+        '[Detail] todo timestamps: '
+        '${a.todos.map((t) => t.sourceTimestampMs).toList()}',
+      );
       return ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: a.todos.length,
         itemBuilder: (context, index) {
           final todo = a.todos[index];
-          return ListTile(
-            leading: Checkbox(
-              value: todo.done,
-              onChanged: (value) {
-                todo.done = value ?? false;
-                _persist();
-              },
-            ),
-            title: Text(
-              todo.task,
-              style: todo.done ? const TextStyle(decoration: TextDecoration.lineThrough) : null,
-            ),
-            subtitle: Text([
-              if (todo.owner != null) '負責人: ${todo.owner}',
-              if (todo.dueDate != null) '期限: ${todo.dueDate}',
-            ].join('　')),
-            onTap: todo.sourceTimestampMs != null
-                ? () => _seekAndPlay(Duration(milliseconds: todo.sourceTimestampMs!))
-                : null,
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (todo.sourceTimestampMs != null) Text(formatMs(todo.sourceTimestampMs!)),
-                IconButton(
-                  icon: const Icon(Icons.edit, size: 18),
-                  onPressed: () => _editTodoTask(todo),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  onPressed: () {
-                    a.todos.removeAt(index);
-                    _persist();
-                  },
-                ),
-              ],
+          return Card(
+            child: ListTile(
+              leading: Checkbox(
+                value: todo.done,
+                onChanged: (value) {
+                  todo.done = value ?? false;
+                  _persist();
+                },
+              ),
+              title: Text(
+                todo.task,
+                style: todo.done
+                    ? TextStyle(
+                        decoration: TextDecoration.lineThrough,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      )
+                    : null,
+              ),
+              subtitle: Text(
+                [
+                  if (todo.owner != null) '負責人: ${todo.owner}',
+                  if (todo.dueDate != null) '期限: ${todo.dueDate}',
+                ].join('　'),
+              ),
+              onTap: todo.sourceTimestampMs != null
+                  ? () => _seekAndPlay(Duration(milliseconds: todo.sourceTimestampMs!))
+                  : null,
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (todo.sourceTimestampMs != null) _TimePill(todo.sourceTimestampMs!),
+                  IconButton(
+                    icon: const Icon(Icons.edit, size: 18),
+                    tooltip: '編輯待辦',
+                    onPressed: () => _editTodoTask(todo),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    tooltip: '刪除待辦',
+                    onPressed: () {
+                      a.todos.removeAt(index);
+                      _persist();
+                    },
+                  ),
+                ],
+              ),
             ),
           );
         },
@@ -854,19 +936,19 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
                   padding: const EdgeInsets.only(left: 8),
                   child: Text(
                     '點句子跳轉播放，長按可修改',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.outline,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.outline),
                   ),
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.copy, size: 20),
+              RoundIconButton(
+                icon: Icons.copy,
                 tooltip: '複製全部逐字稿',
                 onPressed: segments.isEmpty ? null : () => _copy(_transcriptText),
               ),
-              IconButton(
-                icon: const Icon(Icons.ios_share, size: 20),
+              RoundIconButton(
+                icon: Icons.ios_share,
                 tooltip: '匯出逐字稿',
                 onPressed: segments.isEmpty ? null : _exportTranscript,
               ),
@@ -879,25 +961,28 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
             itemBuilder: (context, index) {
               final segment = segments[index];
               final notes = notesBySegment[index] ?? const [];
-              return ListTile(
-                dense: true,
-                leading: Text(formatMs(segment.startMs)),
-                title: Text(segment.text),
-                trailing: notes.isEmpty
-                    ? null
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (final note in notes)
-                            Icon(
-                              note.kind == UserNoteKind.star ? Icons.star : Icons.notes,
-                              size: 18,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                        ],
-                      ),
-                onTap: () => _seekAndPlay(Duration(milliseconds: segment.startMs)),
-                onLongPress: () => _editSegment(segment),
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+                child: ListTile(
+                  dense: true,
+                  leading: _TimePill(segment.startMs),
+                  title: Text(segment.text, style: Theme.of(context).textTheme.bodyMedium),
+                  trailing: notes.isEmpty
+                      ? null
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (final note in notes)
+                              Icon(
+                                note.kind == UserNoteKind.star ? Icons.star : Icons.notes,
+                                size: 18,
+                                color: AppColors.of(context).amber,
+                              ),
+                          ],
+                        ),
+                  onTap: () => _seekAndPlay(Duration(milliseconds: segment.startMs)),
+                  onLongPress: () => _editSegment(segment),
+                ),
               );
             },
           ),
@@ -908,43 +993,55 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
 
   Widget _buildMinutesTab(MeetingAnalysis? analysis) {
     return _analysisGate(analysis, (a) {
-      debugPrint('[Detail] agenda item timestamps: '
-          '${a.agendaItems.map((i) => i.sourceTimestampMs).toList()}');
+      debugPrint(
+        '[Detail] agenda item timestamps: '
+        '${a.agendaItems.map((i) => i.sourceTimestampMs).toList()}',
+      );
       return ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         children: [
-          Text(a.title, style: Theme.of(context).textTheme.titleLarge),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: Text(a.title, style: Theme.of(context).textTheme.titleLarge),
+          ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final person in a.attendees)
-                Chip(
-                  label: Text(person),
-                  onDeleted: () {
-                    a.attendees.remove(person);
-                    _persist();
-                  },
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final person in a.attendees)
+                  Chip(
+                    label: Text(person),
+                    onDeleted: () {
+                      a.attendees.remove(person);
+                      _persist();
+                    },
+                  ),
+                ActionChip(
+                  avatar: const Icon(Icons.add, size: 18),
+                  label: const Text('新增'),
+                  onPressed: () => _addAttendee(a),
                 ),
-              ActionChip(
-                avatar: const Icon(Icons.add, size: 18),
-                label: const Text('新增'),
-                onPressed: () => _addAttendee(a),
-              ),
-            ],
+              ],
+            ),
           ),
           const SizedBox(height: 16),
           for (final item in a.agendaItems)
             Card(
               child: ListTile(
                 title: Text(item.topic),
-                subtitle: Text([
-                  item.discussion,
-                  for (final decision in item.decisions) '決議: $decision',
-                ].where((s) => s.isNotEmpty).join('\n')),
+                subtitle: Text(
+                  [
+                    item.discussion,
+                    for (final decision in item.decisions) '決議: $decision',
+                  ].where((s) => s.isNotEmpty).join('\n'),
+                ),
                 isThreeLine: true,
-                trailing:
-                    item.sourceTimestampMs != null ? Text(formatMs(item.sourceTimestampMs!)) : null,
+                trailing: item.sourceTimestampMs != null
+                    ? _TimePill(item.sourceTimestampMs!)
+                    : null,
                 onTap: item.sourceTimestampMs != null
                     ? () => _seekAndPlay(Duration(milliseconds: item.sourceTimestampMs!))
                     : null,
@@ -953,6 +1050,69 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
         ],
       );
     });
+  }
+}
+
+/// The four tabs as a bottom bar, kept in step with the swipeable pages.
+class _TabNavigationBar extends StatelessWidget {
+  const _TabNavigationBar();
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = DefaultTabController.of(context);
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) => NavigationBar(
+        selectedIndex: controller.index,
+        onDestinationSelected: controller.animateTo,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.summarize_outlined),
+            selectedIcon: Icon(Icons.summarize),
+            label: '摘要',
+          ),
+          NavigationDestination(icon: Icon(Icons.checklist), label: '待辦'),
+          NavigationDestination(
+            icon: Icon(Icons.subtitles_outlined),
+            selectedIcon: Icon(Icons.subtitles),
+            label: '逐字稿',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.article_outlined),
+            selectedIcon: Icon(Icons.article),
+            label: '紀錄',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A position in the recording, as a cyan pill; tapping its row seeks there.
+class _TimePill extends StatelessWidget {
+  const _TimePill(this.ms);
+
+  final int ms;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.of(context).accentSoft,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        formatMs(ms),
+        style: TextStyle(
+          color: scheme.primary,
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
+    );
   }
 }
 
@@ -984,7 +1144,8 @@ class _LearnDialogState extends State<_LearnDialog> {
   Widget build(BuildContext context) {
     final expanded = expandToTerm(widget.detected, _term.text.trim());
     final others = widget.countOthers(expanded.before);
-    void answer(_LearnChoice choice) => Navigator.pop(context, (choice: choice, expanded: expanded));
+    void answer(_LearnChoice choice) =>
+        Navigator.pop(context, (choice: choice, expanded: expanded));
     return AlertDialog(
       title: const Text('記住這個寫法？'),
       content: Column(

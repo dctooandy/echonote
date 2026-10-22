@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:echonote/models/recording.dart';
 import 'package:echonote/screens/meeting_detail_screen.dart';
+import 'package:echonote/services/app_settings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -180,9 +181,7 @@ void main() {
       ..edited = true;
     await _pump(tester, recording);
 
-    await tester.tap(find.descendant(of: find.byType(AppBar), matching: find.byIcon(Icons.more_vert)));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('用目前詞庫重新轉錄'));
+    await tester.tap(find.byTooltip('用目前詞庫重新轉錄'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('你修改過的 1 處逐字稿會被覆蓋'), findsOneWidget);
@@ -193,13 +192,11 @@ void main() {
     expect(recording.segments.single.text, '大家早');
   });
 
-  testWidgets('untranscribed recordings have no re-transcribe menu item', (tester) async {
+  testWidgets('untranscribed recordings have no re-transcribe button', (tester) async {
     await _pump(tester, _recording()..segments.clear());
 
-    await tester.tap(find.descendant(of: find.byType(AppBar), matching: find.byIcon(Icons.more_vert)));
-    await tester.pumpAndSettle();
-
-    expect(find.text('用目前詞庫重新轉錄'), findsNothing);
+    expect(find.byTooltip('用目前詞庫重新轉錄'), findsNothing);
+    expect(find.byTooltip('刪除'), findsOneWidget);
   });
 
   testWidgets('the transcript tells how to seek and edit', (tester) async {
@@ -328,5 +325,86 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('已把「FoodSnap」加入詞庫'), findsOneWidget);
+  });
+
+  testWidgets('tabs are at the bottom and follow a swipe', (tester) async {
+    await _pump(tester, _recording()..analysis = analysis());
+    final nav = find.byType(NavigationBar);
+    expect(tester.getTopLeft(nav).dy, greaterThan(tester.getSize(find.byType(Scaffold)).height / 2));
+
+    await tester.tap(find.descendant(of: nav, matching: find.text('逐字稿')));
+    await tester.pumpAndSettle();
+    expect(tester.widget<NavigationBar>(nav).selectedIndex, 2);
+    expect(find.text('點句子跳轉播放，長按可修改'), findsOneWidget);
+
+    await tester.fling(find.byType(TabBarView), const Offset(-400, 0), 1000);
+    await tester.pumpAndSettle();
+    expect(tester.widget<NavigationBar>(nav).selectedIndex, 3);
+  });
+
+  testWidgets('top buttons: re-analyze only once analyzed, delete always', (tester) async {
+    await _pump(tester, _recording());
+    expect(find.byTooltip('重新分析'), findsNothing);
+    expect(find.byTooltip('用目前詞庫重新轉錄'), findsOneWidget);
+    expect(find.byTooltip('刪除'), findsOneWidget);
+
+    await _pump(tester, _recording()..analysis = analysis());
+    expect(find.byTooltip('重新分析'), findsOneWidget);
+  });
+
+  testWidgets('re-analyze asks first, and cancelling keeps the analysis', (tester) async {
+    final recording = _recording()..analysis = analysis();
+    final before = recording.analysis;
+    await _pump(tester, recording);
+
+    await tester.tap(find.byTooltip('重新分析'));
+    await tester.pumpAndSettle();
+    expect(find.text('重新分析？'), findsOneWidget);
+    expect(find.textContaining('待辦的勾選也會重來'), findsOneWidget);
+
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(recording.analysis, same(before));
+  });
+
+  testWidgets('the player shows position and length, play under the thumb', (tester) async {
+    await _pump(tester, _recording()..durationMs = 44 * 60000 + 12000);
+
+    expect(find.text('00:00 / 44:12'), findsOneWidget);
+    expect(
+      tester.getCenter(find.byTooltip('播放')).dx,
+      greaterThan(tester.getCenter(find.byTooltip('標記重點')).dx),
+    );
+  });
+
+  testWidgets('left-handed puts play on the left', (tester) async {
+    await tester.pumpWidget(
+      AppSettingsScope(
+        settings: AppSettings(handedness: Handedness.left),
+        child: MaterialApp(home: MeetingDetailScreen(recording: _recording())),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      tester.getCenter(find.byTooltip('播放')).dx,
+      lessThan(tester.getCenter(find.byTooltip('標記重點')).dx),
+    );
+  });
+
+  testWidgets('fits a phone screen', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final recording = _recording()
+      ..analysis = analysis()
+      ..transcriptStaleAnalysis = true;
+    await _pump(tester, recording);
+
+    for (final tab in ['待辦', '逐字稿', '紀錄', '摘要']) {
+      await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text(tab)));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: '$tab overflows');
+    }
   });
 }

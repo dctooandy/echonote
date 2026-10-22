@@ -154,23 +154,27 @@ class _GlossaryScreenState extends State<GlossaryScreen> {
           child: Text(
             '前 ${inPrompt.length} 個詞會送進語音轉錄（上限 $kGlossaryPromptMaxChars 字）。'
             '釘選的詞優先，其次是最近用過的。全部的詞都會用在摘要。',
-            style: theme.textTheme.bodySmall,
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ),
         for (final term in ordered)
-          ListTile(
-            leading: IconButton(
-              icon: Icon(term.pinned ? Icons.push_pin : Icons.push_pin_outlined),
-              tooltip: term.pinned ? '取消釘選' : '釘選',
-              onPressed: () => _togglePin(term),
-            ),
-            title: Text(term.term),
-            subtitle: _subtitle(term, inTranscription: inPrompt.contains(term)),
-            onTap: () => _edit(term),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_outline),
-              tooltip: '刪除',
-              onPressed: () => _delete(term),
+          Card(
+            child: ListTile(
+              leading: IconButton(
+                icon: Icon(term.pinned ? Icons.push_pin : Icons.push_pin_outlined),
+                tooltip: term.pinned ? '取消釘選' : '釘選',
+                color: term.pinned ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+                onPressed: () => _togglePin(term),
+              ),
+              title: Text(term.term),
+              subtitle: _subtitle(term, inTranscription: inPrompt.contains(term)),
+              onTap: () => _edit(term),
+              trailing: IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: '刪除',
+                color: theme.colorScheme.error,
+                onPressed: () => _delete(term),
+              ),
             ),
           ),
       ],
