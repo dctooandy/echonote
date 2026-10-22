@@ -136,7 +136,10 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
       final startedAt = DateTime.now();
       final audioFileName = '$id.wav';
       final wavPath = '${(await _store.recordingsDir()).path}/$audioFileName';
-      final rec = await _service.start(wavPath: wavPath);
+      // Live text keeps its current behavior until the toggle (spec
+      // feature-recording-indicator, T4).
+      await _service.ensurePreviewModel();
+      final rec = await _service.start(wavPath: wavPath, livePreview: true);
       if (!mounted) {
         // Left while loading; nothing worth keeping yet.
         await rec.stop();

@@ -131,101 +131,153 @@ class LiveTranscriptionService {
   final MicStreamService _mic;
   final WhisperController _whisper;
 
-  /// Makes sure both models a live recording needs are on disk: the preview
-  /// model and the offline model used after stop ([kWhisperModel]). Only
-  /// downloads on first use (~75 MB + ~147 MB); reports which model is in
-  /// flight and its bytes (`total` null when unknown).
+  /// Makes sure the offline model used after stop ([kWhisperModel]) is on
+  /// disk, downloading it on first use (~147 MB). The live preview's model
+  /// is only fetched when live text is first turned on
+  /// ([ensurePreviewModel]), so people who never use it don't download it.
+  /// Reports which model is in flight and its bytes (`total` null when
+  /// unknown).
   Future<void> ensureModels({
+    void Function(WhisperModel model, int received, int? total)? onProgress,
+  }) => _download(kWhisperModel, onProgress);
+
+  /// Makes sure the live preview's model (~75 MB) is on disk.
+  Future<void> ensurePreviewModel({
     LivePreviewConfig config = kLivePreviewConfig,
     void Function(WhisperModel model, int received, int? total)? onProgress,
-  }) async {
-    for (final model in {config.model, kWhisperModel}) {
-      await _whisper.downloadModel(
-        model,
-        onProgress: onProgress == null
-            ? null
-            : (received, total) => onProgress(model, received, total),
-      );
-    }
-  }
+  }) => _download(config.model, onProgress);
 
-  /// Downloads (first use only) and loads the preview model, then starts the
-  /// mic. Audio is written to [wavPath] as it arrives. On failure nothing is
-  /// left running and the WAV file is removed.
+  Future<void> _download(
+    WhisperModel model,
+    void Function(WhisperModel model, int received, int? total)? onProgress,
+  ) => _whisper.downloadModel(
+    model,
+    onProgress: onProgress == null ? null : (received, total) => onProgress(model, received, total),
+  );
+
+  /// Starts the mic, writing audio to [wavPath] as it arrives, and with
+  /// [livePreview] the live preview too (see [LiveRecording.startPreview]).
+  /// On failure nothing is left running and the WAV file is removed.
   Future<LiveRecording> start({
     required String wavPath,
+    required bool livePreview,
     LivePreviewConfig config = kLivePreviewConfig,
   }) async {
-    await _whisper.downloadModel(config.model);
     final wav = await WavWriter.open(wavPath, sampleRate: MicStreamService.sampleRate);
-
-    // Fed by hand from the single mic subscription, alongside the WAV writer
-    // (a single-subscription stream can't be listened to twice).
-    final pcm = StreamController<Uint8List>();
-    WhisperLiveSession? session;
+    final Stream<Uint8List> micStream;
     try {
-      session = await _whisper.transcribeLive(
-        model: config.model,
-        pcm16Stream: pcm.stream,
-        // Must be explicit: the package defaults to 'en'.
-        lang: 'zh',
-        initialPrompt: config.initialPrompt,
-        threads: config.threads,
-        stepSec: config.stepSec,
-        noFallback: config.noFallback,
-        maxTokens: config.maxTokens,
-        audioCtx: config.audioCtx,
-        commitSec: config.commitSec.toDouble(),
-        collapseRepetitions: kLiveCollapse,
-      );
-      final micStream = await _mic.start();
-      return LiveRecording._(_mic, micStream, pcm, session, wav);
+      micStream = await _mic.start();
     } catch (_) {
-      // Closing the input ends the session, if it started.
-      unawaited(pcm.close());
-      await session?.stop();
-      try {
-        await wav.close();
-        await File(wavPath).delete();
-      } catch (_) {}
+      await _discard(wav, wavPath);
       rethrow;
     }
+    final rec = LiveRecording(
+      mic: _mic,
+      micStream: micStream,
+      wav: wav,
+      openPreview: (pcm) => _openPreview(pcm, config),
+    );
+    if (livePreview) {
+      try {
+        await rec.startPreview();
+      } catch (_) {
+        await rec.stop();
+        try {
+          await File(wavPath).delete();
+        } catch (_) {}
+        rethrow;
+      }
+    }
+    return rec;
   }
+
+  Future<PreviewSession> _openPreview(Stream<Uint8List> pcm, LivePreviewConfig config) async {
+    await _whisper.downloadModel(config.model);
+    final session = await _whisper.transcribeLive(
+      model: config.model,
+      pcm16Stream: pcm,
+      // Must be explicit: the package defaults to 'en'.
+      lang: 'zh',
+      initialPrompt: config.initialPrompt,
+      threads: config.threads,
+      stepSec: config.stepSec,
+      noFallback: config.noFallback,
+      maxTokens: config.maxTokens,
+      audioCtx: config.audioCtx,
+      commitSec: config.commitSec.toDouble(),
+      collapseRepetitions: kLiveCollapse,
+    );
+    return _WhisperPreview(session);
+  }
+
+  static Future<void> _discard(WavWriter wav, String wavPath) async {
+    try {
+      await wav.close();
+      await File(wavPath).delete();
+    } catch (_) {}
+  }
+}
+
+/// What [LiveRecording] needs from a running recognizer. A seam, so a
+/// recording can be tested without the native one.
+abstract interface class PreviewSession {
+  /// Full text so far, replaced on every update.
+  Stream<String> get partials;
+
+  /// Per-run diagnostics from the native side.
+  Stream<Map<String, dynamic>> get metrics;
+
+  /// Ends the session; completes with its final text.
+  Future<String> stop();
+}
+
+/// Starts a recognizer reading [pcm]: PCM16 chunks from the moment it's
+/// called.
+typedef PreviewOpener = Future<PreviewSession> Function(Stream<Uint8List> pcm);
+
+class _WhisperPreview implements PreviewSession {
+  _WhisperPreview(this._session);
+
+  final WhisperLiveSession _session;
+
+  @override
+  Stream<String> get partials => _session.partials;
+
+  @override
+  Stream<Map<String, dynamic>> get metrics => _session.metrics;
+
+  @override
+  Future<String> stop() => _session.stop();
 }
 
 /// A running live recording. Ends via [stop], or by itself on an
 /// interruption, backgrounding or a write failure — [done] completes either
-/// way.
+/// way. Live preview is optional and can be turned on and off while
+/// recording ([startPreview], [stopPreview]); without it only the WAV and
+/// the input level are produced.
 class LiveRecording {
-  LiveRecording._(this._mic, Stream<Uint8List> micStream, this._pcm, this._session, this._wav) {
-    _session.partials.listen(
-      (text) {
-        _lastText = text;
-        // Partials are the whole text so far, so collapsing each one is
-        // enough; nothing accumulates on this side.
-        _preview.add(_collapse(text));
-      },
-      // A native error ends the preview only; recording continues.
-      onError: (Object e, StackTrace st) {
-        _preview.addError(e, st);
-        _notices.add(LiveNotice.previewStopped);
-      },
-    );
-    _session.metrics.listen((m) {
-      _loopsCollapsedNatively += (m['loops_collapsed'] as num?)?.toInt() ?? 0;
-      // The final report carries only the loop count, not a run's timings.
-      if (!m.containsKey('total_ms')) return;
-      if (kDebugMode) _runs.add(m);
-      final fedSec = (m['fed_sec'] as num?)?.toDouble();
-      if (fedSec != null) _onLag(sentSeconds - fedSec);
-    });
+  LiveRecording({
+    required this._mic,
+    required Stream<Uint8List> micStream,
+    required this._wav,
+    required this._openPreview,
+  }) {
     micStream.listen(_onChunk, onError: _onMicError, onDone: _finish);
   }
 
   final MicStreamService _mic;
-  final StreamController<Uint8List> _pcm;
-  final WhisperLiveSession _session;
   final WavWriter _wav;
+  final PreviewOpener _openPreview;
+
+  /// Set while preview is on: chunks go here as well as to the WAV.
+  StreamController<Uint8List>? _previewPcm;
+  PreviewSession? _session;
+  final List<StreamSubscription<Object?>> _sessionSubs = [];
+  bool _previewOn = false;
+  bool _finished = false;
+
+  /// Where in the recording the current preview session started.
+  double _previewStartSeconds = 0;
 
   /// Decision #14: recordings stop at 2 hours, with a warning 5 minutes
   /// before.
@@ -255,10 +307,11 @@ class LiveRecording {
   /// Seconds of audio the recognizer is behind, one value per decode run.
   Stream<double> get lagSeconds => _lag.stream;
 
-  /// Raw per-decode-run numbers from the native side (diagnostics).
-  Stream<Map<String, dynamic>> get metrics => _session.metrics;
+  /// Whether live preview is running.
+  bool get previewOn => _previewOn;
 
-  /// Audio handed to the recognizer and WAV writer so far.
+  /// Audio written to the WAV (and, with preview on, handed to the
+  /// recognizer) so far.
   double get sentSeconds => _sentBytes / (MicStreamService.sampleRate * 2);
 
   Stream<LiveNotice> get notices => _notices.stream;
@@ -274,9 +327,92 @@ class LiveRecording {
     return done;
   }
 
+  /// Starts live preview from this moment: only audio from now on is
+  /// recognized, and the preview starts empty (it isn't joined to text from
+  /// an earlier run). Throws if the recognizer fails to start; the recording
+  /// carries on either way.
+  Future<void> startPreview() async {
+    if (_previewOn || _finished) return;
+    _previewOn = true;
+    // Chunks arriving while the recognizer loads are buffered here; the
+    // recognizer's clock starts at this point in the recording.
+    final pcm = _previewPcm = StreamController<Uint8List>();
+    _previewStartSeconds = sentSeconds;
+    final PreviewSession session;
+    try {
+      session = await _openPreview(pcm.stream);
+    } catch (_) {
+      _previewOn = false;
+      if (identical(_previewPcm, pcm)) _previewPcm = null;
+      unawaited(pcm.close());
+      rethrow;
+    }
+    // Turned off, or the recording ended, while it was starting.
+    if (!identical(_previewPcm, pcm) || _finished) {
+      unawaited(session.stop().catchError((Object _) => ''));
+      return;
+    }
+    _session = session;
+    _lastText = '';
+    _preview.add('');
+    _sessionSubs
+      ..add(
+        session.partials.listen(
+          (text) {
+            _lastText = text;
+            // Partials are the whole text so far, so collapsing each one is
+            // enough; nothing accumulates on this side.
+            _preview.add(_collapse(text));
+          },
+          // A native error ends the preview only; recording continues.
+          onError: (Object e, StackTrace st) {
+            _preview.addError(e, st);
+            _notices.add(LiveNotice.previewStopped);
+          },
+        ),
+      )
+      ..add(
+        session.metrics.listen((m) {
+          _loopsCollapsedNatively += (m['loops_collapsed'] as num?)?.toInt() ?? 0;
+          // The final report carries only the loop count, not a run's timings.
+          if (!m.containsKey('total_ms')) return;
+          if (kDebugMode) _runs.add(m);
+          final fedSec = (m['fed_sec'] as num?)?.toDouble();
+          // fed_sec counts from when this session started.
+          if (fedSec != null) _onLag(sentSeconds - _previewStartSeconds - fedSec);
+        }),
+      );
+  }
+
+  /// Stops live preview. The text already shown stays where the caller put
+  /// it; no further updates arrive.
+  Future<void> stopPreview() async {
+    if (!_previewOn) return;
+    _previewOn = false;
+    final pcm = _previewPcm;
+    final session = _session;
+    _previewPcm = null;
+    _session = null;
+    await _cancelSessionSubs();
+    if (_previewDelayed) {
+      _previewDelayed = false;
+      _notices.add(LiveNotice.previewCaughtUp);
+    }
+    unawaited(pcm?.close());
+    await session?.stop().catchError((Object _) => '');
+  }
+
+  Future<void> _cancelSessionSubs() async {
+    final subs = [..._sessionSubs];
+    _sessionSubs.clear();
+    for (final sub in subs) {
+      await sub.cancel();
+    }
+  }
+
   void _onChunk(Uint8List chunk) {
     _sentBytes += chunk.length;
-    _pcm.add(chunk);
+    _previewPcm?.add(chunk);
     _level.add(echo.rms(_asSamples(chunk)));
     _checkLimit();
     _wav.add(chunk).catchError((Object e) {
@@ -363,8 +499,18 @@ class LiveRecording {
   /// The mic stream ended (stop, system, or write failure): drain both
   /// consumers, then report.
   Future<void> _finish() async {
-    unawaited(_pcm.close());
-    final rawPreview = await _session.stop().catchError((Object _) => _lastText);
+    _finished = true;
+    final pcm = _previewPcm;
+    final session = _session;
+    _previewPcm = null;
+    _session = null;
+    _previewOn = false;
+    unawaited(pcm?.close());
+    // Without preview running at the end there is no final preview text.
+    final rawPreview = session == null
+        ? ''
+        : await session.stop().catchError((Object _) => _lastText);
+    await _cancelSessionSubs();
     if (kDebugMode) _logRuns(rawPreview);
     final previewText = _collapse(rawPreview);
     try {

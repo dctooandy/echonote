@@ -113,17 +113,18 @@ flowchart LR
   T4 --> T5
 ```
 
-- [ ] **T1 錄音可以不開辨識，並可在中途開、關**
+- [x] **T1 錄音可以不開辨識，並可在中途開、關**
   - 做完能看到：即時文字關閉時只寫 WAV、算音量，不啟動辨識；錄音中可以開始、停止辨識；開始錄音前只確保 `base`
   - 被誰卡住：無，可以直接開工
   - 主要會動的檔案：`lib/services/live_transcription_service.dart`、`test/services/live_recording_test.dart`（新）
   - 軌道：可獨立進行
   - 驗收：
-    - [ ] 沒開辨識時：WAV 正常寫入、`level` 有資料、`preview` 沒有資料、停止時 `previewText` 為空、不輸出 `[live-metrics]`
-    - [ ] 中途開始辨識：只把開始之後的音訊送進辨識；中途停止：之後不再有預覽文字
-    - [ ] 停止錄音時如果辨識還開著，照常取最終預覽文字
-    - [ ] `ensureModels()` 預設只確保 `base`；另有確保 `tiny` 的方法，並回報下載進度
-    - [ ] `flutter test`、`flutter analyze` 通過
+    - [x] 沒開辨識時：WAV 正常寫入、`level` 有資料、`preview` 沒有資料、停止時 `previewText` 為空、不輸出 `[live-metrics]`
+    - [x] 中途開始辨識：只把開始之後的音訊送進辨識；中途停止：之後不再有預覽文字
+    - [x] 停止錄音時如果辨識還開著，照常取最終預覽文字
+    - [x] `ensureModels()` 預設只確保 `base`；另有確保 `tiny` 的方法，並回報下載進度
+    - [x] `flutter test`、`flutter analyze` 通過
+  - 2026-10-22 完成。`LiveRecording` 改成公開建構子，辨識透過 `PreviewSession` 介面注入（實際用 `transcribeLive()`，測試用假的），第一次有單元測試（6 個）。中途打開時，延遲以「這次辨識開始的位置」為起點計算。錄音畫面暫時維持舊行為（開始錄音前下載 `tiny`、一律打開預覽），T4 再接上開關。
 
 - [ ] **T2 本機設定檔**
   - 做完能看到：「即時文字」的開關狀態會記住，下次錄音沿用
