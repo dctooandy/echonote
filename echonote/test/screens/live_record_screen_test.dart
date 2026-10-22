@@ -103,9 +103,11 @@ void main() {
   late _FakeMic mic;
   late SettingsStore settings;
   late List<bool> awakeCalls;
+  late StreamController<bool> flat;
 
   setUp(() async {
     awakeCalls = [];
+    flat = StreamController<bool>.broadcast();
     ScreenAwake.instance = ScreenAwake(setKeepAwake: (on) async => awakeCalls.add(on));
     dir = await Directory.systemTemp.createTemp('live_screen_test');
     PathProviderPlatform.instance = _FakePathProvider(dir.path);
@@ -128,7 +130,7 @@ void main() {
   Future<_FakeService> open(WidgetTester tester, {Object? previewModelError}) async {
     final service = _FakeService(mic, previewModelError: previewModelError);
     await tester.pumpWidget(
-      MaterialApp(home: LiveRecordScreen(mic: mic, service: service, settings: settings)),
+      MaterialApp(home: LiveRecordScreen(mic: mic, service: service, settings: settings, flatSignal: () => flat.stream)),
     );
     await settle(tester);
     return service;
@@ -221,7 +223,7 @@ void main() {
           builder: (context) => TextButton(
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => LiveRecordScreen(mic: mic, service: service, settings: settings),
+                builder: (_) => LiveRecordScreen(mic: mic, service: service, settings: settings, flatSignal: () => flat.stream),
               ),
             ),
             child: const Text('首頁'),
@@ -343,7 +345,7 @@ void main() {
       AppSettingsScope(
         settings: AppSettings(handedness: hand),
         child: MaterialApp(
-          home: LiveRecordScreen(mic: mic, service: _FakeService(mic), settings: settings),
+          home: LiveRecordScreen(mic: mic, service: _FakeService(mic), settings: settings, flatSignal: () => flat.stream),
         ),
       ),
     );
@@ -390,6 +392,101 @@ void main() {
       reason: 'the note opens just above the dock',
     );
     expect(tester.takeException(), isNull, reason: 'nothing overflows');
+    await leave(tester);
+  });
+
+  /// Lays the phone on the table (or picks it up) and lets the screen catch up.
+  Future<void> lay(WidgetTester tester, bool onTable) async {
+    flat.add(onTable);
+    await settle(tester);
+  }
+
+  testWidgets('flat on the table: only the clock and two big buttons', (tester) async {
+    await open(tester);
+    expect(flat.hasListener, isTrue, reason: 'watching while recording');
+
+    await lay(tester, true);
+
+    expect(find.text('桌面模式・拿起手機顯示完整畫面'), findsOneWidget);
+    expect(find.byTooltip('標記重點'), findsOneWidget);
+    expect(find.byTooltip('停止'), findsOneWidget);
+    expect(find.byType(Switch), findsNothing, reason: 'live-text switch waits');
+    expect(find.textContaining('筆記'), findsNothing);
+    expect(find.byType(AppBar), findsNothing);
+
+    await lay(tester, false);
+
+    expect(find.text('桌面模式・拿起手機顯示完整畫面'), findsNothing);
+    expect(find.byType(Switch), findsOneWidget);
+    expect(find.text('筆記'), findsOneWidget);
+    await leave(tester);
+  });
+
+  testWidgets('no desk mode while a note is being written', (tester) async {
+    await open(tester);
+    await tester.tap(find.text('筆記'));
+    await settle(tester);
+
+    await lay(tester, true);
+
+    expect(find.text('桌面模式・拿起手機顯示完整畫面'), findsNothing);
+    expect(find.byType(TextField), findsOneWidget);
+    await leave(tester);
+  });
+
+  testWidgets('desk buttons mark and stop', (tester) async {
+    await open(tester);
+    for (var i = 0; i < 12; i++) {
+      mic.chunks.add(Uint8List(3200)); // 1.2 s of audio
+    }
+    await lay(tester, true);
+
+    await tester.tap(find.byTooltip('標記重點'));
+    await settle(tester);
+    expect(find.textContaining('已標記'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('停止'));
+    await settle(tester);
+
+    expect(flat.hasListener, isFalse, reason: 'the sensor stops with the recording');
+    final entry = Directory('${dir.path}/history').listSync().single as File;
+    final json = jsonDecode(entry.readAsStringSync()) as Map<String, dynamic>;
+    expect(json['notes'], hasLength(1));
+    await leave(tester);
+  });
+
+  testWidgets('desk buttons sit under the right thumb', (tester) async {
+    await openWithHand(tester, Handedness.right);
+    await lay(tester, true);
+
+    expect(
+      tester.getCenter(find.byTooltip('標記重點')).dx,
+      greaterThan(tester.getCenter(find.byTooltip('停止')).dx),
+    );
+    await leave(tester);
+  });
+
+  testWidgets('left-handed mirrors the desk buttons', (tester) async {
+    await openWithHand(tester, Handedness.left);
+    await lay(tester, true);
+
+    expect(
+      tester.getCenter(find.byTooltip('標記重點')).dx,
+      lessThan(tester.getCenter(find.byTooltip('停止')).dx),
+    );
+    await leave(tester);
+  });
+
+  testWidgets('desk mode fits a phone screen', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await open(tester);
+
+    await lay(tester, true);
+
+    expect(find.byTooltip('停止'), findsOneWidget);
+    expect(tester.takeException(), isNull);
     await leave(tester);
   });
 }

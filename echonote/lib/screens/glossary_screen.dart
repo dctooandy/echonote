@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/glossary.dart';
+import '../services/app_settings.dart';
 import '../services/glossary_store.dart';
 import '../services/whisper_prompt.dart';
 import '../widgets/glossary_term_dialog.dart';
@@ -110,6 +111,10 @@ class _GlossaryScreenState extends State<GlossaryScreen> {
     final loaded = _loaded;
     return Scaffold(
       appBar: AppBar(title: const Text('詞庫')),
+      // On the thumb's side, like the home screen (spec feature-dark-theme).
+      floatingActionButtonLocation: AppSettingsScope.of(context).handedness == Handedness.left
+          ? FloatingActionButtonLocation.startFloat
+          : FloatingActionButtonLocation.endFloat,
       floatingActionButton: loaded == null || loaded.isCorrupt
           ? null
           : FloatingActionButton(onPressed: _add, tooltip: '新增詞條', child: const Icon(Icons.add)),

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models/recording.dart';
 import '../services/app_settings.dart';
+import '../services/flat_detector.dart';
 import '../services/live_transcription_service.dart';
 import '../services/mic_stream_service.dart';
 import '../services/recording_store.dart';
@@ -23,13 +24,16 @@ import 'meeting_detail_screen.dart';
 /// runs the offline transcription on the saved WAV. State machine: see the
 /// spec's "即時錄音的狀態機".
 class LiveRecordScreen extends StatefulWidget {
-  const LiveRecordScreen({super.key, this.mic, this.service, this.settings});
+  const LiveRecordScreen({super.key, this.mic, this.service, this.settings, this.flatSignal});
 
   /// Test seams; by default the real mic (or a replayed WAV), recognizer and
   /// settings file.
   final MicStreamService? mic;
   final LiveTranscriptionService? service;
   final SettingsStore? settings;
+
+  /// Whether the phone lies flat on a table; the accelerometer by default.
+  final Stream<bool> Function()? flatSignal;
 
   @override
   State<LiveRecordScreen> createState() => _LiveRecordScreenState();
@@ -85,7 +89,28 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
     } else {
       ScreenAwake.instance.release(this);
     }
+    _syncFlatWatch();
   }
+
+  /// Lying flat on the table while recording (spec feature-desk-mode).
+  bool _flat = false;
+  StreamSubscription<bool>? _flatSub;
+
+  /// The accelerometer runs only while recording.
+  void _syncFlatWatch() {
+    if (_phase == _Phase.recording) {
+      _flatSub ??= (widget.flatSignal ?? watchFlat)().listen((flat) {
+        if (mounted && flat != _flat) setState(() => _flat = flat);
+      });
+    } else {
+      _flatSub?.cancel();
+      _flatSub = null;
+      _flat = false;
+    }
+  }
+
+  /// Desk mode: flat on the table, and not in the middle of typing a note.
+  bool get _onDesk => _flat && _draftMs == null && _phase == _Phase.recording;
   String? _prepareStatus;
   String? _error;
 
@@ -139,6 +164,7 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
   @override
   void dispose() {
     ScreenAwake.instance.release(this);
+    _flatSub?.cancel();
     _lifecycle.dispose();
     _ticker?.cancel();
     // Normally impossible (back is intercepted while recording); if the
@@ -532,7 +558,8 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
         if (!didPop && recording) _confirmLeave();
       },
       child: Scaffold(
-        appBar: AppBar(title: Text(_title)),
+        // Desk mode keeps only the clock and two buttons on screen.
+        appBar: _onDesk ? null : AppBar(title: Text(_title)),
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -540,7 +567,14 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
               _Phase.checkingPermission => const Center(child: CircularProgressIndicator()),
               _Phase.permissionDenied => _buildPermissionDenied(),
               _Phase.preparing => _buildBusy(_prepareStatus ?? '準備中…'),
-              _Phase.recording => _buildRecording(),
+              _Phase.recording => AnimatedSwitcher(
+                duration: MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : const Duration(milliseconds: 250),
+                child: _onDesk
+                    ? KeyedSubtree(key: const ValueKey('desk'), child: _buildDesk())
+                    : KeyedSubtree(key: const ValueKey('full'), child: _buildRecording()),
+              ),
               _Phase.finalizing => _buildBusy('保存錄音中…'),
               _Phase.transcribing => _buildTranscribing(),
               _Phase.error => _buildError(),
@@ -624,6 +658,115 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
         if (_draftMs != null) ...[const SizedBox(height: 12), _card(_buildDraft())],
         const SizedBox(height: 12),
         _buildDock(),
+      ],
+    );
+  }
+
+  /// Flat on the table: the clock, the waveform, and two big buttons under
+  /// the thumb (spec feature-desk-mode). Notes and the live-text switch wait
+  /// until the phone is picked up; live text keeps running meanwhile.
+  Widget _buildDesk() {
+    final elapsed = Duration(milliseconds: ((_rec?.sentSeconds ?? 0) * 1000).round());
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final colors = AppColors.of(context);
+    final leftHanded = AppSettingsScope.of(context).handedness == Handedness.left;
+    final star = _bigButton(
+      icon: Icons.star,
+      label: '標記重點',
+      size: 112,
+      background: colors.amber,
+      foreground: scheme.surface,
+      onPressed: _addStar,
+    );
+    final stop = _bigButton(
+      icon: Icons.stop_rounded,
+      label: '停止',
+      size: 96,
+      background: scheme.error,
+      foreground: scheme.onError,
+      ring: colors.redSoft,
+      onPressed: _stop,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.table_restaurant_outlined, size: 16, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(
+              '桌面模式・拿起手機顯示完整畫面',
+              style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const RecordingDot(),
+              const SizedBox(width: 12),
+              // Big enough to read from across the table; shrinks rather
+              // than overflow on a narrow phone.
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    _formatElapsed(elapsed),
+                    style: theme.textTheme.displayMedium?.copyWith(
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        _card(LevelWaveform(levels: _rec?.level, height: 90)),
+        const Spacer(),
+        Row(
+          mainAxisAlignment: leftHanded ? MainAxisAlignment.start : MainAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: leftHanded
+              ? [star, const SizedBox(width: 20), stop]
+              : [stop, const SizedBox(width: 20), star],
+        ),
+      ],
+    );
+  }
+
+  Widget _bigButton({
+    required IconData icon,
+    required String label,
+    required double size,
+    required Color background,
+    required Color foreground,
+    required VoidCallback onPressed,
+    Color? ring,
+  }) {
+    final button = SizedBox.square(
+      dimension: size,
+      child: IconButton(
+        onPressed: onPressed,
+        tooltip: label,
+        icon: Icon(icon, size: size * 0.42),
+        style: IconButton.styleFrom(backgroundColor: background, foregroundColor: foreground),
+      ),
+    );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ring == null
+            ? button
+            : DecoratedBox(
+                decoration: BoxDecoration(shape: BoxShape.circle, color: ring),
+                child: Padding(padding: const EdgeInsets.all(6), child: button),
+              ),
+        const SizedBox(height: 8),
+        Text(label, style: Theme.of(context).textTheme.labelLarge),
       ],
     );
   }

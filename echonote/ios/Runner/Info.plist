@@ -26,6 +26,8 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSMotionUsageDescription</key>
+	<string>錄音時偵測手機是否平放在桌上，自動切換成簡化的桌面模式。</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>echonote 需要使用麥克風錄製會議內容，語音會在裝置上轉成逐字稿，不會上傳到雲端。</string>
 	<key>UIApplicationSceneManifest</key>

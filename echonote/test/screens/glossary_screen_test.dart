@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:echonote/models/glossary.dart';
 import 'package:echonote/screens/glossary_screen.dart';
+import 'package:echonote/services/app_settings.dart';
 import 'package:echonote/services/glossary_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -131,5 +132,20 @@ void main() {
 
     expect(find.textContaining('詞庫檔案已損毀'), findsOneWidget);
     expect(find.byTooltip('新增詞條'), findsNothing);
+  });
+
+  testWidgets('the add button sits under the thumb', (tester) async {
+    await open(tester);
+    final width = tester.getSize(find.byType(GlossaryScreen)).width;
+    expect(tester.getCenter(find.byTooltip('新增詞條')).dx, greaterThan(width / 2));
+
+    await tester.pumpWidget(
+      AppSettingsScope(
+        settings: AppSettings(handedness: Handedness.left),
+        child: MaterialApp(home: GlossaryScreen(store: store)),
+      ),
+    );
+    await settle(tester);
+    expect(tester.getCenter(find.byTooltip('新增詞條')).dx, lessThan(width / 2));
   });
 }
