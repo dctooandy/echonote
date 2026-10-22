@@ -33,7 +33,8 @@ inline bool is_repetition_separator(uint32_t cp) {
 }
 
 // Lenient UTF-8 decoding: whisper can split a multi-byte character across
-// tokens, so a malformed byte becomes U+FFFD instead of failing.
+// tokens, and a run cut short leaves half of one. Malformed bytes, and any
+// U+FFFD already standing in for them, are dropped rather than shown as �.
 inline std::vector<uint32_t> utf8_decode(const std::string &s) {
     std::vector<uint32_t> out;
     out.reserve(s.size());
@@ -42,7 +43,6 @@ inline std::vector<uint32_t> utf8_decode(const std::string &s) {
         const unsigned char c = (unsigned char)s[i];
         int len = c < 0x80 ? 1 : (c >> 5) == 0x6 ? 2 : (c >> 4) == 0xE ? 3 : (c >> 3) == 0x1E ? 4 : 0;
         if (len == 0 || i + len > s.size()) {
-            out.push_back(0xFFFD);
             i++;
             continue;
         }
@@ -54,11 +54,10 @@ inline std::vector<uint32_t> utf8_decode(const std::string &s) {
             cp = (cp << 6) | (cc & 0x3F);
         }
         if (!ok) {
-            out.push_back(0xFFFD);
             i++;
             continue;
         }
-        out.push_back(cp);
+        if (cp != 0xFFFD) out.push_back(cp);
         i += len;
     }
     return out;
@@ -95,7 +94,8 @@ struct CollapseResult {
 
 // Every loop (a unit of kRepetitionMinUnit–kRepetitionMaxUnit code points
 // repeated kRepetitionMinRepeats+ times in a row, separators ignored) cut
-// down to its first occurrence; everything else kept as is.
+// down to its first occurrence, and malformed bytes and U+FFFD dropped;
+// everything else kept as is.
 inline CollapseResult collapse_repetitions(const std::string &text) {
     const std::vector<uint32_t> runes = utf8_decode(text);
     std::vector<uint32_t> core;

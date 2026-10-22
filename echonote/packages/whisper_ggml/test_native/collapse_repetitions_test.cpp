@@ -56,10 +56,14 @@ int main(int argc, char **argv) {
         expect(r.text.rfind("好好好好", 0) == 0, "committed text outside the tail is kept",
                "got " + r.text.substr(0, 30));
     }
-    // Malformed UTF-8 doesn't throw.
+    // Half a character left by a cut-short run is dropped, not shown as U+FFFD.
     {
         const auto r = collapse_repetitions(std::string("ab\xE4\xB8", 4));
-        expect(r.collapsed == 0, "malformed UTF-8 is tolerated", r.text);
+        expect(r.text == "ab" && r.collapsed == 0, "a trailing half character is dropped", r.text);
+    }
+    {
+        const auto r = collapse_repetitions(std::string("a" "\xB8" "b", 3));
+        expect(r.text == "ab", "a stray continuation byte is dropped", r.text);
     }
 
     std::printf("%d failure(s)\n", failures);

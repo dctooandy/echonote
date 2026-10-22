@@ -66,6 +66,18 @@
       "input": "",
       "output": "",
       "collapsed": 0
+    },
+    {
+      "name": "實際錄音：結尾半個字留下的 U+FFFD 會被去掉",
+      "input": "現在公司規定是寫��",
+      "output": "現在公司規定是寫",
+      "collapsed": 0
+    },
+    {
+      "name": "U+FFFD 夾在迴圈中間也不影響判斷",
+      "input": "經常經常�經常經常，好",
+      "output": "經常，好",
+      "collapsed": 1
     }
   ]
 }

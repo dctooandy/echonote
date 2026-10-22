@@ -29,12 +29,16 @@ bool isRepetitionSeparator(int cp) =>
     (cp >= 0xFF3B && cp <= 0xFF40) ||
     (cp >= 0xFF5B && cp <= 0xFF65);
 
+/// Stands in for a character whisper split across tokens and the run cut in
+/// half; the native side turns the leftover bytes into it.
+const _replacementChar = 0xFFFD;
+
 /// [text] with every loop (a unit of [kRepetitionMinUnit]–[kRepetitionMaxUnit]
 /// code points repeated [kRepetitionMinRepeats]+ times in a row, separators
-/// ignored) cut down to its first occurrence; everything else is kept as is.
-/// [collapsed] counts the loops removed.
+/// ignored) cut down to its first occurrence, and every U+FFFD dropped;
+/// everything else is kept as is. [collapsed] counts the loops removed.
 ({String text, int collapsed}) collapseRepetitions(String text) {
-  final runes = text.runes.toList();
+  final runes = text.runes.where((cp) => cp != _replacementChar).toList();
   // The text without separators, and where each of its code points sits in
   // [runes].
   final core = <int>[];
