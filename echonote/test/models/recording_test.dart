@@ -18,6 +18,21 @@ Map<String, dynamic> _legacyJson({List<Map<String, dynamic>>? segments}) => {
 
 void main() {
   group('Recording JSON', () {
+    test('legacy entry has no duration, and saving it adds none', () {
+      final recording = Recording.fromJson(_legacyJson());
+
+      expect(recording.durationMs, isNull);
+      expect(recording.toJson().containsKey('duration_ms'), isFalse);
+    });
+
+    test('duration round-trips', () {
+      final json = _legacyJson()..['duration_ms'] = 2652000;
+
+      final recording = Recording.fromJson(json);
+      expect(recording.durationMs, 2652000);
+      expect(Recording.fromJson(recording.toJson()).durationMs, 2652000);
+    });
+
     test('legacy entry without source reads as an import', () {
       final recording = Recording.fromJson(_legacyJson());
 

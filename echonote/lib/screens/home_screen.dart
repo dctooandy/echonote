@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../models/recording.dart';
 import '../services/recording_store.dart';
+import '../utils/format.dart';
 import '../widgets/confirm_delete_dialog.dart';
 import 'glossary_screen.dart';
 import 'import_screen.dart';
@@ -64,6 +65,14 @@ class _HomeScreenState extends State<HomeScreen> {
       _openingLive = false;
     }
     _reload();
+  }
+
+  /// Date, then the length once it's known (spec
+  /// feature-recording-duration).
+  static String _subtitle(Recording recording) {
+    final date = '${recording.createdAt.toLocal()}'.split('.').first;
+    final ms = recording.durationMs;
+    return ms == null ? date : '$date · ${formatLength(ms)}';
   }
 
   String _statusLabel(Recording recording) {
@@ -140,9 +149,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         : Icons.description_outlined,
                   ),
                   title: Text(recording.displayTitle),
-                  subtitle: Text(
-                    '${recording.createdAt.toLocal()}'.split('.').first,
-                  ),
+                  subtitle: Text(_subtitle(recording)),
                   trailing: Text(_statusLabel(recording)),
                   onTap: () async {
                     await Navigator.of(context).push(

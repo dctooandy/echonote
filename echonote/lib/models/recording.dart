@@ -246,6 +246,7 @@ class Recording {
     List<UserNote>? notes,
     this.transcriptStaleAnalysis = false,
     List<String>? dismissedReplacements,
+    this.durationMs,
   }) : notes = notes ?? [],
        dismissedReplacements = dismissedReplacements ?? [];
 
@@ -276,6 +277,11 @@ class Recording {
   /// offered again for this recording.
   final List<String> dismissedReplacements;
 
+  /// Length of the audio; null while unknown (entries saved before it was
+  /// recorded, or a file that couldn't be read). Filled in later from the
+  /// file — see the spec feature-recording-duration.
+  int? durationMs;
+
   bool get isTranscribed => segments.isNotEmpty;
 
   String get displayTitle =>
@@ -301,6 +307,7 @@ class Recording {
         transcriptStaleAnalysis: json['transcript_stale_analysis'] as bool? ?? false,
         dismissedReplacements:
             (json['dismissed_replacements'] as List<dynamic>? ?? []).cast<String>(),
+        durationMs: json['duration_ms'] as int?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -316,5 +323,6 @@ class Recording {
         'notes': notes.map((n) => n.toJson()).toList(),
         'transcript_stale_analysis': transcriptStaleAnalysis,
         'dismissed_replacements': dismissedReplacements,
+        if (durationMs != null) 'duration_ms': durationMs,
       };
 }
