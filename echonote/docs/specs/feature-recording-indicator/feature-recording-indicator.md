@@ -126,15 +126,16 @@ flowchart LR
     - [x] `flutter test`、`flutter analyze` 通過
   - 2026-10-22 完成。`LiveRecording` 改成公開建構子，辨識透過 `PreviewSession` 介面注入（實際用 `transcribeLive()`，測試用假的），第一次有單元測試（6 個）。中途打開時，延遲以「這次辨識開始的位置」為起點計算。錄音畫面暫時維持舊行為（開始錄音前下載 `tiny`、一律打開預覽），T4 再接上開關。
 
-- [ ] **T2 本機設定檔**
+- [x] **T2 本機設定檔**
   - 做完能看到：「即時文字」的開關狀態會記住，下次錄音沿用
   - 被誰卡住：無，可以直接開工
   - 主要會動的檔案：`lib/services/settings_store.dart`（新）、`test/services/settings_store_test.dart`（新）
   - 軌道：可獨立進行
   - 驗收：
-    - [ ] 讀寫 `Documents/settings.json` 的 `live_preview`，預設 `false`
-    - [ ] 檔案不存在或損毀時回傳預設值；寫入時保留檔案裡其他未知的欄位
-    - [ ] `flutter test`、`flutter analyze` 通過
+    - [x] 讀寫 `Documents/settings.json` 的 `live_preview`，預設 `false`
+    - [x] 檔案不存在或損毀時回傳預設值；寫入時保留檔案裡其他未知的欄位
+    - [x] `flutter test`、`flutter analyze` 通過
+  - 2026-10-22 完成。值的型別不對（例如字串）也當作預設值；設定是非關鍵資料，檔案損毀時下次存檔直接覆蓋（和詞庫「不覆寫」的做法不同）。
 
 - [ ] **T3 捲動波形和紅點呼吸閃爍**
   - 做完能看到：錄音畫面的音量條換成 6 秒的捲動波形，紅點會呼吸閃爍；「減少動態效果」開啟時紅點常亮
