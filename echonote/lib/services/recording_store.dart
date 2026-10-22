@@ -45,6 +45,21 @@ class RecordingStore {
     return '${dir.path}/${recording.audioFileName}';
   }
 
+  /// Sets only the length of the saved entry [id], reading it fresh from
+  /// disk so an edit saved meanwhile (e.g. on the detail page) isn't
+  /// overwritten. A deleted or unreadable entry is left alone.
+  Future<void> saveDuration(String id, int durationMs) async {
+    final file = File('${(await _historyDir()).path}/$id.json');
+    if (!await file.exists()) return;
+    try {
+      final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      json['duration_ms'] = durationMs;
+      await file.writeAsString(jsonEncode(json));
+    } on FormatException {
+      // Corrupt entry: loadAll skips it too.
+    }
+  }
+
   Future<List<Recording>> loadAll() async {
     final dir = await _historyDir();
     final files = dir.listSync().whereType<File>().where((f) => f.path.endsWith('.json'));

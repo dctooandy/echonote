@@ -103,16 +103,17 @@
     - [x] `flutter test`、`flutter analyze` 通過
   - 2026-10-22 完成。格式化函式 `formatLength` 加在既有的 `lib/utils/format.dart`（原本的 `formatDuration` 是逐字稿時間戳記用的「分:秒」，不處理小時，沒有共用）。沒有時長時 `toJson` 不寫這個欄位，舊紀錄存檔後格式不變。新增測試 8 個，全部 153 個通過。
 
-- [ ] **T2 匯入讀時長，舊紀錄補時長**
+- [x] **T2 匯入讀時長，舊紀錄補時長**
   - 做完能看到：匯入的錄音有時長；舊紀錄打開首頁後逐筆補上時長
   - 被誰卡住：T1
   - 主要會動的檔案：`lib/services/audio_duration_probe.dart`（新）、`lib/services/recording_store.dart`、`lib/screens/import_screen.dart`、`lib/screens/home_screen.dart`、對應測試
   - 軌道：可獨立進行
   - 驗收：
-    - [ ] 沒時長的補上並存檔；已有的不再讀；讀不出的維持空值、不存檔
-    - [ ] 寫回只更新時長，不蓋掉其他欄位
-    - [ ] 匯入讀不出時長時，匯入照常完成
-    - [ ] `flutter test`、`flutter analyze` 通過
+    - [x] 沒時長的補上並存檔；已有的不再讀；讀不出的維持空值、不存檔
+    - [x] 寫回只更新時長，不蓋掉其他欄位
+    - [x] 匯入讀不出時長時，匯入照常完成
+    - [x] `flutter test`、`flutter analyze` 通過
+  - 2026-10-22 完成。`AudioDurationProbe` 先確認檔案存在，再用 `just_audio` 只載入、不播放，10 秒逾時，任何錯誤都回傳空值；播放器的 `dispose` 不等待（沒載入成功的播放器呼叫可能永遠不回來）。`RecordingStore.saveDuration` 直接改 JSON，只動 `duration_ms`，連程式不認得的欄位也保留。首頁每次載入清單就開始補讀，重新載入時舊的那一輪停止。匯入讀不出時長不會拋錯（探測器不丟例外）；匯入畫面要跑真的 whisper，沒寫 widget 測試，留給 T3。新增測試 5 個，全部 158 個通過，`flutter build ios` 通過。
 
 - [ ] **T3 📱 實機驗證**
   - 做完能看到：舊紀錄補上的時長和詳細頁播放器總長度一致；新錄音、匯入 m4a／mp3／wav 都有時長；讀時長不打斷正在播放的音樂
