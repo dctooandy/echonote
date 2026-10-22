@@ -10,10 +10,6 @@ import '../models/recording.dart';
 /// real-world recordings.
 const kWhisperModel = WhisperModel.base;
 
-/// Keep the prompt in every window. Override to compare on device (spec
-/// task T4): `flutter run --dart-define=WHISPER_CARRY_PROMPT=false`
-const kCarryInitialPrompt = bool.fromEnvironment('WHISPER_CARRY_PROMPT', defaultValue: true);
-
 class TranscriptionResult {
   TranscriptionResult({required this.segments, required this.elapsed});
 
@@ -40,7 +36,8 @@ class TranscriptionService {
   /// [initialPrompt] biases decoding toward the glossary's spelling; see
   /// `buildWhisperPrompt`. It is carried into every 30 s window, since by
   /// default whisper only seeds the first one and the decoded text soon pushes
-  /// it out of the context.
+  /// it out of the context: on device (spec T4) glossary terms late in a
+  /// recording came out wrong without carrying and right with it.
   Future<TranscriptionResult> transcribe({
     required String audioPath,
     String? initialPrompt,
@@ -55,7 +52,7 @@ class TranscriptionService {
       audioPath: safeAudioPath,
       lang: 'zh',
       initialPrompt: initialPrompt,
-      carryInitialPrompt: kCarryInitialPrompt,
+      carryInitialPrompt: true,
       withSegments: true,
       // Some recordings (e.g. 261009_與老師討論AHP.mp3) make whisper open
       // every 30 s window with a non-speech tag like "(咖啡)" and skip the

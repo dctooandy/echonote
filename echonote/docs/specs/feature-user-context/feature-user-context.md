@@ -1,7 +1,7 @@
 # 使用者脈絡：自訂詞庫＋個人筆記 規格
 
-分支：`feature/user-context`（尚未建立）
-狀態：已確認（2026-10-21，15 項待確認事項皆採建議答案，見文末「已確認的決定」）
+分支：`feature/user-context`
+狀態：已完成，待合併（2026-10-22：T1～T17 完成、實機驗收 10/10、`/spec-check` 落差已處理；決定見文末「已確認的決定」）
 
 這份文件記錄 P1「使用者脈絡」功能：讓使用者把「AI 不知道、但使用者自己知道」的資訊交給 EchoNote，在**轉錄**和**分析**兩個階段使用。包含兩個子功能：
 
@@ -27,7 +27,7 @@
 
 | 層 | 時機 | 做法 |
 |---|---|---|
-| ① 轉錄前 | whisper | 把詞庫組成一句話，接在原本固定的那句話後面，作為 `initialPrompt`。例如「以下是繁體中文的會議逐字稿，會提到：台積電、EchoNote、王小明。」**離線轉錄一律使用**；即時預覽也使用，但實作後要在 iPhone 12 Pro Max 重新量測延遲，明顯變慢就退回只用固定開頭 |
+| ① 轉錄前 | whisper | 把詞庫組成一句話，接在原本固定的那句話後面，作為 `initialPrompt`。例如「以下是繁體中文的會議逐字稿，會提到：台積電、EchoNote、王小明。」**離線轉錄一律使用**，並開啟 `carry_initial_prompt` 讓每個 30 秒視窗都帶著；即時預覽**不帶詞庫**、只送固定開頭（決定 24：實測解碼慢 29%）。正式逐字稿來自停止後的離線轉錄，所以不受影響 |
 | ② 分析時 | Claude | 詞庫一起送給 `analyzeMeeting`。系統提示要求：逐字稿裡發音或字形相近的錯字，在所有輸出中一律寫成詞庫的正確寫法 |
 | ③ 事後學習 | 使用者修改逐字稿 | 使用者修改一個片段後，偵測到替換的字串，就詢問「加入詞庫？並套用到這場其他 N 處？」。**一律等使用者確認後才寫入**，不自動加入 |
 
@@ -50,7 +50,7 @@
 - 呈現：
   - 摘要頁最上方加「**你的重點**」區塊，顯示使用者的原文，**AI 不改寫**。
   - 每筆筆記底下可以附上 AI 產生的「這個時間點在討論什麼」補充說明，視覺上要和使用者的原文明確區隔。★ 沒有文字，所以特別需要這段補充。
-  - 逐字稿頁在對應的片段旁邊顯示筆記標記，點一下跳轉播放。
+  - 逐字稿頁在筆記所在的片段旁邊顯示標記；點那一列跳到**片段開頭**。要跳到筆記的精確時間點，從「你的重點」點那筆筆記。
 - 「重新分析」**不會覆蓋**筆記本身，只會重新產生 AI 補充說明。
 
 ### 驗收方式（決定這個功能值不值得繼續的數字）
@@ -81,15 +81,18 @@
     - `text`：`star` 為 `null`。
 - 系統提示新增規則：
   - 詞庫詞是正確寫法，遇到發音或字形相近的錯字，在所有輸出中改用詞庫寫法；但不可把逐字稿沒提到的詞庫詞寫進輸出。
-  - `highlights` 是使用者親自標記的重點，`summary.key_points` 必須涵蓋每一筆。
+  - `highlights` 標出使用者認為重要的**位置**，`summary.key_points` 必須涵蓋每一筆重點所在位置的會議內容。
+  - 筆記文字是使用者自己的想法，只用來判斷哪些內容重要；不可寫成會議中有人說過、決議過或要求過的內容，摘要、待辦、會議紀錄、`highlight_contexts` 都只能根據逐字稿描述（決定 18）。
   - 逐字稿以 `<transcript>`、詞庫以 `<glossary>`、重點以 `<user_highlights>` 分段放進 user message，避免互相混淆。
 - Response（新增）：
   - `highlight_contexts: { note_index: number; context: string }[]`：每筆重點「在討論什麼」的一兩句補充，繁體中文，**每筆 50 字以內**（寫在 schema 的 description 和系統提示裡）。沒有 `highlights` 時回傳空陣列。
   - `max_tokens` 維持 4096；長會議加上多筆筆記的情況要實測，被截斷再調整。
 - 錯誤情境（新增，都回 `invalid-argument`）：
   - `glossary` 不是字串陣列，或超過上限。
-  - `highlights[].segment_index` 超出 `segments` 的範圍。
-  - `highlights[].note_index` 重複。
+  - `highlights[].segment_index` 超出 `segments` 的範圍，或不是非負整數。
+  - `highlights[].note_index` 重複，或不是非負整數。
+  - `highlights[].text` 不是字串也不是 `null`。
+  - `glossary`、`highlights` 傳 `null` 視同沒帶。
 - App 端：`AnalysisService.analyze()` 的參數改成也接收詞庫和筆記；`note_index` 換回筆記 `id` 的工作在本機完成，和 `_resolveSegmentIndices()` 同樣的原則。
 
 ## 資料表異動
@@ -186,11 +189,12 @@
 | 畫面 | 異動 |
 |---|---|
 | `HomeScreen` | AppBar 新增「詞庫」入口 |
-| 新增 `GlossaryScreen` | 詞條列表（釘選的在最上面）、新增、編輯、刪除、釘選；顯示「目前前 N 個詞會送進轉錄」的提示，讓使用者知道有上限 |
+| 新增 `GlossaryScreen` | 詞條列表（依 prompt 優先順序：釘選、最近用過、最近新增）、新增、編輯、刪除（可復原）、釘選；顯示「前 N 個詞會送進語音轉錄」；放不進 prompt 的詞標「只用在摘要」，學到的詞標「從修改中學到」並列出常見誤寫；新增對話框提示「填正確寫法，不是聽起來的音」 |
 | `LiveRecordScreen` | 錄音中新增 ★ 按鈕和筆記按鈕；筆記輸入框不能擋住「停止」按鈕；按下後短暫顯示「已標記 12:34」 |
 | `MeetingDetailScreen` 播放列 | 新增 ★ 和筆記按鈕，時間取目前的播放位置 |
-| `MeetingDetailScreen` 摘要頁 | 最上方新增「你的重點」區塊：使用者原文，下面附上 AI 補充說明（區隔樣式）。**還沒分析時也要顯示**，放在「尚未分析」提示的上方；分析可能過時時顯示提示列和「重新分析」 |
-| `MeetingDetailScreen` 逐字稿頁 | **長按片段**跳出編輯對話框（點擊維持跳轉播放）；有筆記的片段顯示標記；編輯後觸發第 ③ 層詢問 |
+| `MeetingDetailScreen` 摘要頁 | 最上方新增「你的重點」區塊：使用者原文，下面附上 AI 補充說明（區隔樣式）。**還沒分析時也要顯示**，放在「尚未分析」提示的上方。筆記可編輯文字、刪除，刪除後可從 SnackBar 復原（連同 AI 補充說明） |
+| `MeetingDetailScreen` 播放列下方 | 分析可能過時時顯示提示列和「重新分析」，**每個分頁都看得到**（待辦和會議紀錄一樣會過時）；重新轉錄已轉錄的錄音時，在這裡顯示進度，舊逐字稿完成前照常可看 |
+| `MeetingDetailScreen` 逐字稿頁 | 上方顯示「點句子跳轉播放，長按可修改」；**長按片段**跳出編輯對話框（點擊維持跳轉到片段開頭）；有筆記的片段顯示標記；編輯後觸發第 ③ 層詢問 |
 | `MeetingDetailScreen` AppBar | 已轉錄的錄音新增「用目前詞庫重新轉錄」（放在選單裡）；按下後先跳確認對話框 |
 
 ### 第 ③ 層詢問的觸發規則
@@ -228,7 +232,7 @@
 - **★ 連續快速點擊**：同一秒內的重複 ★ 合併成一筆。
 - **分析回傳的 `highlight_contexts` 缺少某筆，或 `note_index` 不存在**：缺的就不顯示補充說明，不當成錯誤。
 - **分析後刪除筆記**：連同它的 AI 補充說明一起移除；不需要重新分析。
-- **分析後新增筆記**：新筆記沒有補充說明，摘要頁提示「有新的重點尚未分析」。
+- **分析後新增筆記，或 Claude 漏寫某筆**：該筆沒有補充說明，摘要頁提示「有 N 筆重點還沒有 AI 補充說明，重新分析可補上」。
 - **Android**：分析本來就不能用，詞庫第 ① 層和筆記仍然可以用。
 
 ---
@@ -370,7 +374,7 @@
 
 - [x] **T17 📱 筆記驗收**：在一場會議標 5 個 ★／筆記，檢查摘要和待辦涵蓋了幾個，並做主觀比較；同時用長會議（44 分鐘那場）加上多筆筆記，確認 `max_tokens: 4096` 不會被截斷，把結果寫回規格。依賴：T13
   - 2026-10-21 完成，結果見「驗收核對記錄」。
-- [ ] **T18 核對與紀錄**：用 `/spec-check` 核對規格和實作，用 `/devlog` 整理開發紀錄，規格狀態改成「已完成」。依賴：全部
+- [ ] **T18 核對與紀錄**（`/spec-check` 已完成 2026-10-22，待 `/devlog`）：用 `/spec-check` 核對規格和實作，用 `/devlog` 整理開發紀錄，規格狀態改成「已完成」。依賴：全部
 
 ## 驗收核對記錄
 
@@ -390,6 +394,41 @@
 | T5-2 | 新增、編輯、刪除與復原 | Pass | 已依決定 25 放寬標點 |
 | T5-3 | 從修改逐字稿學到的詞顯示在詞庫頁 | Pass（2026-10-22 補測） | 第一次沒測成：驗收步驟的範例（Full Snap → FullSnap App）是兩處修改，不會觸發學詞，App 也沒有提示。補上逐字稿長按提示（`1624a22`）和「已修改＋加入詞庫」（決定 26，`25419f7`）後依修正步驟重測通過 |
 | T5-4 | 空詞庫第一次新增不會當掉 | Pass | |
+
+### 2026-10-22 `/spec-check` 規格與實作核對
+
+**結論**：功能面全部有實作，主要落差是**規格內文沒跟上開發中的決定**（決定 18、24、26 和幾個任務備註只寫在任務或決定表，沒回寫到對應章節），另有一項實作待辦：`WHISPER_PROMPT`／`WHISPER_CARRY_PROMPT` 兩個測試開關依決定 23 應在 T17 後移除，但還在。
+
+**✅ 一致（節錄，附證據）**
+- 第 ① 層：prompt 組字與排序、遇到放不下就停 `lib/services/whisper_prompt.dart:38-64`；離線轉錄帶 prompt＋`carry_initial_prompt` `lib/services/transcription_service.dart:15,58`；損毀詞庫照常轉錄 `lib/services/recording_transcriber.dart:41`
+- 第 ② 層：詞庫全部送出、空詞庫不帶欄位 `lib/services/analysis_service.dart:23-24`；驗證三種 `invalid-argument` `functions/src/analyze.ts:26-60`；`<transcript>`／`<glossary>`／`<user_highlights>` 分段 `analyze.ts:92`；`highlight_contexts` 50 字以內 `analyze.ts:113,187`；`max_tokens: 4096` `functions/src/index.ts:27`
+- 第 ③ 層：長按編輯 `meeting_detail_screen.dart:891`；學詞對話框、推算錯誤寫法、修正 N 處、拒絕記錄、不符合規則時「已修改＋加入詞庫」`meeting_detail_screen.dart:342` 與 `lib/services/correction_learning.dart`；`learn` 標 `learned` 並更新 `last_used_at` `lib/services/glossary_store.dart:106-108`
+- 詞庫資料：單條 20 字、整份 200 條、只擋換行 `lib/models/glossary.dart:66-72`；損毀不覆寫 `glossary_store.dart:45`
+- 筆記：即時錄音時間取開啟輸入框那刻 `live_record_screen.dart:196`、停止時保存草稿 `:239`、超過長度夾到結尾 `:272`、★ 同秒合併 `:189`；分析當下換算 `segment_index` `analysis_service.dart:67`、無效序號略過 `:99`；刪除筆記連同 AI 補充說明 `meeting_detail_screen.dart:268`；匯出不含筆記 `meeting_detail_screen.dart:182`
+- 狀態：重新轉錄後保留分析並標過時 `recording_transcriber.dart:62`；重新分析清除標記 `meeting_detail_screen.dart:105`
+- 即時預覽不帶詞庫（決定 24）：`live_transcription_service.dart:53,165` 只用固定開頭
+
+**⚠️ 落差**
+1. 「目標與範圍」第 ① 層寫「即時預覽也使用」，實作依決定 24 不帶詞庫。→ 規格沒跟上
+2. 「API 異動」的系統提示規則仍是「`key_points` 必須涵蓋每一筆」，實作已改成「涵蓋重點所在位置的會議內容」，並加上「筆記不可寫成會議發言或決議」（`analyze.ts:111-112`，決定 18）。→ 規格沒跟上
+3. 「邊界案例」寫分析後新增筆記提示「有新的重點尚未分析」，實作是「有 N 筆重點還沒有 AI 補充說明，重新分析可補上」（T13 備註有寫）。→ 規格沒跟上
+4. 「UI／畫面」寫「分析可能過時」提示列在摘要頁，實作在所有分頁都顯示（`meeting_detail_screen.dart:503`，T14 備註有寫）。→ 規格沒跟上
+5. 「逐字稿頁在對應的片段旁邊顯示筆記標記，點一下跳轉播放」：標記圖示本身不能點；點整列是跳到**片段開頭**（`meeting_detail_screen.dart:890`），不是筆記的時間點。→ 兩種可能都有，待決定
+6. 決定 23 寫 `WHISPER_PROMPT` 開關「保留到 T17 驗收後移除」，T17 已完成，開關（`whisper_prompt.dart:27`）和 `WHISPER_CARRY_PROMPT`（`transcription_service.dart:15`）都還在；相關註解也還寫著「kept until the T17 acceptance run」「provisional value to re-measure (T4)」（`whisper_prompt.dart:25,33`）。→ 實作待辦
+7. 檔頭「分支：尚未建立」「狀態：已確認」已過時。→ 規格沒跟上
+
+**❓ 規格未涵蓋（實作有、內文沒寫）**
+- 筆記和詞條刪除後都可以從 SnackBar 復原（只寫在 T5、T12 備註）
+- 逐字稿頁上方「點句子跳轉播放，長按可修改」提示（只寫在驗收記錄）
+- 重新轉錄時進度顯示在播放列下方（只寫在 T14 備註）
+- 詞庫頁的「只用在摘要」「從修改中學到」「常見誤寫」標記，以及 `WHISPER_PROMPT` 不是 `glossary` 時改說明「詞庫只用在摘要」（後者會隨落差 6 一起消失）
+- `analyzeMeeting` 額外驗證：`note_index`／`segment_index` 必須是非負整數、`text` 必須是字串或 `null`；`glossary: null` 視同沒帶（`analyze.ts:30-62`）
+
+**處理結果（使用者決定，2026-10-22）**
+- 落差 1、2、3、4、7：改規格配合實作，已改寫對應章節。
+- 落差 5：改規格，寫成「點那一列跳到片段開頭，精確時間點從『你的重點』跳轉」。
+- 落差 6：移除 `WHISPER_PROMPT`、`WHISPER_CARRY_PROMPT` 兩個開關與詞庫頁跟著開關變化的說明，註解改記實測結論（決定 27）。
+- 規格未涵蓋的 5 項：已補進「UI／畫面」與「API 異動」。
 
 ## 待確認事項
 
@@ -427,3 +466,4 @@
 | 24 | T6 即時預覽要不要帶詞庫 | 不帶。實測 median 解碼時間多 29%，超過 20% 門檻；`2a04233` 已 revert。即時預覽的重複迴圈另列後續項目 |
 | 25 | 詞條能不能有標點（驗收 T5 時使用者提出） | 只擋換行，`、`、`，`、`,`、`。` 都可以用，讓 `Apple, Inc.` 這類名稱能放進詞庫；whisper prompt 裡的標點只是文字的一部分，影響很小 |
 | 26 | 修改不符合學詞規則時沒有任何提示（驗收 T5-3 時發現） | 顯示「已修改」＋「加入詞庫」按鈕，開啟詞庫頁同一個新增對話框（抽成 `GlossaryTermDialog`）；不放寬自動判斷規則 |
+| 27 | `/spec-check` 落差 6：測試開關 | T17 完成後移除 `WHISPER_PROMPT`、`WHISPER_CARRY_PROMPT`；轉錄一律帶詞庫並開 `carry_initial_prompt`，`kGlossaryPromptMaxChars` 註解改記 T4 的依據 |

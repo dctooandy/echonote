@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:echonote/models/glossary.dart';
 import 'package:echonote/screens/glossary_screen.dart';
 import 'package:echonote/services/glossary_store.dart';
-import 'package:echonote/services/whisper_prompt.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -36,8 +35,8 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> open(WidgetTester tester, {WhisperPromptMode promptMode = WhisperPromptMode.glossary}) async {
-    await tester.pumpWidget(MaterialApp(home: GlossaryScreen(store: store, promptMode: promptMode)));
+  Future<void> open(WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(home: GlossaryScreen(store: store)));
     await settle(tester);
   }
 
@@ -101,14 +100,6 @@ void main() {
         .toList();
     expect(titles.first, '釘選');
     expect(find.text('只用在摘要'), findsOneWidget);
-  });
-
-  testWidgets('with layer ① off, says the glossary is only used for summaries', (tester) async {
-    await tester.runAsync(() => store.save([_term('台積電')]));
-    await open(tester, promptMode: WhisperPromptMode.none);
-
-    expect(find.textContaining('語音轉錄暫時不使用詞庫'), findsOneWidget);
-    expect(find.textContaining('會送進語音轉錄'), findsNothing);
   });
 
   testWidgets('pinning is saved', (tester) async {

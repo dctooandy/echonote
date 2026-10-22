@@ -21,16 +21,13 @@ class RecordingTranscriber {
     TranscriptionService? transcription,
     RecordingStore? store,
     GlossaryStore? glossary,
-    WhisperPromptMode? promptMode,
   }) : _transcription = transcription ?? TranscriptionService(),
        _store = store ?? RecordingStore(),
-       _glossary = glossary ?? GlossaryStore(),
-       _promptMode = promptMode ?? kWhisperPromptMode;
+       _glossary = glossary ?? GlossaryStore();
 
   final TranscriptionService _transcription;
   final RecordingStore _store;
   final GlossaryStore _glossary;
-  final WhisperPromptMode _promptMode;
 
   /// On success fills in [recording]'s segments and elapsed time and saves
   /// it; an existing analysis is kept but flagged as possibly stale. Throws
@@ -38,17 +35,10 @@ class RecordingTranscriber {
   /// transcription error; in both cases [recording] is left untouched
   /// (its previous transcript, if any, included) and nothing is written.
   Future<void> transcribe(Recording recording, {void Function(int percent)? onProgress}) async {
-    final prompt = switch (_promptMode) {
-      WhisperPromptMode.none => null,
-      WhisperPromptMode.lead => buildWhisperPrompt([]),
-      // A corrupt glossary loads as empty: transcribe without it rather
-      // than fail.
-      WhisperPromptMode.glossary => buildWhisperPrompt((await _glossary.load()).terms),
-    };
-    debugPrint(
-      '[Transcriber] prompt mode=${_promptMode.name} carry=$kCarryInitialPrompt '
-      'initial prompt: ${prompt ?? '(none)'}',
-    );
+    // A corrupt glossary loads as empty: transcribe without it rather than
+    // fail.
+    final prompt = buildWhisperPrompt((await _glossary.load()).terms);
+    debugPrint('[Transcriber] initial prompt: $prompt');
     final result = await _transcription.transcribe(
       audioPath: await _store.resolveAudioPath(recording),
       initialPrompt: prompt,

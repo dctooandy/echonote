@@ -3,34 +3,11 @@ import '../models/glossary.dart';
 /// Kept in every prompt: without it whisper drifts into Simplified Chinese.
 const kTranscriptPromptLead = '以下是繁體中文的會議逐字稿';
 
-/// What offline transcription sends whisper as its initial prompt.
-enum WhisperPromptMode {
-  /// No prompt: whisper's own behavior, as before the glossary existed.
-  none,
-
-  /// Only [kTranscriptPromptLead].
-  lead,
-
-  /// The lead plus the glossary (layer ①).
-  glossary;
-
-  static WhisperPromptMode parse(String value) =>
-      values.firstWhere((m) => m.name == value, orElse: () => glossary);
-}
-
-/// On by default. On device (spec T4, 2026-10-21) the glossary prompt,
-/// carried into every window, got nearly every glossary term right where
-/// no prompt got none. Compare on the same recording with
-///   flutter run --profile --dart-define=WHISPER_PROMPT=none|lead|glossary
-/// (kept until the T17 acceptance run).
-final kWhisperPromptMode = WhisperPromptMode.parse(
-  const String.fromEnvironment('WHISPER_PROMPT', defaultValue: 'glossary'),
-);
-
 /// Budget, in characters, for the glossary part of the prompt (the fixed
 /// lead and separators around it aren't counted). Whisper caps the prompt
-/// at ~224 tokens and a CJK character can take more than one, so this is a
-/// provisional value to re-measure on device (spec task T4).
+/// at ~224 tokens and a CJK character can take more than one. The on-device
+/// test (spec T4) used 5 terms, about half this budget, so there's no
+/// evidence yet for a different value.
 const kGlossaryPromptMaxChars = 80;
 
 /// A copy of [terms], highest priority first: pinned, then most recently

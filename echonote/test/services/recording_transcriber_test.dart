@@ -5,7 +5,6 @@ import 'package:echonote/services/glossary_store.dart';
 import 'package:echonote/services/recording_store.dart';
 import 'package:echonote/services/recording_transcriber.dart';
 import 'package:echonote/services/transcription_service.dart';
-import 'package:echonote/services/whisper_prompt.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeTranscription implements TranscriptionService {
@@ -60,7 +59,6 @@ void main() {
       transcription: transcription,
       store: _FakeRecordingStore(),
       glossary: glossary,
-      promptMode: WhisperPromptMode.glossary,
     );
   });
 
@@ -113,39 +111,5 @@ void main() {
     await transcriber.transcribe(recording);
 
     expect(recording.transcriptStaleAnalysis, isFalse);
-  });
-
-  test('mode none sends no prompt, even with a glossary', () async {
-    await glossary.add('台積電');
-    final none = RecordingTranscriber(
-      transcription: transcription,
-      store: _FakeRecordingStore(),
-      glossary: glossary,
-      promptMode: WhisperPromptMode.none,
-    );
-
-    await none.transcribe(_recording());
-
-    expect(transcription.prompt, isNull);
-  });
-
-  test('mode lead sends only the lead sentence', () async {
-    await glossary.add('台積電');
-    final lead = RecordingTranscriber(
-      transcription: transcription,
-      store: _FakeRecordingStore(),
-      glossary: glossary,
-      promptMode: WhisperPromptMode.lead,
-    );
-
-    await lead.transcribe(_recording());
-
-    expect(transcription.prompt, '以下是繁體中文的會議逐字稿。');
-  });
-
-  test('layer ① is on by default', () {
-    expect(kWhisperPromptMode, WhisperPromptMode.glossary);
-    expect(WhisperPromptMode.parse('typo'), WhisperPromptMode.glossary);
-    expect(WhisperPromptMode.parse('none'), WhisperPromptMode.none);
   });
 }
