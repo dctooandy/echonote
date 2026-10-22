@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../models/recording.dart';
+import '../services/audio_duration_probe.dart';
 import '../services/recording_store.dart';
+import '../utils/format.dart';
 import '../widgets/confirm_delete_dialog.dart';
 import 'glossary_screen.dart';
 import 'import_screen.dart';
@@ -10,7 +14,10 @@ import 'live_record_screen.dart';
 import 'meeting_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.durationProbe});
+
+  /// Test seam; by default reads the audio files with just_audio.
+  final AudioDurationProbe? durationProbe;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -18,18 +25,42 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _store = RecordingStore();
+  late final _probe = widget.durationProbe ?? AudioDurationProbe();
   late Future<List<Recording>> _recordingsFuture;
+
+  /// Bumped on every load, so a fill-in pass over an older list stops.
+  int _loadCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _recordingsFuture = _store.loadAll();
+    _recordingsFuture = _load();
   }
 
   void _reload() {
     setState(() {
-      _recordingsFuture = _store.loadAll();
+      _recordingsFuture = _load();
     });
+  }
+
+  Future<List<Recording>> _load() async {
+    final recordings = await _store.loadAll();
+    unawaited(_fillInDurations(recordings, ++_loadCount));
+    return recordings;
+  }
+
+  /// Entries saved before lengths were recorded get theirs from the audio
+  /// file, one at a time, each row updating as it's read. An unreadable
+  /// file is simply tried again next time (spec feature-recording-duration).
+  Future<void> _fillInDurations(List<Recording> recordings, int load) async {
+    for (final recording in recordings) {
+      if (!mounted || load != _loadCount) return;
+      if (recording.durationMs != null) continue;
+      final ms = await _probe.durationMs(await _store.resolveAudioPath(recording));
+      if (ms == null || !mounted || load != _loadCount) continue;
+      await _store.saveDuration(recording.id, ms);
+      if (mounted) setState(() => recording.durationMs = ms);
+    }
   }
 
   Future<void> _importRecording() async {
@@ -64,6 +95,28 @@ class _HomeScreenState extends State<HomeScreen> {
       _openingLive = false;
     }
     _reload();
+  }
+
+  /// Status, with the length under it once it's known (spec
+  /// feature-recording-duration).
+  Widget _trailing(BuildContext context, Recording recording) {
+    final ms = recording.durationMs;
+    if (ms == null) return Text(_statusLabel(recording));
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(_statusLabel(recording)),
+        Text(
+          formatLength(ms),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.primary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
   }
 
   String _statusLabel(Recording recording) {
@@ -140,10 +193,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         : Icons.description_outlined,
                   ),
                   title: Text(recording.displayTitle),
-                  subtitle: Text(
-                    '${recording.createdAt.toLocal()}'.split('.').first,
-                  ),
-                  trailing: Text(_statusLabel(recording)),
+                  subtitle: Text(formatListDate(recording.createdAt.toLocal(), DateTime.now())),
+                  trailing: _trailing(context, recording),
                   onTap: () async {
                     await Navigator.of(context).push(
                       MaterialPageRoute(

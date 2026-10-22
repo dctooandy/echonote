@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../models/recording.dart';
+import '../services/audio_duration_probe.dart';
 import '../services/recording_store.dart';
 import '../services/recording_transcriber.dart';
 import '../services/screen_awake.dart';
@@ -59,6 +60,8 @@ class _ImportScreenState extends State<ImportScreen> {
         audioFileName: audioFileName,
         segments: [],
         source: RecordingSource.imported,
+        // Unreadable means no length shown, not a failed import.
+        durationMs: await AudioDurationProbe().durationMs(copiedAudio.path),
       );
       // Saves the recording only once it has a transcript.
       await _transcriber.transcribe(

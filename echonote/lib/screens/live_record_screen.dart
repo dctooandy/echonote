@@ -387,6 +387,7 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
       segments: [],
       source: RecordingSource.live,
       notes: [for (final note in _notes) note.clampedTo(result.audioDuration.inMilliseconds)],
+      durationMs: result.audioDuration.inMilliseconds,
     );
     try {
       await _store.save(recording);

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -317,6 +318,22 @@ void main() {
     // Too short to keep, so it lands on the error message.
     expect(find.textContaining('錄音已停止並保存（鎖定螢幕或切換 App 會停止錄音）'), findsOneWidget);
     expect(ScreenAwake.instance.isOn, isFalse);
+    await leave(tester);
+  });
+
+  testWidgets('a saved recording keeps its length', (tester) async {
+    await open(tester);
+    for (var i = 0; i < 12; i++) {
+      mic.chunks.add(Uint8List(3200)); // 1.2 s of audio
+    }
+    await settle(tester);
+
+    await tester.tap(find.text('停止'));
+    await settle(tester);
+
+    final entry = Directory('${dir.path}/history').listSync().single as File;
+    final json = jsonDecode(entry.readAsStringSync()) as Map<String, dynamic>;
+    expect(json['duration_ms'], 1200);
     await leave(tester);
   });
 }
