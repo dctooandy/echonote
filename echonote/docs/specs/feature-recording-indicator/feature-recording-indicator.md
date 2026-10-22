@@ -1,7 +1,7 @@
 # 錄音狀態指示與即時文字開關 規格
 
 分支：`feature/recording-indicator`
-狀態：已確認（2026-10-22，9 項待確認事項皆採建議答案，見文末「已確認的決定」）
+狀態：已完成，待合併（2026-10-22：T1～T5 完成、實機驗收通過（含放棄錄音）、`/spec-check` 落差已處理；決定見文末「已確認的決定」）
 
 這份文件記錄兩件事：
 
@@ -50,7 +50,7 @@
 
 ### B. 錄音狀態動畫
 
-- **捲動波形**取代音量條：保留最近 6 秒（60 格，每格 100 ms，決定 4）的音量，每 100 ms 往左推一格，最新的在右邊；有講話時起伏，安靜時接近平線。高度沿用 `_levelToBar()` 的 dB 刻度。
+- **捲動波形**取代音量條：保留最近 6 秒（60 格，每格 100 ms，決定 4）的音量，每 100 ms 往左推一格，最新的在右邊；有講話時起伏，安靜時接近平線。高度沿用原本音量條的 dB 刻度（已從畫面搬到 `lib/widgets/level_waveform.dart`，改名 `levelToHeight()`）。
 - **紅點呼吸閃爍**：計時器旁的紅點以約 1 秒為週期淡入淡出，錄音停止（`finalizing`／`transcribing`）時停下。
 - 系統設定「減少動態效果」開啟時，紅點不閃爍、改成常亮；波形照常更新（它是資料，不是裝飾）。
 
@@ -58,7 +58,8 @@
 
 無對外 API。App 內部：
 
-- `LiveTranscriptionService.start()` 新增參數（暫定 `livePreview: bool`），為 `false` 時不呼叫 `transcribeLive()`。
+- `LiveTranscriptionService.start()` 新增必填參數 `livePreview`，為 `false` 時不呼叫 `transcribeLive()`。錄音畫面**一律以 `false` 開始**，錄音開始後才依設定呼叫 `LiveRecording.startPreview()`，所以辨識啟動失敗只會讓開關退回關閉，不會讓錄音失敗。
+- 辨識透過 `PreviewSession` 介面注入 `LiveRecording`（實際是 `transcribeLive()` 的 session），讓 `LiveRecording` 可以用假的辨識測試。
 - `LiveRecording` 改成可以沒有辨識 session：`preview` 不會有資料、`notices` 不會有預覽相關提示、停止時的最終預覽文字為空字串、debug 不輸出 `[live-metrics]`。
 - `ensureModels()` 改成可以只確保 `base`；`tiny` 在第一次打開即時文字時才下載（決定 3）。
 - `LiveRecording` 可以在錄音中途開始、停止辨識（決定 1）；停止時的最終預覽文字，即時文字沒開時為空字串（`previewText` 欄位保留，決定 8）。
@@ -78,7 +79,7 @@
 | 元素 | 即時文字關閉 | 即時文字打開 |
 |---|---|---|
 | 紅點＋計時器 | 紅點呼吸閃爍 | 同左 |
-| 波形 | 顯示，佔較大的空間（取代原本的預覽區） | 顯示，高度較小，下面是預覽區 |
+| 波形 | 顯示，高 120（取代原本的預覽區） | 顯示，高 48，下面是預覽區 |
 | 即時文字開關 | 顯示 | 顯示 |
 | 「即時預覽」標題和文字區 | 不顯示 | 顯示（沿用現在） |
 | 延遲提示 | 不顯示 | 沿用現在 |
@@ -94,13 +95,15 @@
 - **重播除錯工具**（`LIVE_REPLAY_WAV`）：開啟時即時文字預設打開，不讀也不寫設定檔（決定 6）。
 - **第一次打開時 `tiny` 下載失敗**（例如沒有網路）：開關退回關閉並提示原因，錄音照常進行。
 - **波形在錄音一開始**：還沒有歷史資料時，空的部分顯示成平線，不要縮放或跳動。
-- **非常大聲或沒有聲音**：沿用 `_levelToBar()` 的上下限（-60～0 dBFS 夾住）。
+- **非常大聲或沒有聲音**：沿用 `levelToHeight()` 的上下限（-60～0 dBFS 夾住）。
+- **記住的選擇是「打開」，但開始錄音時下載或辨識失敗**：和中途打開失敗一樣，開關退回關閉並提示，錄音照常進行。
+- **設定檔損毀**：視為預設值（關閉），下次存檔直接覆蓋；設定是非關鍵資料，和詞庫「損毀不覆寫」的做法不同。
 
 ## 測試接縫
 
 - **`LiveRecording` 沒有 session 的情況**：用假的麥克風串流（例如沿用 `WavReplayMic` 的做法注入 PCM）建立錄音，確認 WAV 正常寫入、`level` 有資料、停止時 `previewText` 為空、`preview` 沒有資料。這也讓 `LiveRecording` 第一次可以寫單元測試（之前因為一定要有真的辨識 session 而測不了）。
 - **波形的資料結構**：純 Dart 的固定長度緩衝（暫定 `LevelHistory`），測試推入、滿了之後丟掉最舊的、換算成 0～1 高度。
-- **畫面**：widget 測試確認開關預設關閉、關閉時沒有預覽區、打開後出現預覽區；減少動態效果時紅點不閃爍。
+- **畫面**：`LiveRecordScreen` 開放 `mic`／`service`／`settings` 三個測試接縫；widget 測試確認開關預設關閉、關閉時沒有預覽區、打開後出現預覽區、下載失敗退回關閉、放棄錄音；減少動態效果時紅點不閃爍。
 - **實機**：iPhone 上確認波形和閃爍的觀感；開、關即時文字各錄 10 分鐘，記錄電量差和手機摸起來的溫度，有明顯差距就算達成（決定 9）。
 
 ---
@@ -150,7 +153,7 @@ flowchart LR
   - 主要會動的檔案：`lib/widgets/level_waveform.dart`（新，含 `LevelHistory`）、`lib/widgets/recording_dot.dart`（新）、`lib/screens/live_record_screen.dart`、對應的測試
   - 軌道：可獨立進行
   - 驗收：
-    - [x] `LevelHistory` 固定 60 格，滿了丟掉最舊的；高度沿用 `_levelToBar()` 的 dB 換算（-60～0 dBFS）
+    - [x] `LevelHistory` 固定 60 格，滿了丟掉最舊的；高度用 `levelToHeight()` 的 dB 換算（-60～0 dBFS）
     - [x] 一開始沒有歷史時，空的部分是平線
     - [x] 錄音中紅點閃爍，`finalizing`／`transcribing` 時停下；減少動態效果時常亮
     - [x] `flutter test`、`flutter analyze` 通過
@@ -182,8 +185,35 @@ flowchart LR
     - [x] 刪掉 `tiny` 後第一次打開會下載並顯示進度
   - 2026-10-22 使用者實機驗收：第 1～5 步（預設關閉、中途打開與下載、關掉再打開、記住選擇、減少動態效果）都正常。
   - 開、關即時文字各錄 10 分鐘：耗電和溫度**差異不明顯**。預設關閉的理由維持「預覽品質會讓使用者誤會轉錄不準」，省電不是主要理由（決定 13）。
-  - 使用者發現錄音中按返回沒有「放棄這次錄音」的選項，加入範圍 C（決定 10～12）。實作在 `_confirmLeave()`／`_confirmDiscard()`，放棄時 `_onRecordingDone()` 刪除 WAV 後直接返回；加 2 個 widget 測試（放棄後沒有任何錄音檔和紀錄、第二次確認取消時照常錄音）。**放棄錄音尚未實機驗證**。
+  - 使用者發現錄音中按返回沒有「放棄這次錄音」的選項，加入範圍 C（決定 10～12）。實作在 `_confirmLeave()`／`_confirmDiscard()`，放棄時 `_onRecordingDone()` 刪除 WAV 後直接返回；加 2 個 widget 測試（放棄後沒有任何錄音檔和紀錄、第二次確認取消時照常錄音）。放棄錄音 2026-10-22 實機驗證正常（第二次確認取消時照常錄音；確定放棄後回到首頁，清單沒有多一筆）。
   - 測試踩坑：推入新頁面或開啟對話框後，`pump()` 不帶時間就不會讓轉場動畫跑完，之後每次 `runAsync` 都會慢到約 680 ms，兩個測試各卡 85 秒；`settle` 改成每輪讓假時鐘前進 50 ms 後恢復正常。
+
+## 驗收核對記錄
+
+### 2026-10-22 `/spec-check` 規格與實作核對
+
+**結論**：規格要求全部有實作，T5 實機驗收（含放棄錄音）通過；落差都是規格文字沒跟上實作。
+
+**✅ 一致**
+- 開關預設關閉、記住選擇、重播工具預設打開且不寫設定：`lib/screens/live_record_screen.dart:187`（`remember: false`）、`lib/services/settings_store.dart`
+- 關閉時不啟動辨識：`live_record_screen.dart:167` 一律以 `livePreview: false` 開始；`LiveRecording` 沒有 session 時只寫 WAV、算音量（`live_transcription_service.dart`，6 個單元測試）
+- 中途開關、重新打開清空：`startPreview()`／`stopPreview()`（`live_transcription_service.dart:334,389`）
+- `tiny` 第一次打開才下載、失敗退回關閉：`ensurePreviewModel()`（`live_transcription_service.dart:145`）、`_setLivePreview()`
+- 波形 6 秒 60 格、紅點呼吸與減少動態效果：`lib/widgets/level_waveform.dart`、`lib/widgets/recording_dot.dart`
+- 放棄錄音（決定 10～12）：`_confirmLeave()`／`_confirmDiscard()`、`_onRecordingDone()` 開頭的 `_discarding` 分支
+
+**⚠️ 落差**
+1. 「API 異動」寫 `start()` 新增「暫定 `livePreview: bool`」，為 `false` 時不辨識。實作是必填參數，而且錄音畫面一律用 `false` 開始，再用 `startPreview()` 依設定打開，這樣辨識失敗不會讓錄音失敗。→ 規格沒跟上
+2. 「現況」「B」「邊界案例」與 T3 驗收條件仍寫 `_levelToBar()`，已搬到 `level_waveform.dart` 改名 `levelToHeight()`。→ 規格沒跟上
+3. 檔頭「狀態：已確認」已過時。→ 規格沒跟上
+
+**處理結果（使用者決定，2026-10-22）**：落差 1～3 改規格配合實作；未涵蓋的 4 項已補進「API 異動」「UI／畫面」「邊界案例」「測試接縫」；狀態改為待合併。
+
+**❓ 規格未涵蓋**
+- `PreviewSession` 介面（辨識的注入點），以及 `LiveRecordScreen` 的 `mic`／`service`／`settings` 測試接縫
+- 波形高度：即時文字關閉 120、打開 48（`live_record_screen.dart:575`）
+- 記住的選擇是「打開」、但開始錄音時下載或辨識失敗：同樣退回關閉並提示，錄音照常
+- 設定檔損毀時，下次存檔直接覆蓋（設定是非關鍵資料，和詞庫「不覆寫」不同）
 
 ## 待確認事項
 
