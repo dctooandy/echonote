@@ -8,10 +8,12 @@ import '../services/audio_duration_probe.dart';
 import '../services/recording_store.dart';
 import '../utils/format.dart';
 import '../widgets/confirm_delete_dialog.dart';
+import '../widgets/round_icon_button.dart';
 import 'glossary_screen.dart';
 import 'import_screen.dart';
 import 'live_record_screen.dart';
 import 'meeting_detail_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.durationProbe});
@@ -131,13 +133,21 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('echonote'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.menu_book_outlined),
+          RoundIconButton(
+            icon: Icons.menu_book_outlined,
             tooltip: '詞庫',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const GlossaryScreen()),
             ),
           ),
+          RoundIconButton(
+            icon: Icons.settings_outlined,
+            tooltip: '設定',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
+          const SizedBox(width: 9),
         ],
       ),
       floatingActionButton: _ExpandableFab(

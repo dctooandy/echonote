@@ -245,14 +245,15 @@ flowchart LR
     - [x] `flutter test`、`flutter analyze` 通過
   - 2026-10-22 完成。`ColorScheme` 自訂、不用 `fromSeed`：主色＝青、錯誤＝紅、`tertiaryContainer`＝琥珀淡底（詳細頁「分析可能過時」原本就用它）；琥珀、綠和各個淡色底放在 `AppColors`（`ThemeExtension`）。`AppSettings` 在 `runApp` 前讀一次，用 `AppSettingsScope`（`InheritedNotifier`）往下傳，沒有安裝時用預設值，現有只測單一畫面的測試不用改。紅點、放棄錄音、刪除都用主題的錯誤色（紅）。新增測試 8 個，全部 168 個通過。
 
-- [ ] **T2 設定頁**
+- [x] **T2 設定頁**
   - 做完能看到：首頁右上角的齒輪進入設定頁，可以選主題（深色、淺色、跟隨系統）和慣用手，選了馬上生效；設定頁有詞庫入口
   - 被誰卡住：T1
   - 主要會動的檔案：`lib/screens/settings_screen.dart`（新）、`lib/screens/home_screen.dart`（只加入口）、對應測試
   - 驗收：
-    - [ ] 選淺色後畫面馬上換成淺色，重開 App 還是淺色
-    - [ ] 選左手後設定有存起來
-    - [ ] `flutter test`、`flutter analyze` 通過
+    - [x] 選淺色後畫面馬上換成淺色，重開 App 還是淺色
+    - [x] 選左手後設定有存起來
+    - [x] `flutter test`、`flutter analyze` 通過
+  - 2026-10-22 完成。新增兩個共用元件：`PillChoice`（膠囊形的多選一，選中的填青色）和 `RoundIconButton`（圓形底的圖示按鈕），T3、T5 會沿用。首頁右上角換成圓形的詞庫、設定兩個按鈕。新增測試 3 個，全部 171 個通過。
 
 - [ ] **T3 首頁改版**
   - 做完能看到：每一筆是圓角卡片，有狀態圖示和狀態標籤；右下角是紅色錄音鍵，按一下直接錄；上方小圓鍵是匯入；左手模式時兩顆鍵在左下角
