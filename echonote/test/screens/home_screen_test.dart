@@ -124,6 +124,16 @@ void main() {
     expect(find.textContaining('點左下角'), findsOneWidget, reason: 'the empty list points the right way');
   });
 
+  testWidgets('import is a labelled pill above the record button', (tester) async {
+    await openWith(tester, Handedness.right);
+
+    expect(find.widgetWithText(OutlinedButton, '匯入'), findsOneWidget);
+    expect(
+      tester.getCenter(find.byTooltip('匯入錄音檔')).dy,
+      lessThan(tester.getCenter(find.byTooltip('開始錄音')).dy),
+    );
+  });
+
   testWidgets('one tap on the record button starts recording', (tester) async {
     await openWith(tester, Handedness.right);
 

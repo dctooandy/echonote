@@ -290,8 +290,8 @@ class _Status {
   final Color background;
 }
 
-/// A big red record button that starts recording in one tap, with a small
-/// import button above it (spec feature-dark-theme; replaces the "+" menu
+/// A big red record button that starts recording in one tap, with a
+/// labelled import pill above it (spec feature-dark-theme; replaces the "+" menu
 /// of decision #9).
 class _RecordButtons extends StatelessWidget {
   const _RecordButtons({required this.onImport, required this.onRecord});
@@ -305,19 +305,24 @@ class _RecordButtons extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        FloatingActionButton.small(
-          heroTag: 'fab-import',
-          onPressed: onImport,
-          tooltip: '匯入錄音檔',
-          backgroundColor: scheme.surfaceContainer,
-          foregroundColor: scheme.onSurface,
-          child: const Icon(Icons.upload_file),
+        // A labelled cyan pill: easy to spot, still second to record (desk-mode
+        // device feedback).
+        Tooltip(
+          message: '匯入錄音檔',
+          child: OutlinedButton.icon(
+            onPressed: onImport,
+            icon: const Icon(Icons.upload_file, size: 20),
+            label: const Text('匯入'),
+            style: OutlinedButton.styleFrom(
+              backgroundColor: scheme.surfaceContainer,
+              foregroundColor: scheme.primary,
+              side: BorderSide(color: scheme.primary, width: 1.5),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+            ),
+          ),
         ),
-        Text(
-          '匯入',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
-        ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         // The soft ring marks it as the record button.
         DecoratedBox(
           decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.of(context).redSoft),
