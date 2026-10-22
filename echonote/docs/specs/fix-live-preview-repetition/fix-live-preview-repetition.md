@@ -1,7 +1,7 @@
 # 即時預覽重複迴圈 規格
 
 分支：`fix/live-preview-repetition`
-狀態：已確認（2026-10-22，7 項待確認事項皆採建議答案，見文末「已確認的決定」）
+狀態：已完成，待合併（2026-10-22：T1～T4 完成、實機驗收通過、`/spec-check` 落差已處理；決定見文末「已確認的決定」）
 
 即時錄音時，畫面上的即時預覽常出現一長串重複的字，例如「經常經常經常…」「Helps,Helps,Helps,…」「金主很半斷標準，金主很半斷標準，…」。2026-10-21 量測 T6 時，帶詞庫和不帶詞庫的兩組都有，所以跟詞庫無關（`docs/specs/feature-user-context/`，決定 24）。
 
@@ -16,7 +16,7 @@
   - 視窗滿 15 秒時，**整段 `text` 直接接到 `committed` 後面**（`committed += text`），沒有任何檢查。
 - **為什麼關掉 fallback**：whisper 的 temperature fallback 會在結果不可靠時（壓縮率過高或平均機率太低，重複迴圈就屬於這種）換溫度整段重新辨識，最多 5 次。2026-10-08 實測時，它讓延遲累積到 216 秒、手機發燙，所以即時預覽把它關掉（`docs/devlogs/feature-native-mic-stream.md`）。代價是：**whisper 原本用來丟掉重複結果的機制也一起失效了。**
 - 前例：echo_core 第 2 週把 `audio_ctx` 改成「依每次長度調整」（`-1`）時，也出現「有一個字，有一個字……」的重複，當時判斷原因同樣是 fallback 被關掉（`docs/devlogs/feature-echo-core-w2.md` 第 3 點）。改回固定 768 之後問題變少，但沒有消失。
-- 推論的機制（**尚未驗證**）：某個視窗陷入迴圈時，會一路生到 64 個 token 的上限；如果這個結果剛好在定稿那一刻產生，迴圈的內容就會永久留在預覽上。
+- 推論的機制：某個視窗陷入迴圈時，會一路生到 64 個 token 的上限；如果這個結果剛好在定稿那一刻產生，迴圈的內容就會永久留在預覽上。**實際錄音已佐證**：T4 錄約 3 分半，原生端在定稿時收掉 3 個迴圈。
 
 ## 目標與範圍
 
@@ -43,7 +43,10 @@
 
 ## API 異動
 
-無對外 API。B 在原生端 `stream_run_inference()`（以及 `stream_stop()` 的最後一次）定稿前收合迴圈，屬於 vendored `whisper_ggml` 內部行為；是否用 `stream_start` 參數開關，於實作時決定，預設開啟。
+無對外 API。B 在原生端 `stream_run_inference()`（以及 `stream_stop()` 的最後一次）定稿前收合迴圈，屬於 vendored `whisper_ggml` 內部行為：
+- `stream_start` 的 JSON 新增 `collapse_repetitions`（預設 `true`）；Dart 端 `WhisperController.transcribeLive()`／`startWhisperLiveSession()` 新增 `collapseRepetitions` 參數傳下去。
+- 每次辨識的 metrics 新增 `loops_collapsed`；`streamFinal` 也帶 `loops_collapsed`，由 worker 轉成一筆只有次數的 metrics。
+- App 端用 `--dart-define=LIVE_COLLAPSE=false` 同時關閉原生和 Dart 的收合，只用來做前後對照。
 
 ## 資料表異動
 
@@ -64,15 +67,15 @@
 - **迴圈單位比 10 字長**：例如整句重複。定義只抓 1～10 字，較長的整句重複不在這次範圍。
 - **迴圈中間夾簡體字或不同標點**（例如「經常經常經經常」）：標點已忽略；字不完全一樣的重複這次抓不到，接受。
 - **停止錄音時的最後一次辨識**（`stream_stop()`）：同樣收合，並回報收合次數。
-- **一個字被拆在兩個 token、辨識在中間被截斷**：殘缺的位元組和 `U+FFFD` 直接去掉，不顯示成「�」（決定 8）。
+- **一個字被拆在兩個 token、辨識在中間被截斷**：殘缺的位元組和 `U+FFFD` 直接去掉，不顯示成「�」（決定 8）。原生端收合時會把整段已定稿文字重新編碼，所以 40 字範圍以外的殘缺位元組也一併去掉。
 - **長句重複 3 次**（例如「我會在這裏拍攝了」×3）：低於門檻，不收（決定 9）。
 
 ## 測試接縫
 
-- **純函式**：`collapseRepetitions(String text) → String`（名稱暫定），依上面的定義收合連續重複。用 T6 留下的三段實際輸出當測試資料，再加上「正常句子不受影響」「好好好好」等案例。A、B 都會用到；B 的話 C++ 端要有對應的實作，或者由 Dart 端呼叫。
-- **重現方法**：debug 專用開關（暫定 `--dart-define=LIVE_REPLAY_WAV=<檔名>`），錄音畫面改從 App 裡現有錄音的 WAV 用即時速度餵音訊，取代麥克風（決定 2）。
-- **量測**：沿用 debug 模式的 `[live-metrics]`（median total_ms、max lag），另外加上收合的迴圈次數，只在 debug 輸出（決定 6）。
-- **驗證環境**：iPhone 12 Pro Max debug 模式重播 T6 的兩段 WAV，比較修正前後的迴圈數和延遲；再實際錄 2～3 分鐘確認。Android 這次不驗（決定 7）。
+- **純函式**：Dart `collapseRepetitions(String text) → ({String text, int collapsed})`，C++ `echonote::collapse_repetitions()`／`append_collapsed()`（header-only `collapse_repetitions.h`）。兩邊共用 `test/fixtures/repetition_cases.json`（T6 實際輸出、好好好好、正常句子、邊界長度、`U+FFFD` 等）；C++ 測試在 `packages/whisper_ggml/test_native/`，用 `clang++` 在 Mac 上執行。
+- **重現方法**：debug 專用開關 `--dart-define=LIVE_REPLAY_WAV=<檔名>`（`WavReplayMic`），錄音畫面改從 App 裡現有錄音的 WAV 用即時速度餵音訊，取代麥克風（決定 2）。重播時不詢問麥克風權限；找不到檔案時錯誤訊息和 log 列出所有可重播的「檔名（錄音名稱）」；每次重播照常存成一筆新的即時錄音並跑離線轉錄。
+- **量測**：沿用 debug 模式的 `[live-metrics]`（median total_ms、max lag），另外加上 `collapse on/off`、`loops collapsed natively`（原生端收掉的）、`loops left in preview`（最後預覽裡還剩的；關閉收合時就是原本會顯示的迴圈數），只在 debug 輸出（決定 6）。
+- **驗證環境**：iPhone 12 Pro Max debug 模式，用 `LIVE_COLLAPSE` 開關在同一個 build 比較 T6 對照組 WAV 與一段沒有迴圈的錄音；T6 實驗組那段找不到，改用實際錄音約 3 分半補驗。Android 這次不驗（決定 7）。
 
 ---
 
@@ -163,6 +166,36 @@ flowchart LR
     - [x] median total_ms 不比關閉時多 20% 以上，max lag 不超過 3 秒
     - [x] 實際錄 2～3 分鐘，預覽沒有重複迴圈
     - [x] 「好好好好」這類誤判的情況記在備註，決定要不要調門檻
+
+## 驗收核對記錄
+
+### 2026-10-22 `/spec-check` 規格與實作核對
+
+**結論**：規格要求全部有實作，T4 實機驗收通過；落差都是規格文字沒跟上實作時做的決定。
+
+**✅ 一致**
+- 迴圈定義（1～10 字、連續 4 次以上、忽略分隔字元、保留一次）：`lib/services/repetition.dart:10-14,40-` 與 `packages/whisper_ggml/ios/Classes/collapse_repetitions.h`，兩邊共用 `test/fixtures/repetition_cases.json`（13 個案例）
+- A（顯示前收合）：`lib/services/live_transcription_service.dart:206,334,369`
+- B（定稿前收合，含已定稿最後 40 字）：`whisper_flutter_plus.cpp:602-607`、`collapse_repetitions.h:150`；`stream_stop()` 也收合並回報次數：`whisper_flutter_plus.cpp:767-771`
+- 去掉殘缺位元組與 `U+FFFD`（決定 8）：`repetition.dart:41`、`collapse_repetitions.h` 的 `utf8_decode`
+- 重播開關（決定 2）：`lib/services/wav_replay_mic.dart:13`、`lib/screens/live_record_screen.dart:39-41`
+- 迴圈次數只在 debug 輸出（決定 6）：`live_transcription_service.dart:356-358`
+- 延遲門檻：T4 實測 +2.4%（見 T4 備註）
+
+**⚠️ 落差**
+1. 「API 異動」寫「是否用 `stream_start` 參數開關，於實作時決定」，實作已定案：`stream_start` 的 `collapse_repetitions`（預設 `true`，`whisper_flutter_plus.cpp:669`），Dart 端 `collapseRepetitions` 參數一路傳下去，App 端用 `--dart-define=LIVE_COLLAPSE=false` 關閉（`live_transcription_service.dart:68`）。→ 規格沒跟上
+2. 「測試接縫」寫 `collapseRepetitions(String text) → String`（名稱暫定），實作回傳 `({String text, int collapsed})`，連同收合次數。→ 規格沒跟上
+3. 「測試接縫」的驗證環境寫「重播 T6 的兩段 WAV」，實際是 T6 對照組一段＋一段沒有迴圈的錄音，T6 實驗組那段找不到，改用實際錄音補驗（使用者決定）。→ 規格沒跟上
+4. 檔頭「狀態：已確認」已過時。→ 規格沒跟上
+
+**處理結果（使用者決定，2026-10-22）**：落差 1～4 改規格配合實作；未涵蓋的 5 項已補進「API 異動」「測試接縫」「邊界案例」；「現況」的推論改為實際錄音已佐證。
+
+**❓ 規格未涵蓋**
+- 重播找不到檔案時，錯誤訊息和 log 列出所有可重播的「檔名（錄音名稱）」（`wav_replay_mic.dart` 的 `_notFoundMessage`）
+- 重播會照常存成一筆新的即時錄音，並跑離線轉錄
+- 重播時權限一律回報已授權，不跳麥克風權限
+- `[live-metrics]` 摘要的三個欄位：`collapse on/off`、`loops collapsed natively`、`loops left in preview`
+- 原生端收合時會把整段已定稿文字重新編碼，殘缺位元組在 40 字範圍以外也會被去掉
 
 ## 待確認事項
 
