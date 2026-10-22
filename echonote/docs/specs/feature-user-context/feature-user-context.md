@@ -374,7 +374,7 @@
 
 ## 驗收核對記錄
 
-### 2026-10-21 最後一輪實機驗收（iPhone 12 Pro Max，`flutter run --release`，詞庫：Flutter、EchoNote、EchoCore、FoodSnap、PostureCheck）
+### 2026-10-21～22 最後一輪實機驗收（10/10 通過）（iPhone 12 Pro Max，`flutter run --release`，詞庫：Flutter、EchoNote、EchoCore、FoodSnap、PostureCheck）
 
 清單：https://claude.ai/artifact/ReZXPi6g2kMzXkPhnsx73V 。T11～T16 先前已逐項實機驗收通過（見各任務備註），不在這份清單裡。
 
@@ -388,7 +388,7 @@
 | T4 | 詞庫詞有沒有出現在沒講的地方 | Pass | 沒發現幻覺 |
 | T5-1 | 清單順序和「只用在摘要」標記 | Pass | |
 | T5-2 | 新增、編輯、刪除與復原 | Pass | 已依決定 25 放寬標點 |
-| T5-3 | 從修改逐字稿學到的詞顯示在詞庫頁 | **未完成** | 使用者備註：「不知道怎麼修改」。原因是驗收步驟給的範例（Full Snap → FullSnap App）是兩處修改，不符合第 ③ 層「剛好一段 2～10 字替換」的規則，所以不會跳出學詞對話框；而 App 對不符合規則的修改沒有任何提示。已在逐字稿頁加上「點句子跳轉播放，長按可修改」，待重測 |
+| T5-3 | 從修改逐字稿學到的詞顯示在詞庫頁 | Pass（2026-10-22 補測） | 第一次沒測成：驗收步驟的範例（Full Snap → FullSnap App）是兩處修改，不會觸發學詞，App 也沒有提示。補上逐字稿長按提示（`1624a22`）和「已修改＋加入詞庫」（決定 26，`25419f7`）後依修正步驟重測通過 |
 | T5-4 | 空詞庫第一次新增不會當掉 | Pass | |
 
 ## 待確認事項
