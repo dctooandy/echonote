@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:echonote/screens/home_screen.dart';
+import 'package:echonote/screens/live_record_screen.dart';
+import 'package:echonote/services/app_settings.dart';
 import 'package:echonote/services/audio_duration_probe.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -93,5 +95,41 @@ void main() {
     expect(saved('2')['duration_ms'], 5 * 60000 + 3000);
     expect(saved('3').containsKey('duration_ms'), isFalse, reason: 'unreadable: nothing saved');
     expect(find.text('1:00'), findsOneWidget);
+  });
+
+  Future<void> openWith(WidgetTester tester, Handedness hand) async {
+    await tester.pumpWidget(
+      AppSettingsScope(
+        settings: AppSettings(handedness: hand),
+        child: MaterialApp(home: HomeScreen(durationProbe: _FakeProbe({}))),
+      ),
+    );
+    await settle(tester);
+  }
+
+  testWidgets('the record button sits under the right thumb by default', (tester) async {
+    await openWith(tester, Handedness.right);
+
+    final width = tester.getSize(find.byType(HomeScreen)).width;
+    expect(tester.getCenter(find.byTooltip('開始錄音')).dx, greaterThan(width / 2));
+    expect(tester.getCenter(find.byTooltip('匯入錄音檔')).dx, greaterThan(width / 2));
+  });
+
+  testWidgets('left-handed puts the buttons on the left', (tester) async {
+    await openWith(tester, Handedness.left);
+
+    final width = tester.getSize(find.byType(HomeScreen)).width;
+    expect(tester.getCenter(find.byTooltip('開始錄音')).dx, lessThan(width / 2));
+    expect(tester.getCenter(find.byTooltip('匯入錄音檔')).dx, lessThan(width / 2));
+    expect(find.textContaining('點左下角'), findsOneWidget, reason: 'the empty list points the right way');
+  });
+
+  testWidgets('one tap on the record button starts recording', (tester) async {
+    await openWith(tester, Handedness.right);
+
+    await tester.tap(find.byTooltip('開始錄音'));
+    await settle(tester);
+
+    expect(find.byType(LiveRecordScreen), findsOneWidget);
   });
 }
