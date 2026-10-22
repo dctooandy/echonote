@@ -5,13 +5,17 @@ import 'package:flutter/material.dart';
 
 import '../models/recording.dart';
 import '../services/audio_duration_probe.dart';
+import '../services/app_settings.dart';
 import '../services/recording_store.dart';
+import '../theme/app_theme.dart';
 import '../utils/format.dart';
 import '../widgets/confirm_delete_dialog.dart';
+import '../widgets/round_icon_button.dart';
 import 'glossary_screen.dart';
 import 'import_screen.dart';
 import 'live_record_screen.dart';
 import 'meeting_detail_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.durationProbe});
@@ -88,59 +92,81 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_openingLive) return;
     _openingLive = true;
     try {
-      await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const LiveRecordScreen()),
-      );
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LiveRecordScreen()));
     } finally {
       _openingLive = false;
     }
     _reload();
   }
 
-  /// Status, with the length under it once it's known (spec
-  /// feature-recording-duration).
+  /// Status chip, with the length under it once it's known (specs
+  /// feature-recording-duration, feature-dark-theme).
   Widget _trailing(BuildContext context, Recording recording) {
+    final status = _Status.of(context, recording);
     final ms = recording.durationMs;
-    if (ms == null) return Text(_statusLabel(recording));
     final theme = Theme.of(context);
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Text(_statusLabel(recording)),
-        Text(
-          formatLength(ms),
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.primary,
-            fontWeight: FontWeight.w600,
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
+          decoration: BoxDecoration(
+            color: status.background,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            status.label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: status.color,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
+        if (ms != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            formatLength(ms),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w700,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
       ],
     );
   }
 
-  String _statusLabel(Recording recording) {
-    if (!recording.isTranscribed) return '未轉錄';
-    if (recording.analysis == null) return '待分析';
-    return '已完成';
-  }
-
   @override
   Widget build(BuildContext context) {
+    final leftHanded = AppSettingsScope.of(context).handedness == Handedness.left;
     return Scaffold(
       appBar: AppBar(
         title: const Text('echonote'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.menu_book_outlined),
+          RoundIconButton(
+            icon: Icons.menu_book_outlined,
             tooltip: '詞庫',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const GlossaryScreen()),
-            ),
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const GlossaryScreen())),
           ),
+          RoundIconButton(
+            icon: Icons.settings_outlined,
+            tooltip: '設定',
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const SettingsScreen())),
+          ),
+          const SizedBox(width: 9),
         ],
       ),
-      floatingActionButton: _ExpandableFab(
+      // On the thumb's side (spec feature-dark-theme).
+      floatingActionButtonLocation: leftHanded
+          ? FloatingActionButtonLocation.startFloat
+          : FloatingActionButtonLocation.endFloat,
+      floatingActionButton: _RecordButtons(
         onImport: _importRecording,
         onRecord: _startLiveRecording,
       ),
@@ -152,21 +178,35 @@ class _HomeScreenState extends State<HomeScreen> {
           }
           final recordings = snapshot.data!;
           if (recordings.isEmpty) {
-            return const Center(child: Text('還沒有任何錄音，點右下角「+」匯入或即時錄音'));
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  '還沒有任何錄音，點${leftHanded ? '左' : '右'}下角的紅色按鈕開始錄音，或上方的按鈕匯入錄音檔',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            );
           }
           return ListView.builder(
+            // Room under the last card for the record buttons.
+            padding: const EdgeInsets.only(top: 4, bottom: 150),
             itemCount: recordings.length,
             itemBuilder: (context, index) {
               final recording = recordings[index];
-              final hasAnalysis = recording.analysis != null;
+              final status = _Status.of(context, recording);
               return Dismissible(
                 key: ValueKey(recording.id),
                 direction: DismissDirection.endToStart,
                 background: Container(
-                  color: Colors.red,
+                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.error,
+                    borderRadius: BorderRadius.circular(kCardRadius),
+                  ),
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: const Icon(Icons.delete, color: Colors.white),
+                  child: Icon(Icons.delete, color: Theme.of(context).colorScheme.onError),
                 ),
                 confirmDismiss: (_) => confirmDeleteRecording(context, recording),
                 onDismissed: (_) async {
@@ -184,25 +224,34 @@ class _HomeScreenState extends State<HomeScreen> {
                   }
                   _reload();
                 },
-                child: ListTile(
-                  leading: Icon(
-                    !recording.isTranscribed
-                        ? Icons.pending_outlined
-                        : hasAnalysis
-                        ? Icons.check_circle
-                        : Icons.description_outlined,
+                child: Card(
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                    leading: CircleAvatar(
+                      radius: 19,
+                      backgroundColor: status.background,
+                      foregroundColor: status.color,
+                      child: Icon(status.icon, size: 20),
+                    ),
+                    title: Text(
+                      recording.displayTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      formatListDate(recording.createdAt.toLocal(), DateTime.now()),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    ),
+                    trailing: _trailing(context, recording),
+                    onTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => MeetingDetailScreen(recording: recording),
+                        ),
+                      );
+                      _reload();
+                    },
                   ),
-                  title: Text(recording.displayTitle),
-                  subtitle: Text(formatListDate(recording.createdAt.toLocal(), DateTime.now())),
-                  trailing: _trailing(context, recording),
-                  onTap: () async {
-                    await Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => MeetingDetailScreen(recording: recording),
-                      ),
-                    );
-                    _reload();
-                  },
                 ),
               );
             },
@@ -213,52 +262,79 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// Decision #9: the "+" opens two choices — import a file or record live.
-class _ExpandableFab extends StatefulWidget {
-  const _ExpandableFab({required this.onImport, required this.onRecord});
+/// A recording's state as the list shows it: grey to do, amber halfway,
+/// green done (spec feature-dark-theme).
+class _Status {
+  const _Status(this.label, this.icon, this.color, this.background);
+
+  factory _Status.of(BuildContext context, Recording recording) {
+    final scheme = Theme.of(context).colorScheme;
+    final colors = AppColors.of(context);
+    if (!recording.isTranscribed) {
+      return _Status(
+        '未轉錄',
+        Icons.pending_outlined,
+        scheme.onSurfaceVariant,
+        scheme.surfaceContainerHighest,
+      );
+    }
+    if (recording.analysis == null) {
+      return _Status('待分析', Icons.description_outlined, colors.amber, colors.amberSoft);
+    }
+    return _Status('已完成', Icons.check_circle, colors.green, colors.greenSoft);
+  }
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final Color background;
+}
+
+/// A big red record button that starts recording in one tap, with a small
+/// import button above it (spec feature-dark-theme; replaces the "+" menu
+/// of decision #9).
+class _RecordButtons extends StatelessWidget {
+  const _RecordButtons({required this.onImport, required this.onRecord});
 
   final VoidCallback onImport;
   final VoidCallback onRecord;
 
   @override
-  State<_ExpandableFab> createState() => _ExpandableFabState();
-}
-
-class _ExpandableFabState extends State<_ExpandableFab> {
-  bool _open = false;
-
-  void _choose(VoidCallback action) {
-    setState(() => _open = false);
-    action();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        if (_open) ...[
-          FloatingActionButton.extended(
-            heroTag: 'fab-record',
-            onPressed: () => _choose(widget.onRecord),
-            icon: const Icon(Icons.mic),
-            label: const Text('即時錄音'),
+        FloatingActionButton.small(
+          heroTag: 'fab-import',
+          onPressed: onImport,
+          tooltip: '匯入錄音檔',
+          backgroundColor: scheme.surfaceContainer,
+          foregroundColor: scheme.onSurface,
+          child: const Icon(Icons.upload_file),
+        ),
+        Text(
+          '匯入',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 12),
+        // The soft ring marks it as the record button.
+        DecoratedBox(
+          decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.of(context).redSoft),
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: SizedBox.square(
+              dimension: 72,
+              child: FloatingActionButton(
+                heroTag: 'fab-record',
+                onPressed: onRecord,
+                tooltip: '開始錄音',
+                backgroundColor: scheme.error,
+                foregroundColor: scheme.onError,
+                child: const Icon(Icons.mic, size: 34),
+              ),
+            ),
           ),
-          const SizedBox(height: 12),
-          FloatingActionButton.extended(
-            heroTag: 'fab-import',
-            onPressed: () => _choose(widget.onImport),
-            icon: const Icon(Icons.upload_file),
-            label: const Text('匯入錄音檔'),
-          ),
-          const SizedBox(height: 16),
-        ],
-        FloatingActionButton(
-          heroTag: 'fab-main',
-          onPressed: () => setState(() => _open = !_open),
-          tooltip: _open ? '關閉' : '新增錄音',
-          child: Icon(_open ? Icons.close : Icons.add),
         ),
       ],
     );

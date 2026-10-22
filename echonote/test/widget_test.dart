@@ -18,7 +18,7 @@ void main() {
   });
 
   testWidgets('App shows the home screen', (WidgetTester tester) async {
-    await tester.pumpWidget(const EchoNoteApp());
+    await tester.pumpWidget(EchoNoteApp());
     await tester.pump();
 
     expect(find.text('echonote'), findsOneWidget);

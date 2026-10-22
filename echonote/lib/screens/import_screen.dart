@@ -103,7 +103,7 @@ class _ImportScreenState extends State<ImportScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.error_outline, size: 48, color: Colors.red),
+        Icon(Icons.error_outline, size: 48, color: Theme.of(context).colorScheme.error),
         const SizedBox(height: 16),
         Text(_error!, textAlign: TextAlign.center),
         const SizedBox(height: 16),
@@ -122,7 +122,10 @@ class _ImportScreenState extends State<ImportScreen> {
         const SizedBox(height: 16),
         Text(_progress > 0 ? '轉錄中… $_progress%' : '準備中…'),
         const SizedBox(height: 8),
-        const Text('請保持 App 開啟直到轉錄完成', style: TextStyle(color: Colors.grey)),
+        Text(
+          '請保持 App 開啟直到轉錄完成',
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+        ),
       ],
     );
   }

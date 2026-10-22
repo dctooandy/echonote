@@ -53,7 +53,7 @@ class _RecordingDotState extends State<RecordingDot> with SingleTickerProviderSt
   Widget build(BuildContext context) {
     return FadeTransition(
       opacity: _controller,
-      child: Icon(Icons.fiber_manual_record, color: Colors.red, size: widget.size, semanticLabel: '錄音中'),
+      child: Icon(Icons.fiber_manual_record, color: Theme.of(context).colorScheme.error, size: widget.size, semanticLabel: '錄音中'),
     );
   }
 }
