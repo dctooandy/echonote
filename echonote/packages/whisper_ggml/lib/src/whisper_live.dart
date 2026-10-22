@@ -72,6 +72,7 @@ Future<WhisperLiveSession> startWhisperLiveSession({
   int maxTokens = 0,
   int audioCtx = 0,
   double commitSec = 25,
+  bool collapseRepetitions = true,
   double gateRmsMin = 0.0015,
   double gateVoiceRatio = 2.5,
   double gateNoiseFloorCap = 0.01,
@@ -148,6 +149,7 @@ Future<WhisperLiveSession> startWhisperLiveSession({
       'max_tokens': maxTokens,
       'audio_ctx': audioCtx,
       'commit_sec': commitSec,
+      'collapse_repetitions': collapseRepetitions,
       if (initialPrompt != null && initialPrompt.isNotEmpty)
         'initial_prompt': initialPrompt,
     }),

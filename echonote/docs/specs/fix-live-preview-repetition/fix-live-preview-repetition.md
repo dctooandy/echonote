@@ -113,16 +113,19 @@ flowchart LR
     - [x] `flutter test`、`flutter analyze` 通過
   - 2026-10-22 完成。`WavReplayMic` 繼承 `MicStreamService`，錄音畫面有開關時把同一個實例同時用在權限查詢和 `LiveTranscriptionService`（原本是兩個實例，權限查詢不碰錄音狀態，所以沒有行為差異）。App 裡看不到檔名，所以找不到檔案時，錯誤訊息和 log 會列出所有可重播的「檔名（錄音名稱）」。重播會照常存成一筆新的即時錄音。
 
-- [ ] **T3 原生端在定稿前收合（B）＋`LIVE_COLLAPSE` 開關**
+- [x] **T3 原生端在定稿前收合（B）＋`LIVE_COLLAPSE` 開關**
   - 做完能看到：重複迴圈不會再永久留在已定稿的預覽裡；`--dart-define=LIVE_COLLAPSE=false` 會同時關掉 A 和 B，同一個 build 就能做前後對照
   - 被誰卡住：T1（沿用同一套演算法和測試資料）
   - 主要會動的檔案：`packages/whisper_ggml/ios/Classes/collapse_repetitions.h`（新，header-only）、`packages/whisper_ggml/ios/Classes/whisper_flutter_plus.cpp`（`stream_run_inference()` 定稿前、`stream_stop()` 最後一次都收合，檢查範圍含 `committed` 的最後 40 字；`stream_start` 讀 `collapse_repetitions` 參數，預設開啟；每次辨識的 metrics 加收合次數）、`packages/whisper_ggml/lib/src/whisper_live.dart`／`whisper_controller.dart`（把參數傳下去）、`lib/services/live_transcription_service.dart`（`LIVE_COLLAPSE` 開關）、`packages/whisper_ggml/test_native/collapse_repetitions_test.cpp`（新，Mac 上用 `clang++` 執行，讀同一份 `test/fixtures/repetition_cases.json`）
   - 軌道：可獨立進行
   - 驗收：
-    - [ ] C++ 測試讀共用測試資料，結果和 Dart 版一致
-    - [ ] `flutter build ios` 通過（C++ 有編進去）
-    - [ ] 開關關閉時，原生和 Dart 都不收合
-    - [ ] `flutter test`、`flutter analyze` 通過
+    - [x] C++ 測試讀共用測試資料，結果和 Dart 版一致
+    - [x] `flutter build ios` 通過（C++ 有編進去）
+    - [x] 開關關閉時，原生和 Dart 都不收合
+    - [x] `flutter test`、`flutter analyze` 通過
+  - 2026-10-22 完成，**尚未實機驗證**。C++ 測試讀共用測試資料 11 個案例全部和 Dart 一致，另加 3 個原生情境（跨定稿邊界的迴圈、尾端 40 字以前的文字不動、殘缺 UTF-8 不出錯）；執行方式寫在 `test_native/collapse_repetitions_test.cpp` 開頭。`flutter build ios` 通過。
+  - debug 的 `[live-metrics]` 摘要改成三項：`collapse on/off`、`loops at commits`（原生在定稿時收掉幾個，各次辨識加總）、`loops in preview`（最後的預覽文字裡還剩幾個；關閉收合時就是預覽原本會顯示的迴圈數）。
+  - 原生端遇到殘缺的 UTF-8 會換成 U+FFFD，不會讓 JSON 輸出失敗。
 
 - [ ] **T4 📱 實機驗證**
   - 做完能看到：同一段音訊、開關開與關的迴圈數與延遲對照表，寫回本規格

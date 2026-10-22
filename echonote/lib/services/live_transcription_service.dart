@@ -61,6 +61,12 @@ const kLivePreviewConfig = LivePreviewConfig(
   commitSec: int.fromEnvironment('LIVE_COMMIT_SEC', defaultValue: 15),
 );
 
+/// Collapse repetition loops in the preview, natively before each commit
+/// and here before display. Off only to compare on the same audio (spec
+/// fix-live-preview-repetition):
+///   flutter run --dart-define=LIVE_COLLAPSE=false
+const kLiveCollapse = bool.fromEnvironment('LIVE_COLLAPSE', defaultValue: true);
+
 enum LiveEndReason {
   /// [LiveRecording.stop] was called.
   stopped,
@@ -170,6 +176,7 @@ class LiveTranscriptionService {
         maxTokens: config.maxTokens,
         audioCtx: config.audioCtx,
         commitSec: config.commitSec.toDouble(),
+        collapseRepetitions: kLiveCollapse,
       );
       final micStream = await _mic.start();
       return LiveRecording._(_mic, micStream, pcm, session, wav);
@@ -196,7 +203,7 @@ class LiveRecording {
         _lastText = text;
         // Partials are the whole text so far, so collapsing each one is
         // enough; nothing accumulates on this side.
-        _preview.add(collapseRepetitions(text).text);
+        _preview.add(_collapse(text));
       },
       // A native error ends the preview only; recording continues.
       onError: (Object e, StackTrace st) {
@@ -320,11 +327,15 @@ class LiveRecording {
   final List<Map<String, dynamic>> _runs = [];
   double _maxLag = 0;
 
-  /// [rawPreview] is the native text before collapsing, so the count shows
-  /// how many loops the preview would otherwise have shown.
+  String _collapse(String text) => kLiveCollapse ? collapseRepetitions(text).text : text;
+
+  /// Loops removed natively at commits, plus those left in [rawPreview] (the
+  /// window not yet committed, or everything when collapsing is off — then
+  /// the count shows what the preview would otherwise have hidden).
   void _logRuns(String rawPreview) {
     if (_runs.isEmpty) return;
     final collapsed = collapseRepetitions(rawPreview);
+    final atCommits = _runs.fold<int>(0, (n, m) => n + ((m['loops_collapsed'] as num?)?.toInt() ?? 0));
     double median(String key) {
       final v = [for (final m in _runs) (m[key] as num?)?.toDouble() ?? 0]..sort();
       return v[v.length ~/ 2];
@@ -338,9 +349,10 @@ class LiveRecording {
       'median encode_ms ${median('encode_ms').round()}, '
       'median window_sec ${median('window_sec').toStringAsFixed(1)}, '
       'max lag ${_maxLag.toStringAsFixed(1)} s, '
-      'loops collapsed ${collapsed.collapsed}',
+      'collapse ${kLiveCollapse ? 'on' : 'off'}, '
+      'loops at commits $atCommits, loops in preview ${collapsed.collapsed}',
     );
-    debugPrint('[live-metrics] preview: ${collapsed.text}');
+    debugPrint('[live-metrics] preview: ${_collapse(rawPreview)}');
   }
 
   /// The mic stream ended (stop, system, or write failure): drain both
@@ -349,7 +361,7 @@ class LiveRecording {
     unawaited(_pcm.close());
     final rawPreview = await _session.stop().catchError((Object _) => _lastText);
     if (kDebugMode) _logRuns(rawPreview);
-    final previewText = collapseRepetitions(rawPreview).text;
+    final previewText = _collapse(rawPreview);
     try {
       await _wav.close();
     } catch (e) {

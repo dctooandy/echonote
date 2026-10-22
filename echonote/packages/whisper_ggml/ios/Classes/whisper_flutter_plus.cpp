@@ -2,6 +2,7 @@
 
 #define DR_WAV_IMPLEMENTATION
 #include "whisper/examples/dr_wav.h"
+#include "collapse_repetitions.h"
 
 #include <chrono>
 #include <cmath>
@@ -489,6 +490,9 @@ struct whisper_stream_state
     float gate_rms_min = 0.0015f;   // absolute minimum speech RMS
     float gate_ratio = 2.5f;        // voiced thold = ratio * noise_floor
     float gate_floor_cap = 0.01f;   // noise_floor cap (loud rooms)
+    // [echonote] collapse repetition loops before committing a window (and
+    // in the final text), see collapse_repetitions.h. On unless disabled.
+    bool collapse_repetitions = true;
     std::string committed;       // text of windows already committed
     std::string last_text;       // text of the current window's last run
     std::string language = "en";
@@ -595,8 +599,15 @@ static json stream_run_inference()
     g_stream.last_text = text;
     g_stream.n_transcribed = n_decode;
 
+    int loops_collapsed = 0;
     if (n_decode >= g_stream.commit_samples) {
-        g_stream.committed += text;
+        if (g_stream.collapse_repetitions) {
+            echonote::CollapseResult merged = echonote::append_collapsed(g_stream.committed, text);
+            g_stream.committed = std::move(merged.text);
+            loops_collapsed = merged.collapsed;
+        } else {
+            g_stream.committed += text;
+        }
         g_stream.last_text.clear();
         g_stream.pcmf32.erase(g_stream.pcmf32.begin(),
                               g_stream.pcmf32.begin() + n_decode);
@@ -604,6 +615,8 @@ static json stream_run_inference()
         g_stream.n_voiced -= std::min(g_stream.n_voiced, n_decode);
     }
 
+    // Loops removed from what was committed by this run (0 between commits).
+    result["metrics"]["loops_collapsed"] = loops_collapsed;
     result["text"] = g_stream.committed + g_stream.last_text;
     return result;
 }
@@ -653,6 +666,7 @@ extern "C"
             const double commit_sec = jsonBody.value("commit_sec", 25.0);
             g_stream.commit_samples = (size_t)(
                 std::max(commit_sec, 1.0) * WHISPER_SAMPLE_RATE);
+            g_stream.collapse_repetitions = jsonBody.value("collapse_repetitions", true);
             g_stream.prompt.clear();
             if (jsonBody.contains("initial_prompt") && jsonBody["initial_prompt"].is_string()) {
                 g_stream.prompt = jsonBody["initial_prompt"].get<std::string>();
@@ -750,7 +764,9 @@ extern "C"
         }
 
         jsonResult["@type"] = "streamFinal";
-        jsonResult["text"] = g_stream.committed + g_stream.last_text;
+        jsonResult["text"] = g_stream.collapse_repetitions
+            ? echonote::append_collapsed(g_stream.committed, g_stream.last_text).text
+            : g_stream.committed + g_stream.last_text;
 
         whisper_free(g_stream.ctx);
         g_stream.ctx = nullptr;
