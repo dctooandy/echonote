@@ -137,16 +137,17 @@ flowchart LR
     - [x] `flutter test`、`flutter analyze` 通過
   - 2026-10-22 完成。值的型別不對（例如字串）也當作預設值；設定是非關鍵資料，檔案損毀時下次存檔直接覆蓋（和詞庫「不覆寫」的做法不同）。
 
-- [ ] **T3 捲動波形和紅點呼吸閃爍**
+- [x] **T3 捲動波形和紅點呼吸閃爍**
   - 做完能看到：錄音畫面的音量條換成 6 秒的捲動波形，紅點會呼吸閃爍；「減少動態效果」開啟時紅點常亮
   - 被誰卡住：無，可以直接開工
   - 主要會動的檔案：`lib/widgets/level_waveform.dart`（新，含 `LevelHistory`）、`lib/widgets/recording_dot.dart`（新）、`lib/screens/live_record_screen.dart`、對應的測試
   - 軌道：可獨立進行
   - 驗收：
-    - [ ] `LevelHistory` 固定 60 格，滿了丟掉最舊的；高度沿用 `_levelToBar()` 的 dB 換算（-60～0 dBFS）
-    - [ ] 一開始沒有歷史時，空的部分是平線
-    - [ ] 錄音中紅點閃爍，`finalizing`／`transcribing` 時停下；減少動態效果時常亮
-    - [ ] `flutter test`、`flutter analyze` 通過
+    - [x] `LevelHistory` 固定 60 格，滿了丟掉最舊的；高度沿用 `_levelToBar()` 的 dB 換算（-60～0 dBFS）
+    - [x] 一開始沒有歷史時，空的部分是平線
+    - [x] 錄音中紅點閃爍，`finalizing`／`transcribing` 時停下；減少動態效果時常亮
+    - [x] `flutter test`、`flutter analyze` 通過
+  - 2026-10-22 完成，**尚未實機確認觀感**。`_levelToBar()` 搬到 `level_waveform.dart` 改名 `levelToHeight()`；紅點每 0.5 秒淡入或淡出一次（一個呼吸約 1 秒），最暗 25%。紅點只在錄音中的畫面出現，`finalizing`／`transcribing` 用的是其他畫面，自然不會閃。
 
 - [ ] **T4 錄音畫面的即時文字開關**
   - 做完能看到：計時器右邊有「即時文字（草稿）」開關，預設跟著設定檔；關閉時沒有預覽區、波形較大；中途打開時顯示「從現在開始」；第一次打開時下載 `tiny` 並顯示進度，失敗就退回關閉並提示；重播工具開啟時預設打開
