@@ -806,8 +806,19 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
             children: [
+              // Long press isn't discoverable on its own.
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Text(
+                    '點句子跳轉播放，長按可修改',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                  ),
+                ),
+              ),
               IconButton(
                 icon: const Icon(Icons.copy, size: 20),
                 tooltip: '複製全部逐字稿',

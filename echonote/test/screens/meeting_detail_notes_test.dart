@@ -202,6 +202,14 @@ void main() {
     expect(find.text('用目前詞庫重新轉錄'), findsNothing);
   });
 
+  testWidgets('the transcript tells how to seek and edit', (tester) async {
+    await _pump(tester, _recording());
+    await tester.tap(find.text('逐字稿'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('點句子跳轉播放，長按可修改'), findsOneWidget);
+  });
+
   testWidgets('long-pressing a transcript line edits it', (tester) async {
     final recording = _recording();
     await _pump(tester, recording);
