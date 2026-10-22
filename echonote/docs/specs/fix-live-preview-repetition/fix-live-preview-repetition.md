@@ -88,16 +88,17 @@ flowchart LR
   T3 --> T4
 ```
 
-- [ ] **T1 Dart 端收合重複（A）＋共用測試資料**
+- [x] **T1 Dart 端收合重複（A）＋共用測試資料**
   - 做完能看到：即時預覽上的重複迴圈只剩一次，其他文字不動；debug 的 `[live-metrics]` 摘要多一項「收合了幾次」
   - 被誰卡住：無，可以直接開工
   - 主要會動的檔案：`lib/services/repetition.dart`（新）、`lib/services/live_transcription_service.dart`（`LiveRecording` 收到 partials 後、送出預覽前收合）、`test/fixtures/repetition_cases.json`（新）、`test/services/repetition_test.dart`（新）
   - 軌道：可獨立進行
   - 驗收：
-    - [ ] `collapseRepetitions` 依規格定義收合（1～10 字、連續 4 次以上、忽略中間標點空白、保留一次、其他文字不動），並回傳收合次數
-    - [ ] 測試資料含 T6 的三段實際輸出（經常…、Helps,…、金主很半斷標準…）、「好好好好」、正常句子、只重複 3 次不收合、跨標點的重複
-    - [ ] 預覽顯示的文字經過收合；`[live-metrics]` 摘要輸出收合次數（只在 debug）
-    - [ ] `flutter test`、`flutter analyze` 通過
+    - [x] `collapseRepetitions` 依規格定義收合（1～10 字、連續 4 次以上、忽略中間標點空白、保留一次、其他文字不動），並回傳收合次數
+    - [x] 測試資料含 T6 的三段實際輸出（經常…、Helps,…、金主很半斷標準…）、「好好好好」、正常句子、只重複 3 次不收合、跨標點的重複
+    - [x] 預覽顯示的文字經過收合；`[live-metrics]` 摘要輸出收合次數（只在 debug）（接線沒有單元測試，`LiveRecording` 需要真的辨識 session，留給 T4 實機確認）
+    - [x] `flutter test`、`flutter analyze` 通過
+  - 2026-10-22 完成。分隔字元用明確的字元範圍（不用 Unicode 類別），讓 C++ 版能完全一致。T6 的經常迴圈中間夾一個殘字「經」，所以收成兩段、留下「經常經經常經」，可以接受。
 
 - [ ] **T2 重播 WAV 取代麥克風（debug 專用）**
   - 做完能看到：`flutter run --dart-define=LIVE_REPLAY_WAV=<錄音檔名>` 啟動後，開始即時錄音時改用即時速度播放 App 裡那段錄音的 WAV，每 100 ms 一段，同一段音訊可以反覆重跑

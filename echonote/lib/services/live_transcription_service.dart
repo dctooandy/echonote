@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:whisper_ggml/whisper_ggml.dart';
 
 import 'mic_stream_service.dart';
+import 'repetition.dart';
 import 'transcription_service.dart';
 import 'wav_writer.dart';
 
@@ -193,7 +194,9 @@ class LiveRecording {
     _session.partials.listen(
       (text) {
         _lastText = text;
-        _preview.add(text);
+        // Partials are the whole text so far, so collapsing each one is
+        // enough; nothing accumulates on this side.
+        _preview.add(collapseRepetitions(text).text);
       },
       // A native error ends the preview only; recording continues.
       onError: (Object e, StackTrace st) {
@@ -317,8 +320,11 @@ class LiveRecording {
   final List<Map<String, dynamic>> _runs = [];
   double _maxLag = 0;
 
-  void _logRuns(String previewText) {
+  /// [rawPreview] is the native text before collapsing, so the count shows
+  /// how many loops the preview would otherwise have shown.
+  void _logRuns(String rawPreview) {
     if (_runs.isEmpty) return;
+    final collapsed = collapseRepetitions(rawPreview);
     double median(String key) {
       final v = [for (final m in _runs) (m[key] as num?)?.toDouble() ?? 0]..sort();
       return v[v.length ~/ 2];
@@ -331,17 +337,19 @@ class LiveRecording {
       'median total_ms ${median('total_ms').round()}, '
       'median encode_ms ${median('encode_ms').round()}, '
       'median window_sec ${median('window_sec').toStringAsFixed(1)}, '
-      'max lag ${_maxLag.toStringAsFixed(1)} s',
+      'max lag ${_maxLag.toStringAsFixed(1)} s, '
+      'loops collapsed ${collapsed.collapsed}',
     );
-    debugPrint('[live-metrics] preview: $previewText');
+    debugPrint('[live-metrics] preview: ${collapsed.text}');
   }
 
   /// The mic stream ended (stop, system, or write failure): drain both
   /// consumers, then report.
   Future<void> _finish() async {
     unawaited(_pcm.close());
-    final previewText = await _session.stop().catchError((Object _) => _lastText);
-    if (kDebugMode) _logRuns(previewText);
+    final rawPreview = await _session.stop().catchError((Object _) => _lastText);
+    if (kDebugMode) _logRuns(rawPreview);
+    final previewText = collapseRepetitions(rawPreview).text;
     try {
       await _wav.close();
     } catch (e) {

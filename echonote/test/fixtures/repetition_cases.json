@@ -1,0 +1,71 @@
+{
+  "_comment": "Shared by test/services/repetition_test.dart and packages/whisper_ggml/test_native/collapse_repetitions_test.cpp; both implementations must give these outputs.",
+  "cases": [
+    {
+      "name": "T6 對照組：經常迴圈（夾一個殘字，分成兩段）",
+      "input": "就安排當標準這聲音經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經常經我們是我們的",
+      "output": "就安排當標準這聲音經常經經常經我們是我們的",
+      "collapsed": 2
+    },
+    {
+      "name": "T6 實驗組：Helps 迴圈（中間有一個殘缺的 Hel）",
+      "input": "中間故意獎、Helps,Helps,Helps,Helps,Helps,HelHelps,Helps,Helps,Helps,Helps,Helps,Helps,Helps,Helps,Helps,Helps,Helps,Helps,Helps,Helps,Helps中京公共一將",
+      "output": "中間故意獎、Helps,HelHelps中京公共一將",
+      "collapsed": 2
+    },
+    {
+      "name": "T6 實驗組：整句重複，逗號不算",
+      "input": "我身材會收出,金主很半斷標準,金主很半斷標準,金主很半斷標準,金主很半斷標準,金台積電,原始統性之一的地方",
+      "output": "我身材會收出,金主很半斷標準,金台積電,原始統性之一的地方",
+      "collapsed": 1
+    },
+    {
+      "name": "T6 實驗組：引號不算，單位是「的省」",
+      "input": "金主經常的「省省」的「省」的「省」的「省」的「省」的「省」的「省」的「省」的「省」的「省」的「省」的「省」的「省就算明顯平安",
+      "output": "金主經常的「省省」的「省就算明顯平安",
+      "collapsed": 1
+    },
+    {
+      "name": "真的講四次也會收合（規格接受的誤判）",
+      "input": "好好好好，我們開始。",
+      "output": "好，我們開始。",
+      "collapsed": 1
+    },
+    {
+      "name": "只重複 3 次不收合",
+      "input": "對對對，就是這樣。",
+      "output": "對對對，就是這樣。",
+      "collapsed": 0
+    },
+    {
+      "name": "正常句子不受影響",
+      "input": "各位好,我今天想用大約十幾分鐘介紹四個我自己做的app。",
+      "output": "各位好,我今天想用大約十幾分鐘介紹四個我自己做的app。",
+      "collapsed": 0
+    },
+    {
+      "name": "迴圈後面的標點保留",
+      "input": "嗨，嗨，嗨，嗨，你好",
+      "output": "嗨，你好",
+      "collapsed": 1
+    },
+    {
+      "name": "10 字單位會收合",
+      "input": "一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十尾",
+      "output": "一二三四五六七八九十尾",
+      "collapsed": 1
+    },
+    {
+      "name": "11 字單位不在範圍內",
+      "input": "一二三四五六七八九十甲一二三四五六七八九十甲一二三四五六七八九十甲一二三四五六七八九十甲",
+      "output": "一二三四五六七八九十甲一二三四五六七八九十甲一二三四五六七八九十甲一二三四五六七八九十甲",
+      "collapsed": 0
+    },
+    {
+      "name": "空字串",
+      "input": "",
+      "output": "",
+      "collapsed": 0
+    }
+  ]
+}
