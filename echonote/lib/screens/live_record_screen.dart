@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../models/recording.dart';
+import '../services/app_settings.dart';
 import '../services/live_transcription_service.dart';
 import '../services/mic_stream_service.dart';
 import '../services/recording_store.dart';
@@ -15,6 +16,7 @@ import '../services/wav_replay_mic.dart';
 import '../theme/app_theme.dart';
 import '../widgets/level_waveform.dart';
 import '../widgets/recording_dot.dart';
+import '../widgets/round_icon_button.dart';
 import 'meeting_detail_screen.dart';
 
 /// Records from the mic, optionally with a live (draft) transcript, then
@@ -590,91 +592,178 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            const RecordingDot(),
-            const SizedBox(width: 8),
-            Text(_formatElapsed(elapsed), style: theme.textTheme.headlineMedium),
-            const Spacer(),
-            _buildLivePreviewToggle(),
-          ],
+        // Only the clock and the waveform up top; everything to press is in
+        // the dock at the bottom (spec feature-dark-theme).
+        Padding(
+          padding: const EdgeInsets.only(top: 8, bottom: 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const RecordingDot(),
+              const SizedBox(width: 10),
+              Text(
+                _formatElapsed(elapsed),
+                style: theme.textTheme.displaySmall?.copyWith(
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 8),
-        // Input level (echo_core RMS per 100 ms chunk). Visual is provisional;
-        // with live text off it takes the room the text would have.
-        LevelWaveform(levels: _rec?.level, height: _livePreview ? 48 : 120),
+        // Input level (echo_core RMS per 100 ms chunk); with live text off it
+        // takes the room the text would have.
+        _card(LevelWaveform(levels: _rec?.level, height: _livePreview ? 48 : 120)),
         if (_nearLimit) _notice(Icons.timer_outlined, '即將達到 2 小時上限，屆時會自動停止'),
-        if (_livePreview) ..._buildPreview(theme) else const Spacer(),
+        if (_livePreview) ...[
+          const SizedBox(height: 12),
+          Expanded(child: _card(_buildPreview(theme))),
+        ] else
+          const Spacer(),
+        // A note being written sits just above the dock; the keyboard
+        // shrinks the preview, not the dock.
+        if (_draftMs != null) ...[const SizedBox(height: 12), _card(_buildDraft())],
         const SizedBox(height: 12),
-        if (_draftMs != null) _buildDraft() else _buildNoteButtons(),
-        const SizedBox(height: 8),
-        // Stays visible while a note is open: the input sits above it and
-        // the keyboard shrinks the preview, not this.
-        FilledButton.icon(onPressed: _stop, icon: const Icon(Icons.stop), label: const Text('停止')),
+        _buildDock(),
+      ],
+    );
+  }
+
+  /// A rounded card, the container for every block on this screen.
+  Widget _card(Widget child) => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainer,
+      borderRadius: BorderRadius.circular(kCardRadius),
+    ),
+    child: child,
+  );
+
+  /// Stop under the thumb, the other controls beside it; mirrored for the
+  /// left hand.
+  Widget _buildDock() {
+    final leftHanded = AppSettingsScope.of(context).handedness == Handedness.left;
+    final tools = Expanded(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: _pillButton(Icons.star_outline, '標記重點', _addStar)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _pillButton(
+                  Icons.edit_note,
+                  _notes.isEmpty ? '筆記' : '筆記（已記 ${_notes.length}）',
+                  _draftMs == null ? _openDraft : null,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _buildLivePreviewToggle(),
+        ],
+      ),
+    );
+    final stop = _buildStopButton();
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: leftHanded
+          ? [stop, const SizedBox(width: 14), tools]
+          : [tools, const SizedBox(width: 14), stop],
+    );
+  }
+
+  Widget _pillButton(IconData icon, String label, VoidCallback? onPressed) {
+    final scheme = Theme.of(context).colorScheme;
+    return FilledButton.tonalIcon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18),
+      label: Text(label, overflow: TextOverflow.ellipsis),
+      style: FilledButton.styleFrom(
+        backgroundColor: scheme.surfaceContainer,
+        foregroundColor: scheme.onSurface,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      ),
+    );
+  }
+
+  Widget _buildStopButton() {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.of(context).redSoft),
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: SizedBox.square(
+              dimension: 78,
+              child: IconButton(
+                onPressed: _stop,
+                tooltip: '停止錄音',
+                icon: const Icon(Icons.stop_rounded, size: 40),
+                style: IconButton.styleFrom(
+                  backgroundColor: scheme.error,
+                  foregroundColor: scheme.onError,
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text('停止', style: Theme.of(context).textTheme.labelMedium),
       ],
     );
   }
 
   Widget _buildLivePreviewToggle() {
     final loading = _previewLoading;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (loading != null) ...[
-          const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-          const SizedBox(width: 8),
-        ],
-        const Text('即時文字（草稿）'),
-        Switch(
-          value: _livePreview,
-          onChanged: loading == null ? (on) => _setLivePreview(on) : null,
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surfaceContainer,
+      shape: const StadiumBorder(),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 16, right: 6),
+        child: Row(
+          children: [
+            if (loading != null) ...[
+              const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+              const SizedBox(width: 8),
+            ],
+            const Expanded(child: Text('即時文字（草稿）', overflow: TextOverflow.ellipsis)),
+            Switch(
+              value: _livePreview,
+              onChanged: loading == null ? (on) => _setLivePreview(on) : null,
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
-  List<Widget> _buildPreview(ThemeData theme) {
+  Widget _buildPreview(ThemeData theme) {
     final loading = _previewLoading;
-    return [
-      if (loading != null)
-        _notice(Icons.downloading, loading)
-      else if (_previewStopped)
-        _notice(Icons.info_outline, '即時文字已停止，錄音仍在進行，停止後會產生完整逐字稿')
-      else if (_previewDelayed)
-        _notice(Icons.hourglass_bottom, '即時文字可能延遲'),
-      const SizedBox(height: 12),
-      Text(
-        _previewFromNow
-            ? '即時預覽（從現在開始；停止後會重新產生正式逐字稿）'
-            : '即時預覽（停止後會重新產生正式逐字稿）',
-        style: theme.textTheme.labelMedium,
-      ),
-      const SizedBox(height: 4),
-      Expanded(
-        child: SingleChildScrollView(
-          controller: _scroll,
-          child: Text(_preview.isEmpty ? '請開始說話…' : _preview),
-        ),
-      ),
-    ];
-  }
-
-  Widget _buildNoteButtons() {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            onPressed: _addStar,
-            icon: const Icon(Icons.star_outline),
-            label: const Text('標記重點'),
-          ),
+        if (loading != null)
+          _notice(Icons.downloading, loading)
+        else if (_previewStopped)
+          _notice(Icons.info_outline, '即時文字已停止，錄音仍在進行，停止後會產生完整逐字稿')
+        else if (_previewDelayed)
+          _notice(Icons.hourglass_bottom, '即時文字可能延遲'),
+        Text(
+          _previewFromNow
+              ? '即時預覽（從現在開始；停止後會重新產生正式逐字稿）'
+              : '即時預覽（停止後會重新產生正式逐字稿）',
+          style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(height: 6),
         Expanded(
-          child: OutlinedButton.icon(
-            onPressed: _openDraft,
-            icon: const Icon(Icons.edit_note),
-            label: Text(_notes.isEmpty ? '筆記' : '筆記（已記 ${_notes.length}）'),
+          child: SingleChildScrollView(
+            controller: _scroll,
+            child: Text(_preview.isEmpty ? '請開始說話…' : _preview),
           ),
         ),
       ],
@@ -692,13 +781,13 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
             minLines: 1,
             decoration: InputDecoration(
               isDense: true,
-              border: const OutlineInputBorder(),
               hintText: '${_formatElapsed(Duration(milliseconds: _draftMs!))} 的重點是…',
             ),
           ),
         ),
-        IconButton(icon: const Icon(Icons.close), tooltip: '取消', onPressed: _cancelDraft),
-        IconButton(icon: const Icon(Icons.check), tooltip: '儲存筆記', onPressed: _commitDraft),
+        const SizedBox(width: 4),
+        RoundIconButton(icon: Icons.close, tooltip: '取消', onPressed: _cancelDraft),
+        RoundIconButton(icon: Icons.check, tooltip: '儲存筆記', onPressed: _commitDraft),
       ],
     );
   }

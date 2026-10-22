@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:echonote/screens/live_record_screen.dart';
+import 'package:echonote/services/app_settings.dart';
 import 'package:echonote/services/live_transcription_service.dart';
 import 'package:echonote/services/mic_stream_service.dart';
 import 'package:echonote/services/screen_awake.dart';
@@ -328,12 +329,67 @@ void main() {
     }
     await settle(tester);
 
-    await tester.tap(find.text('停止'));
+    await tester.tap(find.byTooltip('停止錄音'));
     await settle(tester);
 
     final entry = Directory('${dir.path}/history').listSync().single as File;
     final json = jsonDecode(entry.readAsStringSync()) as Map<String, dynamic>;
     expect(json['duration_ms'], 1200);
+    await leave(tester);
+  });
+
+  Future<void> openWithHand(WidgetTester tester, Handedness hand) async {
+    await tester.pumpWidget(
+      AppSettingsScope(
+        settings: AppSettings(handedness: hand),
+        child: MaterialApp(
+          home: LiveRecordScreen(mic: mic, service: _FakeService(mic), settings: settings),
+        ),
+      ),
+    );
+    await settle(tester);
+  }
+
+  testWidgets('stop sits under the right thumb, the other controls beside it', (tester) async {
+    await openWithHand(tester, Handedness.right);
+
+    final stop = tester.getCenter(find.byTooltip('停止錄音')).dx;
+    expect(stop, greaterThan(tester.getCenter(find.text('標記重點')).dx));
+    expect(stop, greaterThan(tester.getCenter(find.byType(Switch)).dx), reason: 'live text toggle is down in the dock');
+    expect(
+      tester.getCenter(find.byType(Switch)).dy,
+      greaterThan(tester.getCenter(find.byType(LevelWaveform)).dy),
+    );
+    await leave(tester);
+  });
+
+  testWidgets('left-handed mirrors the dock', (tester) async {
+    await openWithHand(tester, Handedness.left);
+
+    expect(
+      tester.getCenter(find.byTooltip('停止錄音')).dx,
+      lessThan(tester.getCenter(find.text('標記重點')).dx),
+    );
+    await leave(tester);
+  });
+
+  testWidgets('on a phone, live text and an open note fit above the dock', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() => settings.setLivePreview(true));
+    await open(tester);
+
+    await tester.tap(find.text('筆記'));
+    await settle(tester);
+
+    expect(find.byType(TextField), findsOneWidget);
+    expect(
+      tester.getBottomLeft(find.byType(TextField)).dy,
+      lessThan(tester.getTopLeft(find.text('標記重點')).dy),
+      reason: 'the note opens just above the dock',
+    );
+    expect(tester.takeException(), isNull, reason: 'nothing overflows');
     await leave(tester);
   });
 }
