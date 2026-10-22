@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -9,19 +8,30 @@ import '../services/live_transcription_service.dart';
 import '../services/mic_stream_service.dart';
 import '../services/recording_store.dart';
 import '../services/recording_transcriber.dart';
+import '../services/settings_store.dart';
 import '../services/transcription_service.dart';
 import '../services/wav_replay_mic.dart';
+import '../widgets/level_waveform.dart';
+import '../widgets/recording_dot.dart';
 import 'meeting_detail_screen.dart';
 
-/// Records from the mic with a live (draft) transcript, then runs the
-/// offline transcription on the saved WAV. State machine: see the spec's
-/// "即時錄音的狀態機".
+/// Records from the mic, optionally with a live (draft) transcript, then
+/// runs the offline transcription on the saved WAV. State machine: see the
+/// spec's "即時錄音的狀態機".
 class LiveRecordScreen extends StatefulWidget {
-  const LiveRecordScreen({super.key});
+  const LiveRecordScreen({super.key, this.mic, this.service, this.settings});
+
+  /// Test seams; by default the real mic (or a replayed WAV), recognizer and
+  /// settings file.
+  final MicStreamService? mic;
+  final LiveTranscriptionService? service;
+  final SettingsStore? settings;
 
   @override
   State<LiveRecordScreen> createState() => _LiveRecordScreenState();
 }
+
+enum _LeaveChoice { keepRecording, stopAndSave, discard }
 
 enum _Phase {
   checkingPermission,
@@ -36,10 +46,10 @@ enum _Phase {
 class _LiveRecordScreenState extends State<LiveRecordScreen> {
   /// A replayed WAV stands in for the mic in debug comparisons (see
   /// [kLiveReplayWav]); it reports the permission as granted.
-  final MicStreamService _mic = kLiveReplayWav.isEmpty
-      ? MicStreamService()
-      : WavReplayMic(kLiveReplayWav);
-  late final _service = LiveTranscriptionService(mic: _mic);
+  late final MicStreamService _mic =
+      widget.mic ?? (kLiveReplayWav.isEmpty ? MicStreamService() : WavReplayMic(kLiveReplayWav));
+  late final _service = widget.service ?? LiveTranscriptionService(mic: _mic);
+  late final _settings = widget.settings ?? SettingsStore();
   final _store = RecordingStore();
   late final _transcriber = RecordingTranscriber(store: _store);
   final _scroll = ScrollController();
@@ -59,6 +69,22 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
   bool _previewStopped = false;
   bool _nearLimit = false;
   int _transcribeProgress = 0;
+
+  /// Live text on or off. Off by default: it's a rough `tiny` draft, and the
+  /// saved transcript comes from the offline pass anyway (spec
+  /// feature-recording-indicator).
+  bool _livePreview = false;
+
+  /// Turned on after recording had started, so it only shows what's said
+  /// from then on.
+  bool _previewFromNow = false;
+
+  /// Non-null while the preview model downloads or loads.
+  String? _previewLoading;
+
+  /// The user chose to throw this recording away: once it stops, delete it
+  /// instead of saving.
+  bool _discarding = false;
 
   /// Kept in memory until recording ends, then saved with the recording.
   final List<UserNote> _notes = [];
@@ -136,7 +162,9 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
       final startedAt = DateTime.now();
       final audioFileName = '$id.wav';
       final wavPath = '${(await _store.recordingsDir()).path}/$audioFileName';
-      final rec = await _service.start(wavPath: wavPath);
+      // Live text starts once recording runs, so a failure there never
+      // stops the recording (see _setLivePreview).
+      final rec = await _service.start(wavPath: wavPath, livePreview: false);
       if (!mounted) {
         // Left while loading; nothing worth keeping yet.
         await rec.stop();
@@ -153,12 +181,62 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
         if (mounted) setState(() {});
       });
       _setPhase(_Phase.recording);
+      // The replay tool exists to test live text, so it starts with it on
+      // and leaves the saved choice alone.
+      final wanted = kLiveReplayWav.isNotEmpty || await _settings.livePreview();
+      if (wanted && mounted) await _setLivePreview(true, remember: false);
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _phase = _Phase.error;
         _error = '無法開始錄音：$e';
       });
+    }
+  }
+
+  /// Turns live text on or off mid-recording. Turning it on fetches the
+  /// preview model on first use; if that or the recognizer fails, the
+  /// switch goes back off and recording carries on.
+  Future<void> _setLivePreview(bool on, {bool remember = true}) async {
+    final rec = _rec;
+    if (rec == null || _previewLoading != null || on == _livePreview) return;
+    if (!on) {
+      setState(() => _livePreview = false);
+      if (remember) unawaited(_settings.setLivePreview(false));
+      await rec.stopPreview();
+      return;
+    }
+    setState(() {
+      _livePreview = true;
+      _previewLoading = '準備即時文字…';
+      _preview = '';
+      _previewStopped = false;
+      _previewDelayed = false;
+      _previewFromNow = rec.sentSeconds >= 1;
+    });
+    try {
+      var lastPercent = -1;
+      await _service.ensurePreviewModel(
+        onProgress: (model, received, total) {
+          if (total == null || !mounted) return;
+          final percent = received * 100 ~/ total;
+          if (percent == lastPercent) return;
+          lastPercent = percent;
+          setState(() => _previewLoading = '下載即時文字模型… $percent%');
+        },
+      );
+      if (!mounted || !_livePreview) return;
+      setState(() => _previewLoading = '載入即時文字模型…');
+      await rec.startPreview();
+      if (remember) unawaited(_settings.setLivePreview(true));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _livePreview = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('無法開啟即時文字，錄音照常進行：$e')),
+      );
+    } finally {
+      if (mounted) setState(() => _previewLoading = null);
     }
   }
 
@@ -240,6 +318,12 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
     DateTime startedAt,
   ) async {
     _ticker?.cancel();
+    if (_discarding) {
+      // As if it was never recorded: nothing saved, nothing transcribed.
+      await _deleteQuietly(wavPath);
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
     // However recording ended, a half-written note with text is kept.
     _commitDraft();
     _endNote = switch (result.reason) {
@@ -332,18 +416,61 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
   }
 
   Future<void> _confirmLeave() async {
-    final stop = await showDialog<bool>(
+    final choice = await showDialog<_LeaveChoice>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('正在錄音'),
         content: const Text('要停止錄音並保存嗎？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('繼續錄音')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('停止並存檔')),
+          // Set apart from the other two: it deletes the recording.
+          TextButton(
+            onPressed: () => Navigator.pop(context, _LeaveChoice.discard),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('放棄錄音'),
+          ),
+          const SizedBox(width: 16),
+          TextButton(
+            onPressed: () => Navigator.pop(context, _LeaveChoice.keepRecording),
+            child: const Text('繼續錄音'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, _LeaveChoice.stopAndSave),
+            child: const Text('停止並存檔'),
+          ),
         ],
       ),
     );
-    if (stop == true) await _stop();
+    switch (choice) {
+      case _LeaveChoice.stopAndSave:
+        await _stop();
+      case _LeaveChoice.discard:
+        if (await _confirmDiscard()) {
+          _discarding = true;
+          await _stop();
+        }
+      case _LeaveChoice.keepRecording || null:
+        break;
+    }
+  }
+
+  /// Deleting can't be undone, so ask once more.
+  Future<bool> _confirmDiscard() async {
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('確定放棄？'),
+        content: const Text('這段錄音和筆記都會刪除，無法復原。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('放棄'),
+          ),
+        ],
+      ),
+    );
+    return discard ?? false;
   }
 
   static Future<void> _deleteQuietly(String path) async {
@@ -355,15 +482,6 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
   static String _formatDateTime(DateTime t) {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
-  }
-
-  /// Maps normalized RMS to the bar on a dB scale: -60 dBFS (room tone)
-  /// → empty, 0 dBFS → full. Speech sits around -35 to -15 dBFS, so a linear
-  /// scale would barely move. Range is provisional, tuned on device.
-  static double _levelToBar(double rms) {
-    if (rms <= 0) return 0;
-    final db = 20 * math.log(rms) / math.ln10;
-    return ((db + 60) / 60).clamp(0.0, 1.0);
   }
 
   static String _formatElapsed(Duration d) {
@@ -444,35 +562,19 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
       children: [
         Row(
           children: [
-            const Icon(Icons.fiber_manual_record, color: Colors.red),
+            const RecordingDot(),
             const SizedBox(width: 8),
             Text(_formatElapsed(elapsed), style: theme.textTheme.headlineMedium),
+            const Spacer(),
+            _buildLivePreviewToggle(),
           ],
         ),
         const SizedBox(height: 8),
-        // Input level (echo_core RMS per 100 ms chunk). Visual is provisional.
-        StreamBuilder<double>(
-          stream: _rec?.level,
-          builder: (context, snapshot) => LinearProgressIndicator(
-            value: _levelToBar(snapshot.data ?? 0),
-            minHeight: 6,
-            semanticsLabel: '輸入音量',
-          ),
-        ),
+        // Input level (echo_core RMS per 100 ms chunk). Visual is provisional;
+        // with live text off it takes the room the text would have.
+        LevelWaveform(levels: _rec?.level, height: _livePreview ? 48 : 120),
         if (_nearLimit) _notice(Icons.timer_outlined, '即將達到 2 小時上限，屆時會自動停止'),
-        if (_previewStopped)
-          _notice(Icons.info_outline, '即時文字已停止，錄音仍在進行，停止後會產生完整逐字稿')
-        else if (_previewDelayed)
-          _notice(Icons.hourglass_bottom, '即時文字可能延遲'),
-        const SizedBox(height: 12),
-        Text('即時預覽（停止後會重新產生正式逐字稿）', style: theme.textTheme.labelMedium),
-        const SizedBox(height: 4),
-        Expanded(
-          child: SingleChildScrollView(
-            controller: _scroll,
-            child: Text(_preview.isEmpty ? '請開始說話…' : _preview),
-          ),
-        ),
+        if (_livePreview) ..._buildPreview(theme) else const Spacer(),
         const SizedBox(height: 12),
         if (_draftMs != null) _buildDraft() else _buildNoteButtons(),
         const SizedBox(height: 8),
@@ -481,6 +583,50 @@ class _LiveRecordScreenState extends State<LiveRecordScreen> {
         FilledButton.icon(onPressed: _stop, icon: const Icon(Icons.stop), label: const Text('停止')),
       ],
     );
+  }
+
+  Widget _buildLivePreviewToggle() {
+    final loading = _previewLoading;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (loading != null) ...[
+          const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+          const SizedBox(width: 8),
+        ],
+        const Text('即時文字（草稿）'),
+        Switch(
+          value: _livePreview,
+          onChanged: loading == null ? (on) => _setLivePreview(on) : null,
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _buildPreview(ThemeData theme) {
+    final loading = _previewLoading;
+    return [
+      if (loading != null)
+        _notice(Icons.downloading, loading)
+      else if (_previewStopped)
+        _notice(Icons.info_outline, '即時文字已停止，錄音仍在進行，停止後會產生完整逐字稿')
+      else if (_previewDelayed)
+        _notice(Icons.hourglass_bottom, '即時文字可能延遲'),
+      const SizedBox(height: 12),
+      Text(
+        _previewFromNow
+            ? '即時預覽（從現在開始；停止後會重新產生正式逐字稿）'
+            : '即時預覽（停止後會重新產生正式逐字稿）',
+        style: theme.textTheme.labelMedium,
+      ),
+      const SizedBox(height: 4),
+      Expanded(
+        child: SingleChildScrollView(
+          controller: _scroll,
+          child: Text(_preview.isEmpty ? '請開始說話…' : _preview),
+        ),
+      ),
+    ];
   }
 
   Widget _buildNoteButtons() {
