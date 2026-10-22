@@ -82,15 +82,16 @@ App 內部新增「保持螢幕開啟」的開關，iOS 對應 `UIApplication.sh
 **第一批可以開工**：T1
 **建議做法**：依序做（共 3 張，一條直線）
 
-- [ ] **T1 保持螢幕開啟的開關＋原生通道**
+- [x] **T1 保持螢幕開啟的開關＋原生通道**
   - 做完能看到：`ScreenAwake` 記錄持有者，有任何一個就不自動鎖定，全部釋放才恢復；iOS、Android 接上系統設定
   - 被誰卡住：無，可以直接開工
   - 主要會動的檔案：`lib/services/screen_awake.dart`（新）、`ios/Runner/AppDelegate.swift`、`android/app/src/main/kotlin/com/example/echonote/MainActivity.kt`、`test/services/screen_awake_test.dart`（新）
   - 軌道：可獨立進行
   - 驗收：
-    - [ ] 第一個持有者加入時打開、最後一個釋放時關閉；同一個持有者重複加入或釋放不影響
-    - [ ] 平台呼叫失敗（例如測試環境沒有原生端）不會丟例外
-    - [ ] `flutter test`、`flutter analyze`、`flutter build ios` 通過
+    - [x] 第一個持有者加入時打開、最後一個釋放時關閉；同一個持有者重複加入或釋放不影響
+    - [x] 平台呼叫失敗（例如測試環境沒有原生端）不會丟例外
+    - [x] `flutter test`、`flutter analyze`、`flutter build ios` 通過
+  - 2026-10-22 完成。iOS 的 channel 寫在 `AppDelegate.swift` 裡（新增 Swift 檔要改 Xcode 專案檔，不值得）；Android 寫在 `MainActivity.kt`。平台呼叫排成佇列依序執行，最後要求的狀態為準；呼叫失敗只記 log，下一次變化時重試。`flutter build ios`、`flutter build apk --debug` 都通過。
 
 - [ ] **T2 三個畫面接上開關，並修改停止說明**
   - 做完能看到：即時錄音從 `preparing` 到轉錄完成都不自動鎖定，`error` 或離開畫面就恢復；匯入後轉錄、詳細頁重新轉錄期間也不鎖定；錄音因切到背景停止時顯示「錄音已停止並保存（鎖定螢幕或切換 App 會停止錄音）」
