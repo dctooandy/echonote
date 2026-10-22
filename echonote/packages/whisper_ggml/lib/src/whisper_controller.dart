@@ -39,8 +39,9 @@ class WhisperController {
   /// (0 = no limit); [audioCtx] is the encoder context (0 = whisper's
   /// default of 1500 frames = 30 s, -1 = sized to each run's window, >0 =
   /// fixed); [commitSec] is how long the window grows before its text is
-  /// committed (a fixed [audioCtx] must cover it). Defaults keep upstream
-  /// behavior. On an iPhone 12 Pro Max
+  /// committed (a fixed [audioCtx] must cover it). [collapseRepetitions]
+  /// cuts repetition loops down to one occurrence before a window is
+  /// committed (echonote addition). Defaults keep upstream behavior. On an iPhone 12 Pro Max
   /// the upstream defaults fall behind real time within a minute; see
   /// echonote's docs/specs/feature-native-mic-stream for measurements.
   Future<WhisperLiveSession> transcribeLive({
@@ -58,6 +59,7 @@ class WhisperController {
     int maxTokens = 0,
     int audioCtx = 0,
     double commitSec = 25,
+    bool collapseRepetitions = true,
   }) async {
     await initModel(model);
 
@@ -75,6 +77,7 @@ class WhisperController {
       maxTokens: maxTokens,
       audioCtx: audioCtx,
       commitSec: commitSec,
+      collapseRepetitions: collapseRepetitions,
     );
 
     pcm16Stream.listen(

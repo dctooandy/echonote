@@ -72,6 +72,7 @@ Future<WhisperLiveSession> startWhisperLiveSession({
   int maxTokens = 0,
   int audioCtx = 0,
   double commitSec = 25,
+  bool collapseRepetitions = true,
   double gateRmsMin = 0.0015,
   double gateVoiceRatio = 2.5,
   double gateNoiseFloorCap = 0.01,
@@ -148,6 +149,7 @@ Future<WhisperLiveSession> startWhisperLiveSession({
       'max_tokens': maxTokens,
       'audio_ctx': audioCtx,
       'commit_sec': commitSec,
+      'collapse_repetitions': collapseRepetitions,
       if (initialPrompt != null && initialPrompt.isNotEmpty)
         'initial_prompt': initialPrompt,
     }),
@@ -268,6 +270,12 @@ void _liveWorker(SendPort toMain) {
       case 'stop':
         final Map<String, dynamic> result = parse(stopFn());
         pcm.dispose();
+        // [echonote] Loops collapsed in the final text, reported like the
+        // per-run count so the app's total covers the last window too.
+        final Object? loops = result['loops_collapsed'];
+        if (loops is int && loops > 0) {
+          toMain.send(['metrics', <String, dynamic>{'loops_collapsed': loops}]);
+        }
         toMain.send([
           'final',
           result['@type'] == 'error' ? lastPartial : result['text'] as String,

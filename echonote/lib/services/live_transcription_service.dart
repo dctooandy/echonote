@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:whisper_ggml/whisper_ggml.dart';
 
 import 'mic_stream_service.dart';
+import 'repetition.dart';
 import 'transcription_service.dart';
 import 'wav_writer.dart';
 
@@ -59,6 +60,12 @@ const kLivePreviewConfig = LivePreviewConfig(
   audioCtx: int.fromEnvironment('LIVE_AUDIO_CTX', defaultValue: 768),
   commitSec: int.fromEnvironment('LIVE_COMMIT_SEC', defaultValue: 15),
 );
+
+/// Collapse repetition loops in the preview, natively before each commit
+/// and here before display. Off only to compare on the same audio (spec
+/// fix-live-preview-repetition):
+///   flutter run --dart-define=LIVE_COLLAPSE=false
+const kLiveCollapse = bool.fromEnvironment('LIVE_COLLAPSE', defaultValue: true);
 
 enum LiveEndReason {
   /// [LiveRecording.stop] was called.
@@ -169,6 +176,7 @@ class LiveTranscriptionService {
         maxTokens: config.maxTokens,
         audioCtx: config.audioCtx,
         commitSec: config.commitSec.toDouble(),
+        collapseRepetitions: kLiveCollapse,
       );
       final micStream = await _mic.start();
       return LiveRecording._(_mic, micStream, pcm, session, wav);
@@ -193,7 +201,9 @@ class LiveRecording {
     _session.partials.listen(
       (text) {
         _lastText = text;
-        _preview.add(text);
+        // Partials are the whole text so far, so collapsing each one is
+        // enough; nothing accumulates on this side.
+        _preview.add(_collapse(text));
       },
       // A native error ends the preview only; recording continues.
       onError: (Object e, StackTrace st) {
@@ -202,6 +212,9 @@ class LiveRecording {
       },
     );
     _session.metrics.listen((m) {
+      _loopsCollapsedNatively += (m['loops_collapsed'] as num?)?.toInt() ?? 0;
+      // The final report carries only the loop count, not a run's timings.
+      if (!m.containsKey('total_ms')) return;
       if (kDebugMode) _runs.add(m);
       final fedSec = (m['fed_sec'] as num?)?.toDouble();
       if (fedSec != null) _onLag(sentSeconds - fedSec);
@@ -316,9 +329,17 @@ class LiveRecording {
   // so preview settings (audio_ctx etc.) can be compared on a device.
   final List<Map<String, dynamic>> _runs = [];
   double _maxLag = 0;
+  int _loopsCollapsedNatively = 0;
 
-  void _logRuns(String previewText) {
+  String _collapse(String text) => kLiveCollapse ? collapseRepetitions(text).text : text;
+
+  /// Loops the native side removed (at commits and in the final text), and
+  /// those still in [rawPreview] — with collapsing off, the loops the
+  /// preview would otherwise have hidden.
+  void _logRuns(String rawPreview) {
     if (_runs.isEmpty) return;
+    final collapsed = collapseRepetitions(rawPreview);
+
     double median(String key) {
       final v = [for (final m in _runs) (m[key] as num?)?.toDouble() ?? 0]..sort();
       return v[v.length ~/ 2];
@@ -331,17 +352,21 @@ class LiveRecording {
       'median total_ms ${median('total_ms').round()}, '
       'median encode_ms ${median('encode_ms').round()}, '
       'median window_sec ${median('window_sec').toStringAsFixed(1)}, '
-      'max lag ${_maxLag.toStringAsFixed(1)} s',
+      'max lag ${_maxLag.toStringAsFixed(1)} s, '
+      'collapse ${kLiveCollapse ? 'on' : 'off'}, '
+      'loops collapsed natively $_loopsCollapsedNatively, '
+      'loops left in preview ${collapsed.collapsed}',
     );
-    debugPrint('[live-metrics] preview: $previewText');
+    debugPrint('[live-metrics] preview: ${_collapse(rawPreview)}');
   }
 
   /// The mic stream ended (stop, system, or write failure): drain both
   /// consumers, then report.
   Future<void> _finish() async {
     unawaited(_pcm.close());
-    final previewText = await _session.stop().catchError((Object _) => _lastText);
-    if (kDebugMode) _logRuns(previewText);
+    final rawPreview = await _session.stop().catchError((Object _) => _lastText);
+    if (kDebugMode) _logRuns(rawPreview);
+    final previewText = _collapse(rawPreview);
     try {
       await _wav.close();
     } catch (e) {
