@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../models/glossary.dart';
 import '../models/recording.dart';
+import '../services/analysis_errors.dart';
 import '../services/analysis_service.dart';
 import '../services/app_settings.dart';
 import '../services/correction_learning.dart';
@@ -112,7 +113,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       if (mounted) setState(() {});
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('分析失敗: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(analysisErrorMessage(e))));
     } finally {
       if (mounted) setState(() => _isAnalyzing = false);
     }
