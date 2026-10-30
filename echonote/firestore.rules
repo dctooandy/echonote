@@ -1,0 +1,10 @@
+rules_version = '2';
+// Only Cloud Functions (Admin SDK, which bypasses these rules) touch
+// Firestore; the app never reads or writes it directly.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
