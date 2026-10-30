@@ -113,7 +113,7 @@
 - **App Check 是否真的生效**：無法用單元測試，用手動驗收：
   1. 用 `curl` 不帶 App Check token 直接呼叫 function，預期得到 401／`unauthenticated`。
   2. 用實機 Profile 版本（帶 `--dart-define` token）分析一場會議，預期成功。
-  3. 用模擬器 Debug 版本（帶同一個 token）預期成功；在 Console 刪掉 token 後預期失敗，再登記回去。
+  3. 在 Console 暫時刪掉 debug token，實機分析預期被擋（`unauthenticated`）；再登記回去，預期恢復。（2026-10-30 改：`ffmpeg_kit_flutter_new_min` 不支援 arm64 模擬器，改用實機驗證）
   4. 把每日上限暫時調成 1，第二次分析預期看到「今天的分析次數已用完」。
 
 ---
@@ -171,13 +171,17 @@ flowchart LR
     - token 檔 `app_check.local.json`（gitignore），範本 `app_check.local.json.example`；`.vscode/launch.json` 三個設定都加上 `--dart-define-from-file`。
     - 坑：加套件把 `firebase_core` 升到 4.15.2（Firebase iOS SDK 12.19），但 `Podfile.lock` 還鎖著 `Firebase/Functions` 12.15.0，pod install 報「需要更高的最低 iOS 版本」，其實是版本互相衝突。修法：`flutter pub upgrade cloud_functions`（6.5.1）＋ `pod update Firebase FirebaseCore FirebaseFunctions --repo-update`，再刪掉 `build/ios` 清掉舊的 module 快取（`FLTFirebaseCorePlugin has different definitions`）。
 
-- [ ] **T4 部署只記錄、不擋的版本並到實機確認**
+- [x] **T4 部署只記錄、不擋的版本並到實機確認**
   - 做完能看到：function log 顯示實機和模擬器的呼叫都帶著 App Check token
   - 被誰卡住：T2、T3、U1
   - 主要會動的檔案：`functions/src/index.ts`
   - 軌道：可獨立進行（部署前先問使用者）
   - 驗收：
-    - [ ] 實機 Profile、模擬器 Debug 各分析一次，log 都有 App Check
+    - [x] 實機 Profile 分析一次，log 為 `App Check ok`（模擬器跳過，見測試接縫第 3 項）
+  - 2026-10-30 完成。
+    - 第一次部署失敗：Cloud Functions 的 Node.js 20 剛好在 2026-10-30 停用，`engines.node` 升到 22 後部署成功。
+    - curl 不帶 token：log `App Check missing`，被格式檢查擋下（`INVALID_ARGUMENT`），沒有計數。
+    - 實機 Profile：log `App Check ok`。啟動時 SDK 印出的「Firebase App Check debug token」跟 `app_check.local.json` 不同，那是 SDK 自己產生、存在手機上的值；實際送出的是 `--dart-define` 帶入的 token。這是推論，由 T5 強制後實機仍能分析來證實。
 
 - [ ] **T5 改成強制檢查並驗收**
   - 做完能看到：沒有 token 的呼叫被擋；自己的裝置照常分析；每日上限提示正確

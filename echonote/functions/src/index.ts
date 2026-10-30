@@ -49,12 +49,10 @@ export const analyzeMeeting = onCall(
     timeoutSeconds: 120,
     memory: "256MiB",
     maxInstances: 3,
-    // Log-only first: confirm real devices send a token before rejecting
-    // calls without one (spec feature-app-check, decision 9).
-    enforceAppCheck: false,
+    // Reject calls that don't come from the app (spec feature-app-check).
+    enforceAppCheck: true,
   },
   async (request) => {
-    console.log("App Check", request.app ? `ok (${request.app.appId})` : "missing");
     const invalid = validateRequest(request.data);
     if (invalid) throw new HttpsError("invalid-argument", invalid);
     const data = request.data as AnalyzeMeetingRequest;
