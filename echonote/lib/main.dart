@@ -1,3 +1,4 @@
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
@@ -14,6 +15,14 @@ void main() async {
   // still records and transcribes, and analysis reports itself unavailable.
   try {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    // Only a free Personal Team signs the app, so App Attest is out: every
+    // build uses the debug provider with a token registered in the Firebase
+    // console (spec feature-app-check, decision 18). Without the define the
+    // SDK generates its own token and prints it to the Xcode console.
+    const debugToken = String.fromEnvironment('APP_CHECK_DEBUG_TOKEN');
+    await FirebaseAppCheck.instance.activate(
+      providerApple: AppleDebugProvider(debugToken: debugToken.isEmpty ? null : debugToken),
+    );
     AnalysisService.available = true;
   } on UnsupportedError catch (e) {
     debugPrint('Firebase not configured on this platform: ${e.message}');

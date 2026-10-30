@@ -46,3 +46,6 @@ app.*.map.json
 
 # Gradle cache from building Android plugins (e.g. packages/whisper_ggml)
 **/android/.gradle/
+
+# App Check debug token (spec feature-app-check, decision 18); copy from app_check.local.json.example
+app_check.local.json
