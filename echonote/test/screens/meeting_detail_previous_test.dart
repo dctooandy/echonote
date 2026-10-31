@@ -51,7 +51,9 @@ Future<void> _pump(WidgetTester tester, Recording recording, List<Recording> sav
 }
 
 Future<void> _openPicker(WidgetTester tester) async {
-  await tester.tap(find.byTooltip('接續上一場'));
+  await tester.tap(find.byTooltip('更多'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('接續上一場'));
   await tester.pumpAndSettle();
 }
 

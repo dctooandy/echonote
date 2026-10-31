@@ -495,32 +495,50 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
         appBar: AppBar(
           title: Text(widget.recording.displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
           // Seldom used and costly to hit by mistake, so up here, out of the
-          // thumb's way; each asks first (spec feature-dark-theme).
+          // thumb's way, behind one menu so the title keeps its room; each
+          // asks first (spec feature-dark-theme; menu since
+          // feature-cross-meeting-memory).
           actions: [
-            RoundIconButton(
-              icon: Icons.link,
-              tooltip: '接續上一場',
-              onPressed: busy ? null : _pickPrevious,
-            ),
-            if (analysis != null && widget.recording.isTranscribed)
-              RoundIconButton(
-                icon: Icons.auto_awesome,
-                tooltip: '重新分析',
-                onPressed: busy ? null : _confirmReanalyze,
+            PopupMenuButton<_MoreAction>(
+              tooltip: '更多',
+              enabled: !busy,
+              icon: const Icon(Icons.more_horiz, size: 20),
+              style: IconButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+                fixedSize: const Size.square(38),
+                minimumSize: const Size.square(38),
+                padding: EdgeInsets.zero,
               ),
-            if (widget.recording.isTranscribed)
-              RoundIconButton(
-                icon: Icons.subtitles_outlined,
-                tooltip: '用目前詞庫重新轉錄',
-                onPressed: busy ? null : _confirmRetranscribe,
-              ),
-            RoundIconButton(
-              icon: Icons.delete_outline,
-              tooltip: '刪除',
-              color: Theme.of(context).colorScheme.error,
-              onPressed: busy ? null : _delete,
+              onSelected: (action) => switch (action) {
+                _MoreAction.previous => _pickPrevious(),
+                _MoreAction.reanalyze => _confirmReanalyze(),
+                _MoreAction.retranscribe => _confirmRetranscribe(),
+                _MoreAction.delete => _delete(),
+              },
+              itemBuilder: (context) {
+                final error = Theme.of(context).colorScheme.error;
+                PopupMenuItem<_MoreAction> item(_MoreAction value, IconData icon, String label, [Color? color]) =>
+                    PopupMenuItem(
+                      value: value,
+                      child: Row(
+                        children: [
+                          Icon(icon, size: 20, color: color),
+                          const SizedBox(width: 12),
+                          Text(label, style: TextStyle(color: color)),
+                        ],
+                      ),
+                    );
+                return [
+                  item(_MoreAction.previous, Icons.link, '接續上一場'),
+                  if (analysis != null && widget.recording.isTranscribed)
+                    item(_MoreAction.reanalyze, Icons.auto_awesome, '重新分析'),
+                  if (widget.recording.isTranscribed)
+                    item(_MoreAction.retranscribe, Icons.subtitles_outlined, '用目前詞庫重新轉錄'),
+                  item(_MoreAction.delete, Icons.delete_outline, '刪除', error),
+                ];
+              },
             ),
-            const SizedBox(width: 9),
+            const SizedBox(width: 12),
           ],
         ),
         body: Column(
@@ -1293,6 +1311,8 @@ class _TimePill extends StatelessWidget {
     );
   }
 }
+
+enum _MoreAction { previous, reanalyze, retranscribe, delete }
 
 enum _LearnChoice { dismiss, learn, learnAndApply }
 
