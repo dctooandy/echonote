@@ -94,7 +94,7 @@ follow_up: {
 本機 JSON（`history/<id>.json`）：
 
 - `Recording` 新增 `previous_recording_id: String?`，預設 null；舊資料讀進來就是 null，不需要遷移。
-- `MeetingAnalysis` 新增 `follow_up`（結構同上，但 `source_segment_index` 轉成 `source_timestamp_ms`，沿用既有「序號 → 時間」的本機查表）。舊資料沒有這個欄位時當成空的。
+- `MeetingAnalysis` 新增 `follow_up`（結構同上，但 `source_segment_index` 轉成 `source_timestamp_ms`，沿用既有「序號 → 時間」的本機查表；`previous_todo_index` 換成那筆待辦的文字 `task`）。舊資料沒有這個欄位時當成空的；空的 `follow_up` 不寫進檔案。
 - 被接續的那場被刪除時（決定 6）：不改動接續它的那一場的 `previous_recording_id`；追溯時找不到就停止，畫面顯示「接續的會議已刪除」，可以重新選擇。
 
 ## 權限與狀態機
@@ -176,17 +176,18 @@ flowchart LR
     - [x] `flutter test`、`flutter analyze` 通過
   - 備註：`previousCandidates`、`previousOf` 在 `lib/services/meeting_chain.dart`，`formatIsoDate` 在 `lib/utils/format.dart`。`MeetingDetailScreen` 新增選填的 `store` 參數當測試接縫：widget 測試的假時鐘裡，真的檔案讀寫不會完成。分析成功後清掉 `previousChangedSinceAnalysis`，原本排在 T3，順手在這張做了。測試：`test/screens/meeting_detail_previous_test.dart`（5 個）、`test/services/meeting_chain_test.dart`（4 個）、`test/models/recording_test.dart`（新增 2 個）。
 
-- [ ] **T3 分析時帶上前幾場，顯示「與上次相比」**
+- [x] **T3 分析時帶上前幾場，顯示「與上次相比」**
   - 做完能看到：有設定接續的會議重新分析後，摘要分頁出現「上次的待辦」「決議的變化」「新的主題」三段，時間膠囊點了跳到那裡播放。
   - 被誰卡住：T1、T2
   - 主要會動的檔案：`lib/services/analysis_service.dart`、`lib/models/recording.dart`、`lib/screens/meeting_detail_screen.dart`、`test/services/`、`test/screens/`
   - 軌道：可獨立進行
   - 驗收：
-    - [ ] `previousChain`：最多 3 場、遇到刪除或沒分析就停、由舊到新
-    - [ ] `toPreviousMeetingPayload`：決議攤平、待辦帶 `done`、依決定 4 截斷
-    - [ ] `FollowUp` JSON 往返；序號換算成時間，超出範圍的丟掉
-    - [ ] widget 測試：有和沒有 `follow_up` 時的卡片
+    - [x] `previousChain`：最多 3 場、遇到刪除或沒分析就停、由舊到新
+    - [x] `toPreviousMeetingPayload`：決議攤平、待辦帶 `done`、依決定 4 截斷
+    - [x] `FollowUp` JSON 往返；序號換算成時間，超出範圍的丟掉
+    - [x] widget 測試：有和沒有 `follow_up` 時的卡片
     - [x] 分析成功後清掉 `previous_changed_since_analysis`（T2 已做）
+  - 備註：本機存的 `todo_progress` 不存 `previous_todo_index`，改存送出當下那筆待辦的文字（`task`），前一場之後修改或刪除也不影響這次的分析。重複的序號只留第一筆。`resolveFollowUp` 在 `lib/services/analysis_service.dart`，`previousChain`、`toPreviousMeetingPayload` 在 `lib/services/meeting_chain.dart`。測試：`test/services/follow_up_test.dart`（5 個）、`test/services/meeting_chain_test.dart`（新增 5 個）、`test/screens/meeting_detail_previous_test.dart`（新增 2 個）。`flutter build ios` 留到 T4 實機時一起做。
 
 - [ ] **T4 部署與實機驗收**
   - 做完能看到：正式環境用兩場真實錄音，待辦進度判斷合理，沒有把上次的內容寫成這次的發言。

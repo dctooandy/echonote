@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import '../models/recording.dart';
+import 'meeting_chain.dart';
 
 class AnalysisService {
   /// False when Firebase didn't initialize (not configured on Android yet).
@@ -11,17 +12,23 @@ class AnalysisService {
   /// [glossary] is sent whole (the store caps it at 200 terms), not trimmed
   /// to what fits in the whisper prompt: Claude can still fix the terms
   /// whisper had no room for.
+  ///
+  /// [previous] is the chain of earlier meetings this one follows, oldest
+  /// first (see [previousChain]); only their conclusions are sent.
   Future<MeetingAnalysis> analyze(
     List<TranscriptSegment> segments, {
     List<String> glossary = const [],
     List<UserNote> notes = const [],
+    List<Recording> previous = const [],
   }) async {
     final highlights = buildHighlights(notes, segments);
+    final previousPayload = previous.map(toPreviousMeetingPayload).toList();
     final callable = FirebaseFunctions.instance.httpsCallable('analyzeMeeting');
     final result = await callable.call<Map<String, dynamic>>({
       'segments': segments.map((s) => s.toJson()).toList(),
       if (glossary.isNotEmpty) 'glossary': glossary,
       if (highlights.payload.isNotEmpty) 'highlights': highlights.payload,
+      if (previousPayload.isNotEmpty) 'previous_meetings': previousPayload,
     });
     // The plugin returns nested Map<Object?, Object?> from the platform channel;
     // round-tripping through JSON normalizes it to plain Map<String, dynamic>.
@@ -30,6 +37,13 @@ class AnalysisService {
     data['highlight_contexts'] = resolveHighlightContexts(
       data['highlight_contexts'],
       highlights.noteIds,
+    );
+    data['follow_up'] = resolveFollowUp(
+      data['follow_up'],
+      segments,
+      previousPayload.isEmpty
+          ? const []
+          : [for (final t in previousPayload.last['todos'] as List) (t as Map)['task'] as String],
     );
     return MeetingAnalysis.fromJson(data);
   }
@@ -106,4 +120,57 @@ Map<String, String> resolveHighlightContexts(dynamic raw, List<String> noteIds) 
     contexts[noteIds[index]] = context;
   }
   return contexts;
+}
+
+/// Turns the model's `follow_up` into the stored form: segment indices
+/// become timestamps (out of range → null, like todos), and each
+/// `previous_todo_index` becomes the todo's text from [previousTodos] (the
+/// latest previous meeting's todos as sent). Entries with an unknown index
+/// are dropped, as are repeats; "not mentioned" ones go last (spec
+/// decision 9).
+Map<String, dynamic> resolveFollowUp(
+  dynamic raw,
+  List<TranscriptSegment> segments,
+  List<String> previousTodos,
+) {
+  final map = raw is Map ? raw : const {};
+  int? msFor(dynamic index) =>
+      index is int && index >= 0 && index < segments.length ? segments[index].startMs : null;
+  String text(dynamic value) => value is String ? value : '';
+
+  final progress = <Map<String, dynamic>>[];
+  final seen = <int>{};
+  for (final entry in (map['todo_progress'] is List ? map['todo_progress'] as List : const [])) {
+    if (entry is! Map) continue;
+    final index = entry['previous_todo_index'];
+    if (index is! int || index < 0 || index >= previousTodos.length || !seen.add(index)) continue;
+    progress.add({
+      'task': previousTodos[index],
+      'status': text(entry['status']),
+      'note': text(entry['note']),
+      'source_timestamp_ms': msFor(entry['source_segment_index']),
+    });
+  }
+  bool unmentioned(Map<String, dynamic> p) =>
+      TodoProgressStatus.fromJson(p['status'] as String?) == TodoProgressStatus.notMentioned;
+  // Stable: the model's order within each group is kept.
+  final ordered = [...progress.where((p) => !unmentioned(p)), ...progress.where(unmentioned)];
+
+  return {
+    'todo_progress': ordered,
+    'decision_changes': [
+      for (final entry in (map['decision_changes'] is List ? map['decision_changes'] as List : const []))
+        if (entry is Map)
+          {
+            'change': text(entry['change']),
+            'previous_decision': text(entry['previous_decision']),
+            'current': text(entry['current']),
+            'source_timestamp_ms': msFor(entry['source_segment_index']),
+          },
+    ],
+    'new_topics': [
+      for (final topic in (map['new_topics'] is List ? map['new_topics'] as List : const []))
+        if (topic is String && topic.trim().isNotEmpty) topic,
+    ],
+  };
 }

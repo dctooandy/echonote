@@ -165,6 +165,118 @@ class AgendaItem {
       };
 }
 
+/// What became of a todo from the meeting this one follows. Stored as
+/// `done` / `in_progress` / `not_mentioned`.
+enum TodoProgressStatus {
+  done('done', '已完成'),
+  inProgress('in_progress', '進行中'),
+  notMentioned('not_mentioned', '這次沒提到');
+
+  const TodoProgressStatus(this.jsonValue, this.label);
+
+  final String jsonValue;
+  final String label;
+
+  static TodoProgressStatus fromJson(String? value) =>
+      values.firstWhere((s) => s.jsonValue == value, orElse: () => notMentioned);
+}
+
+class TodoProgress {
+  TodoProgress({required this.task, required this.status, required this.note, this.sourceTimestampMs});
+
+  /// The earlier todo's text as sent, kept here so later edits or deletion
+  /// of that meeting don't change this analysis.
+  final String task;
+  final TodoProgressStatus status;
+  final String note;
+  final int? sourceTimestampMs;
+
+  factory TodoProgress.fromJson(Map<String, dynamic> json) => TodoProgress(
+        task: json['task'] as String? ?? '',
+        status: TodoProgressStatus.fromJson(json['status'] as String?),
+        note: json['note'] as String? ?? '',
+        sourceTimestampMs: json['source_timestamp_ms'] as int?,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'task': task,
+        'status': status.jsonValue,
+        'note': note,
+        'source_timestamp_ms': sourceTimestampMs,
+      };
+}
+
+/// Stored as `continued` / `revised` / `reversed`.
+enum DecisionChangeKind {
+  continued('continued', '延續'),
+  revised('revised', '修改'),
+  reversed('reversed', '推翻');
+
+  const DecisionChangeKind(this.jsonValue, this.label);
+
+  final String jsonValue;
+  final String label;
+
+  static DecisionChangeKind fromJson(String? value) =>
+      values.firstWhere((k) => k.jsonValue == value, orElse: () => continued);
+}
+
+class DecisionChange {
+  DecisionChange({
+    required this.change,
+    required this.previousDecision,
+    required this.current,
+    this.sourceTimestampMs,
+  });
+
+  final DecisionChangeKind change;
+  final String previousDecision;
+  final String current;
+  final int? sourceTimestampMs;
+
+  factory DecisionChange.fromJson(Map<String, dynamic> json) => DecisionChange(
+        change: DecisionChangeKind.fromJson(json['change'] as String?),
+        previousDecision: json['previous_decision'] as String? ?? '',
+        current: json['current'] as String? ?? '',
+        sourceTimestampMs: json['source_timestamp_ms'] as int?,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'change': change.jsonValue,
+        'previous_decision': previousDecision,
+        'current': current,
+        'source_timestamp_ms': sourceTimestampMs,
+      };
+}
+
+/// "與上次相比": this meeting against the ones it follows (spec
+/// feature-cross-meeting-memory). Empty when it follows none.
+class FollowUp {
+  FollowUp({this.todoProgress = const [], this.decisionChanges = const [], this.newTopics = const []});
+
+  final List<TodoProgress> todoProgress;
+  final List<DecisionChange> decisionChanges;
+  final List<String> newTopics;
+
+  bool get isEmpty => todoProgress.isEmpty && decisionChanges.isEmpty && newTopics.isEmpty;
+
+  factory FollowUp.fromJson(Map<String, dynamic> json) => FollowUp(
+        todoProgress: (json['todo_progress'] as List<dynamic>? ?? [])
+            .map((t) => TodoProgress.fromJson(t as Map<String, dynamic>))
+            .toList(),
+        decisionChanges: (json['decision_changes'] as List<dynamic>? ?? [])
+            .map((d) => DecisionChange.fromJson(d as Map<String, dynamic>))
+            .toList(),
+        newTopics: (json['new_topics'] as List<dynamic>? ?? []).cast<String>(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'todo_progress': todoProgress.map((t) => t.toJson()).toList(),
+        'decision_changes': decisionChanges.map((d) => d.toJson()).toList(),
+        'new_topics': newTopics,
+      };
+}
+
 class MeetingAnalysis {
   MeetingAnalysis({
     required this.overview,
@@ -174,7 +286,9 @@ class MeetingAnalysis {
     required this.attendees,
     required this.agendaItems,
     Map<String, String>? highlightContexts,
-  }) : highlightContexts = highlightContexts ?? {};
+    FollowUp? followUp,
+  }) : highlightContexts = highlightContexts ?? {},
+       followUp = followUp ?? FollowUp();
 
   final String overview;
   final List<String> keyPoints;
@@ -186,6 +300,10 @@ class MeetingAnalysis {
   /// AI's note on what was being discussed at each [UserNote], keyed by
   /// note id. Shown apart from the user's own text; replaced on re-analysis.
   final Map<String, String> highlightContexts;
+
+  /// Empty for analyses made before this existed or without a previous
+  /// meeting.
+  final FollowUp followUp;
 
   factory MeetingAnalysis.fromJson(Map<String, dynamic> json) {
     final summary = json['summary'] as Map<String, dynamic>? ?? {};
@@ -203,6 +321,9 @@ class MeetingAnalysis {
           .toList(),
       highlightContexts:
           (json['highlight_contexts'] as Map<String, dynamic>? ?? {}).cast<String, String>(),
+      followUp: json['follow_up'] is Map<String, dynamic>
+          ? FollowUp.fromJson(json['follow_up'] as Map<String, dynamic>)
+          : null,
     );
   }
 
@@ -215,6 +336,7 @@ class MeetingAnalysis {
           'agenda_items': agendaItems.map((a) => a.toJson()).toList(),
         },
         'highlight_contexts': highlightContexts,
+        if (!followUp.isEmpty) 'follow_up': followUp.toJson(),
       };
 }
 

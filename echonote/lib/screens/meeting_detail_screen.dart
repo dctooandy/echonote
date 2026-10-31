@@ -115,10 +115,12 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     try {
       // A corrupt glossary loads as empty: analyze without it.
       final glossary = (await _glossary.load()).terms.map((t) => t.term).toList();
+      final all = await _store.loadAll();
       final analysis = await _analysisService.analyze(
         widget.recording.segments,
         glossary: glossary,
         notes: widget.recording.notes,
+        previous: previousChain(widget.recording, all),
       );
       widget.recording
         ..analysis = analysis
@@ -954,9 +956,76 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
               ),
             ),
           ),
+          if (!a.followUp.isEmpty) _buildFollowUpCard(a.followUp),
         ],
       );
     });
+  }
+
+  /// "與上次相比", in the summary card's plain style: the whole summary is
+  /// AI output already (spec decision 10).
+  Widget _buildFollowUpCard(FollowUp followUp) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    Widget heading(String text) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text(text, style: theme.textTheme.titleSmall),
+        );
+    Widget item({required String label, required String title, String? detail, int? ms}) => ListTile(
+          dense: true,
+          title: Text.rich(TextSpan(children: [
+            TextSpan(text: '$label　', style: TextStyle(color: theme.colorScheme.primary)),
+            TextSpan(text: title),
+          ])),
+          subtitle: detail == null && ms == null
+              ? null
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (detail != null && detail.isNotEmpty) Text(detail, style: muted),
+                    if (ms != null)
+                      Padding(padding: const EdgeInsets.only(top: 4), child: _TimePill(ms)),
+                  ],
+                ),
+          onTap: ms == null ? null : () => _seekAndPlay(Duration(milliseconds: ms)),
+        );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text('與上次相比', style: theme.textTheme.titleLarge),
+            ),
+            if (followUp.todoProgress.isNotEmpty) ...[
+              heading('上次的待辦'),
+              for (final p in followUp.todoProgress)
+                item(label: p.status.label, title: p.task, detail: p.note, ms: p.sourceTimestampMs),
+            ],
+            if (followUp.decisionChanges.isNotEmpty) ...[
+              heading('決議的變化'),
+              for (final d in followUp.decisionChanges)
+                item(
+                  label: d.change.label,
+                  title: d.current,
+                  detail: '上次：${d.previousDecision}',
+                  ms: d.sourceTimestampMs,
+                ),
+            ],
+            if (followUp.newTopics.isNotEmpty) ...[
+              heading('新的主題'),
+              for (final topic in followUp.newTopics)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
+                  child: Text('• $topic'),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildTodosTab(MeetingAnalysis? analysis) {

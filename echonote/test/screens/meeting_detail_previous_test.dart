@@ -129,4 +129,50 @@ void main() {
     expect(find.text('接續的會議已刪除'), findsOneWidget);
     expect(current.previousRecordingId, 'gone');
   });
+
+  testWidgets('no follow-up, no comparison card', (tester) async {
+    final current = _recording('current', DateTime(2026, 10, 15), title: '這場');
+    await _pump(tester, current, [current]);
+
+    expect(find.byTooltip('複製摘要'), findsOneWidget);
+    expect(find.text('與上次相比'), findsNothing);
+  });
+
+  testWidgets('the comparison card shows the three parts and seeks on tap', (tester) async {
+    final analysis = MeetingAnalysis(
+      overview: '摘要',
+      keyPoints: const [],
+      todos: [],
+      title: '這場',
+      attendees: const [],
+      agendaItems: const [],
+      followUp: FollowUp(
+        todoProgress: [
+          TodoProgress(task: '寫測試', status: TodoProgressStatus.done, note: '已經寫完', sourceTimestampMs: 65000),
+          TodoProgress(task: '訂場地', status: TodoProgressStatus.notMentioned, note: ''),
+        ],
+        decisionChanges: [
+          DecisionChange(
+            change: DecisionChangeKind.reversed,
+            previousDecision: '11 月上線',
+            current: '延到 12 月',
+          ),
+        ],
+        newTopics: ['預算'],
+      ),
+    );
+    final current = _recording('current', DateTime(2026, 10, 15), previous: 'older')..analysis = analysis;
+    await _pump(tester, current, [older, current]);
+
+    expect(find.text('與上次相比'), findsOneWidget);
+    expect(find.text('上次的待辦'), findsOneWidget);
+    expect(find.text('已完成　寫測試', findRichText: true), findsOneWidget);
+    expect(find.text('這次沒提到　訂場地', findRichText: true), findsOneWidget);
+    expect(find.text('已經寫完'), findsOneWidget);
+    expect(find.text('01:05'), findsOneWidget);
+    expect(find.text('決議的變化'), findsOneWidget);
+    expect(find.text('推翻　延到 12 月', findRichText: true), findsOneWidget);
+    expect(find.text('上次：11 月上線'), findsOneWidget);
+    expect(find.text('• 預算'), findsOneWidget);
+  });
 }
