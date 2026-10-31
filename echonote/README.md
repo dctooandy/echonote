@@ -45,8 +45,11 @@
 
 ```
 flutter pub get
-flutter run
+cp app_check.local.json.example app_check.local.json   # 填入 debug token
+flutter run --dart-define-from-file=app_check.local.json
 ```
+
+分析服務有 Firebase App Check 保護。目前用免費 Personal Team 安裝，所有 build 都用 debug provider：`app_check.local.json` 裡的 token（不進 git）要先在 Firebase Console → App Check → iOS App → 管理 debug token 登記，自己的裝置共用這一個。VS Code 的 launch 設定已經帶上這個參數。沒帶參數建置時，App 會用自動產生的 token（印在 Xcode console），沒登記就無法分析。
 
 Cloud Functions 部署於 `functions/` 目錄，需要先設定 Firebase 專案並透過 Secret Manager 設定 `ANTHROPIC_API_KEY`：
 

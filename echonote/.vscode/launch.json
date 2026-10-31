@@ -5,21 +5,30 @@
       "name": "echonote",
       "request": "launch",
       "type": "dart",
-      "program": "lib/main.dart"
+      "program": "lib/main.dart",
+      "toolArgs": [
+        "--dart-define-from-file=app_check.local.json"
+      ]
     },
     {
       "name": "echonote (profile mode)",
       "request": "launch",
       "type": "dart",
       "flutterMode": "profile",
-      "program": "lib/main.dart"
+      "program": "lib/main.dart",
+      "toolArgs": [
+        "--dart-define-from-file=app_check.local.json"
+      ]
     },
     {
       "name": "echonote (release mode)",
       "request": "launch",
       "type": "dart",
       "flutterMode": "release",
-      "program": "lib/main.dart"
+      "program": "lib/main.dart",
+      "toolArgs": [
+        "--dart-define-from-file=app_check.local.json"
+      ]
     }
   ]
 }
