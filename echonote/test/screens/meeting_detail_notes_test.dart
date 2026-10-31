@@ -38,6 +38,12 @@ Future<void> _pump(WidgetTester tester, Recording recording) async {
   await tester.pump();
 }
 
+/// The page's actions live behind the AppBar's "⋯" menu.
+Future<void> _openMenu(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('更多'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUpAll(() {
     PathProviderPlatform.instance = _FakePathProviderPlatform();
@@ -181,7 +187,8 @@ void main() {
       ..edited = true;
     await _pump(tester, recording);
 
-    await tester.tap(find.byTooltip('用目前詞庫重新轉錄'));
+    await _openMenu(tester);
+    await tester.tap(find.text('用目前詞庫重新轉錄'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('你修改過的 1 處逐字稿會被覆蓋'), findsOneWidget);
@@ -194,9 +201,10 @@ void main() {
 
   testWidgets('untranscribed recordings have no re-transcribe button', (tester) async {
     await _pump(tester, _recording()..segments.clear());
+    await _openMenu(tester);
 
-    expect(find.byTooltip('用目前詞庫重新轉錄'), findsNothing);
-    expect(find.byTooltip('刪除'), findsOneWidget);
+    expect(find.text('用目前詞庫重新轉錄'), findsNothing);
+    expect(find.text('刪除'), findsOneWidget);
   });
 
   testWidgets('the transcript tells how to seek and edit', (tester) async {
@@ -342,14 +350,27 @@ void main() {
     expect(tester.widget<NavigationBar>(nav).selectedIndex, 3);
   });
 
-  testWidgets('top buttons: re-analyze only once analyzed, delete always', (tester) async {
+  testWidgets('menu: re-analyze only once analyzed, link and delete always', (tester) async {
     await _pump(tester, _recording());
-    expect(find.byTooltip('重新分析'), findsNothing);
-    expect(find.byTooltip('用目前詞庫重新轉錄'), findsOneWidget);
-    expect(find.byTooltip('刪除'), findsOneWidget);
+    await _openMenu(tester);
+    expect(find.text('接續上一場'), findsOneWidget);
+    expect(find.text('重新分析'), findsNothing);
+    expect(find.text('用目前詞庫重新轉錄'), findsOneWidget);
+    expect(find.text('刪除'), findsOneWidget);
+    await tester.tapAt(Offset.zero);
+    await tester.pumpAndSettle();
 
     await _pump(tester, _recording()..analysis = analysis());
-    expect(find.byTooltip('重新分析'), findsOneWidget);
+    await _openMenu(tester);
+    expect(find.text('重新分析'), findsOneWidget);
+  });
+
+  testWidgets('the AppBar keeps one button, so the title has room', (tester) async {
+    await _pump(tester, _recording()..analysis = analysis());
+    final appBar = find.byType(AppBar);
+
+    // Only ⋯ (the page is the route root here, so no back button).
+    expect(find.descendant(of: appBar, matching: find.byType(IconButton)), findsOneWidget);
   });
 
   testWidgets('re-analyze asks first, and cancelling keeps the analysis', (tester) async {
@@ -357,7 +378,8 @@ void main() {
     final before = recording.analysis;
     await _pump(tester, recording);
 
-    await tester.tap(find.byTooltip('重新分析'));
+    await _openMenu(tester);
+    await tester.tap(find.text('重新分析'));
     await tester.pumpAndSettle();
     expect(find.text('重新分析？'), findsOneWidget);
     expect(find.textContaining('待辦的勾選也會重來'), findsOneWidget);

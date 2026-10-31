@@ -26,3 +26,8 @@ String formatListDate(DateTime t, DateTime now) {
   final day = '${t.month}/${t.day} ${two(t.hour)}:${two(t.minute)}';
   return t.year == now.year ? day : '${t.year}/$day';
 }
+
+/// [t]'s local date as YYYY-MM-DD: how an earlier meeting is dated, in the
+/// picker and in the analysis request (spec feature-cross-meeting-memory).
+String formatIsoDate(DateTime t) =>
+    '${t.year.toString().padLeft(4, '0')}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';

@@ -25,6 +25,25 @@ void main() {
       expect(recording.toJson().containsKey('duration_ms'), isFalse);
     });
 
+    test('legacy entry follows no meeting, and saving it adds no link fields', () {
+      final recording = Recording.fromJson(_legacyJson());
+
+      expect(recording.previousRecordingId, isNull);
+      expect(recording.previousChangedSinceAnalysis, isFalse);
+      expect(recording.toJson().containsKey('previous_recording_id'), isFalse);
+      expect(recording.toJson().containsKey('previous_changed_since_analysis'), isFalse);
+    });
+
+    test('previous meeting link round-trips', () {
+      final json = _legacyJson()
+        ..['previous_recording_id'] = '1720000000000'
+        ..['previous_changed_since_analysis'] = true;
+
+      final recording = Recording.fromJson(Recording.fromJson(json).toJson());
+      expect(recording.previousRecordingId, '1720000000000');
+      expect(recording.previousChangedSinceAnalysis, isTrue);
+    });
+
     test('duration round-trips', () {
       final json = _legacyJson()..['duration_ms'] = 2652000;
 

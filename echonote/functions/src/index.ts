@@ -78,7 +78,7 @@ export const analyzeMeeting = onCall(
     try {
       response = await client.messages.create({
         model: "claude-haiku-4-5",
-        max_tokens: 4096,
+        max_tokens: 6000,
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: buildUserMessage(data) }],
         output_config: {

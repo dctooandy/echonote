@@ -16,17 +16,75 @@ export interface Highlight {
   text: string | null;
 }
 
+/** An earlier meeting this one follows up on: its conclusions, never its transcript. */
+export interface PreviousMeeting {
+  title: string;
+  /** YYYY-MM-DD, the device's local date. */
+  date: string;
+  overview: string;
+  /** Every agenda item's decisions, flattened. */
+  decisions: string[];
+  todos: { task: string; owner: string | null; done: boolean }[];
+}
+
 export interface AnalyzeMeetingRequest {
   segments: TranscriptSegment[];
   language?: string;
   glossary?: string[];
   highlights?: Highlight[];
+  /** Oldest first; the last one is the meeting this one directly follows. */
+  previous_meetings?: PreviousMeeting[];
 }
 
 export const GLOSSARY_MAX_TERMS = 200;
 export const GLOSSARY_TERM_MAX_CHARS = 20;
 
+// The app trims to these same numbers before sending (spec decision 4).
+export const PREVIOUS_MEETINGS_MAX = 3;
+export const PREVIOUS_OVERVIEW_MAX_CHARS = 500;
+export const PREVIOUS_DECISIONS_MAX = 20;
+export const PREVIOUS_TODOS_MAX = 30;
+export const PREVIOUS_ITEM_MAX_CHARS = 200;
+
 const isIndex = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 0;
+
+// Code points, so a CJK character counts as one (matches the app).
+const charCount = (text: string) => [...text].length;
+const isShortText = (value: unknown, max: number): value is string =>
+  typeof value === "string" && charCount(value) <= max;
+
+function validatePreviousMeeting(m: unknown): string | null {
+  const meeting = m as Partial<PreviousMeeting> | null;
+  if (meeting == null || typeof meeting !== "object") return "previous_meetings[] must be an object";
+  if (!isShortText(meeting.title, PREVIOUS_ITEM_MAX_CHARS)) {
+    return `previous_meetings[].title must be a string of at most ${PREVIOUS_ITEM_MAX_CHARS} characters`;
+  }
+  if (typeof meeting.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(meeting.date)) {
+    return "previous_meetings[].date must be YYYY-MM-DD";
+  }
+  if (!isShortText(meeting.overview, PREVIOUS_OVERVIEW_MAX_CHARS)) {
+    return `previous_meetings[].overview must be a string of at most ${PREVIOUS_OVERVIEW_MAX_CHARS} characters`;
+  }
+  if (!Array.isArray(meeting.decisions) || meeting.decisions.length > PREVIOUS_DECISIONS_MAX) {
+    return `previous_meetings[].decisions must be an array of at most ${PREVIOUS_DECISIONS_MAX}`;
+  }
+  if (meeting.decisions.some((d) => !isShortText(d, PREVIOUS_ITEM_MAX_CHARS))) {
+    return `previous_meetings[].decisions[] must be strings of at most ${PREVIOUS_ITEM_MAX_CHARS} characters`;
+  }
+  if (!Array.isArray(meeting.todos) || meeting.todos.length > PREVIOUS_TODOS_MAX) {
+    return `previous_meetings[].todos must be an array of at most ${PREVIOUS_TODOS_MAX}`;
+  }
+  for (const todo of meeting.todos) {
+    if (!isShortText(todo?.task, PREVIOUS_ITEM_MAX_CHARS)) {
+      return `previous_meetings[].todos[].task must be a string of at most ${PREVIOUS_ITEM_MAX_CHARS} characters`;
+    }
+    if (todo.owner !== null && !isShortText(todo.owner, PREVIOUS_ITEM_MAX_CHARS)) {
+      return `previous_meetings[].todos[].owner must be null or a string of at most ${PREVIOUS_ITEM_MAX_CHARS} characters`;
+    }
+    if (typeof todo.done !== "boolean") return "previous_meetings[].todos[].done must be a boolean";
+  }
+  return null;
+}
 
 /** Returns why [data] is not a valid request, or null when it is. */
 export function validateRequest(data: unknown): string | null {
@@ -65,7 +123,39 @@ export function validateRequest(data: unknown): string | null {
     }
   }
 
+  if (req.previous_meetings != null) {
+    if (!Array.isArray(req.previous_meetings)) return "previous_meetings must be an array";
+    if (req.previous_meetings.length > PREVIOUS_MEETINGS_MAX) {
+      return `previous_meetings must have at most ${PREVIOUS_MEETINGS_MAX} entries`;
+    }
+    for (const meeting of req.previous_meetings) {
+      const error = validatePreviousMeeting(meeting);
+      if (error) return error;
+    }
+  }
+
   return null;
+}
+
+/**
+ * One earlier meeting as text. Only the latest one ([indexTodos]) numbers
+ * its todos, because only those are tracked in follow_up.todo_progress;
+ * older meetings are background (spec decision 3).
+ */
+function formatPreviousMeeting(meeting: PreviousMeeting, number: number, indexTodos: boolean): string {
+  const lines = [`前一場 ${number}（${meeting.date}）：${meeting.title.trim()}`, `摘要：${meeting.overview.trim()}`];
+  if (meeting.decisions.length > 0) {
+    lines.push("決議：", ...meeting.decisions.map((d) => `- ${d.trim()}`));
+  }
+  if (meeting.todos.length > 0) {
+    lines.push("待辦：");
+    meeting.todos.forEach((todo, i) => {
+      const status = todo.done ? "已完成" : "未完成";
+      const detail = todo.owner?.trim() ? `負責人：${todo.owner.trim()}；${status}` : status;
+      lines.push(`${indexTodos ? `[上次待辦 ${i}]` : "-"} ${todo.task.trim()}（${detail}）`);
+    });
+  }
+  return lines.join("\n");
 }
 
 /**
@@ -92,6 +182,12 @@ export function buildUserMessage(req: AnalyzeMeetingRequest): string {
     sections.push(`<user_highlights>\n${lines.join("\n")}\n</user_highlights>`);
   }
 
+  const previous = req.previous_meetings ?? [];
+  if (previous.length > 0) {
+    const blocks = previous.map((m, i) => formatPreviousMeeting(m, i + 1, i === previous.length - 1));
+    sections.push(`<previous_meetings>\n${blocks.join("\n\n")}\n</previous_meetings>`);
+  }
+
   return sections.join("\n\n");
 }
 
@@ -99,8 +195,9 @@ export const SYSTEM_PROMPT = `你是會議記錄整理助手。使用者會提�
 - <transcript>：中文會議逐字稿，每一句前面標有這句在逐字稿中的序號（從 0 開始，例如 [0]、[1]、[2]...），序號不是時間。
 - <glossary>（可能沒有）：使用者提供的人名、公司名、專有名詞的正確寫法，一行一個。
 - <user_highlights>（可能沒有）：使用者在會議中親自標記的重點，每筆標有重點序號和它所在的逐字稿序號。
+- <previous_meetings>（可能沒有）：這場會議接續的前幾場會議的紀錄，由舊到新排列；最後一場是這場直接接續的會議，它的待辦標有 [上次待辦 數字]。
 
-請根據逐字稿內容產出摘要、待辦事項清單、結構化會議紀錄。
+請根據逐字稿內容產出摘要、待辦事項清單、結構化會議紀錄；有 <previous_meetings> 時，另外產出與上次相比的 follow_up。
 
 規則：
 - 所有輸出文字必須是繁體中文（zh-Hant），不可使用簡體字。
@@ -110,6 +207,15 @@ export const SYSTEM_PROMPT = `你是會議記錄整理助手。使用者會提�
 - <glossary> 裡的詞是正確寫法。逐字稿中發音或字形相近的錯字（例如「太基電」應為「台積電」），在所有輸出中一律改用詞庫的寫法。但不可把逐字稿沒有提到的詞庫詞寫進輸出。
 - <user_highlights> 標出使用者認為重要的位置，summary.key_points 必須涵蓋每一筆重點所在位置的會議內容。
 - <user_highlights> 的文字是使用者自己的想法或提醒，只用來判斷哪些內容重要，不是會議發言。不可把筆記文字寫成會議中有人說過、決議過或要求過的內容；摘要、待辦、會議紀錄、highlight_contexts 都只能根據逐字稿描述會議內容。
+- <previous_meetings> 是之前會議的紀錄，不是這次的發言。summary、todos、structured_minutes、highlight_contexts 都只能根據這次的逐字稿；不可把只在前幾場出現的內容寫成這次有人說過、決議過或要求過的內容。follow_up 是唯一可以引用前幾場的欄位。
+- follow_up：沒有 <previous_meetings> 時，三個欄位都回傳空陣列。有的時候：
+  - todo_progress：最後一場的每一筆 [上次待辦 數字] 都要列一筆，previous_todo_index 填那個數字。這次逐字稿提到已完成填 done，提到還在進行填 in_progress，沒提到填 not_mentioned（排在最後）。note 用一句話（50 字以內）說明根據；source_segment_index 填提到它的逐字稿序號，not_mentioned 填 null。
+  - decision_changes：前幾場的每一條決議，只要這次逐字稿有提到，就列一筆，change 依下面的定義三選一：
+    - continued（延續）：這次重申或確認維持原本的決議，內容沒有變。例如「維持原本的決定」「還是一樣」。重申過的決議也一定要列。
+    - revised（修改）：方向不變，只調整細節，例如日期延後、數量或範圍變動。例如「上線從 15 號延到 22 號」。
+    - reversed（推翻）：取消原本的決議，或改成另一個不同的選項。例如「不用藍色了，改成綠色」「不贊助了」。
+    previous_decision 寫之前的決議，current 寫這次的說法，source_segment_index 填這次逐字稿的序號。這次沒提到的決議不用列。
+  - new_topics：這次討論、但前幾場紀錄都沒有出現過的主題，每筆一個簡短名詞片語。
 - highlight_contexts：為 <user_highlights> 的每一筆重點，根據逐字稿用一兩句話（50 字以內）說明該處前後在討論什麼，note_index 填該筆的重點序號。沒有 <user_highlights> 時回傳空陣列。`;
 
 export const outputSchema = {
@@ -190,7 +296,50 @@ export const outputSchema = {
         additionalProperties: false,
       },
     },
+    follow_up: {
+      type: "object",
+      description: "與 <previous_meetings> 相比的變化；沒有 <previous_meetings> 時三個欄位都是空陣列",
+      properties: {
+        todo_progress: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              previous_todo_index: { type: "integer", description: "[上次待辦 數字] 的數字" },
+              status: { type: "string", enum: ["done", "in_progress", "not_mentioned"] },
+              note: { type: "string", description: "一句話說明根據，50 字以內" },
+              source_segment_index: {
+                type: ["integer", "null"],
+                description: "這次逐字稿提到它的序號；not_mentioned 時為 null",
+              },
+            },
+            required: ["previous_todo_index", "status", "note", "source_segment_index"],
+            additionalProperties: false,
+          },
+        },
+        decision_changes: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              change: { type: "string", enum: ["continued", "revised", "reversed"] },
+              previous_decision: { type: "string" },
+              current: { type: "string" },
+              source_segment_index: {
+                type: ["integer", "null"],
+                description: "這次逐字稿的序號（輸入每句前面的 [數字]，從 0 開始，不是時間）",
+              },
+            },
+            required: ["change", "previous_decision", "current", "source_segment_index"],
+            additionalProperties: false,
+          },
+        },
+        new_topics: { type: "array", items: { type: "string" } },
+      },
+      required: ["todo_progress", "decision_changes", "new_topics"],
+      additionalProperties: false,
+    },
   },
-  required: ["summary", "todos", "structured_minutes", "highlight_contexts"],
+  required: ["summary", "todos", "structured_minutes", "highlight_contexts", "follow_up"],
   additionalProperties: false,
 } as const;
