@@ -17,6 +17,12 @@ String analysisErrorMessage(Object error) {
       return error.message ?? 'Claude API 額度已達上限，請稍後再試';
     case 'unavailable':
       return '網路連線有問題，請稍後再試';
+    case 'unknown':
+      // The iOS plugin maps only Functions-domain errors; anything else,
+      // in practice NSURLError (offline, timeout), arrives as `unknown` with
+      // iOS's English text, which we keep for the rarer non-network cases.
+      final detail = error.message;
+      return detail == null || detail.isEmpty ? '網路連線有問題，請稍後再試' : '網路連線有問題，請稍後再試（$detail）';
     default:
       return '分析失敗：${error.message ?? error.code}';
   }

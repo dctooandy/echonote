@@ -28,6 +28,14 @@ void main() {
     expect(analysisErrorMessage(_error('unavailable')), '網路連線有問題，請稍後再試');
   });
 
+  test('unknown (iOS network errors) reads as a connection problem and keeps the original text', () {
+    expect(
+      analysisErrorMessage(_error('unknown', message: 'The Internet connection appears to be offline.')),
+      '網路連線有問題，請稍後再試（The Internet connection appears to be offline.）',
+    );
+    expect(analysisErrorMessage(_error('unknown')), '網路連線有問題，請稍後再試');
+  });
+
   test('other codes show the function message', () {
     expect(analysisErrorMessage(_error('internal', message: 'Claude API 沒有回傳文字內容')), '分析失敗：Claude API 沒有回傳文字內容');
   });
