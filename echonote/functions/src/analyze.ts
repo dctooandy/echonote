@@ -210,7 +210,11 @@ export const SYSTEM_PROMPT = `你是會議記錄整理助手。使用者會提�
 - <previous_meetings> 是之前會議的紀錄，不是這次的發言。summary、todos、structured_minutes、highlight_contexts 都只能根據這次的逐字稿；不可把只在前幾場出現的內容寫成這次有人說過、決議過或要求過的內容。follow_up 是唯一可以引用前幾場的欄位。
 - follow_up：沒有 <previous_meetings> 時，三個欄位都回傳空陣列。有的時候：
   - todo_progress：最後一場的每一筆 [上次待辦 數字] 都要列一筆，previous_todo_index 填那個數字。這次逐字稿提到已完成填 done，提到還在進行填 in_progress，沒提到填 not_mentioned（排在最後）。note 用一句話（50 字以內）說明根據；source_segment_index 填提到它的逐字稿序號，not_mentioned 填 null。
-  - decision_changes：前幾場的決議在這次被延續（continued）、修改（revised）或推翻（reversed）時各列一筆；previous_decision 寫之前的決議，current 寫這次的說法，source_segment_index 填這次逐字稿的序號。這次沒提到的決議不用列。
+  - decision_changes：前幾場的每一條決議，只要這次逐字稿有提到，就列一筆，change 依下面的定義三選一：
+    - continued（延續）：這次重申或確認維持原本的決議，內容沒有變。例如「維持原本的決定」「還是一樣」。重申過的決議也一定要列。
+    - revised（修改）：方向不變，只調整細節，例如日期延後、數量或範圍變動。例如「上線從 15 號延到 22 號」。
+    - reversed（推翻）：取消原本的決議，或改成另一個不同的選項。例如「不用藍色了，改成綠色」「不贊助了」。
+    previous_decision 寫之前的決議，current 寫這次的說法，source_segment_index 填這次逐字稿的序號。這次沒提到的決議不用列。
   - new_topics：這次討論、但前幾場紀錄都沒有出現過的主題，每筆一個簡短名詞片語。
 - highlight_contexts：為 <user_highlights> 的每一筆重點，根據逐字稿用一兩句話（50 字以內）說明該處前後在討論什麼，note_index 填該筆的重點序號。沒有 <user_highlights> 時回傳空陣列。`;
 
