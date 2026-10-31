@@ -247,6 +247,8 @@ class Recording {
     this.transcriptStaleAnalysis = false,
     List<String>? dismissedReplacements,
     this.durationMs,
+    this.previousRecordingId,
+    this.previousChangedSinceAnalysis = false,
   }) : notes = notes ?? [],
        dismissedReplacements = dismissedReplacements ?? [];
 
@@ -282,6 +284,15 @@ class Recording {
   /// file — see the spec feature-recording-duration.
   int? durationMs;
 
+  /// The earlier meeting this one follows up on, chosen by the user; null
+  /// when none. Left as is when that meeting is deleted, so the page can
+  /// say so (spec feature-cross-meeting-memory, decision 6).
+  String? previousRecordingId;
+
+  /// [previousRecordingId] changed after [analysis] was made, so its
+  /// follow-up compares against the wrong meeting. Cleared by re-analysis.
+  bool previousChangedSinceAnalysis;
+
   bool get isTranscribed => segments.isNotEmpty;
 
   String get displayTitle =>
@@ -308,6 +319,8 @@ class Recording {
         dismissedReplacements:
             (json['dismissed_replacements'] as List<dynamic>? ?? []).cast<String>(),
         durationMs: json['duration_ms'] as int?,
+        previousRecordingId: json['previous_recording_id'] as String?,
+        previousChangedSinceAnalysis: json['previous_changed_since_analysis'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -324,5 +337,7 @@ class Recording {
         'transcript_stale_analysis': transcriptStaleAnalysis,
         'dismissed_replacements': dismissedReplacements,
         if (durationMs != null) 'duration_ms': durationMs,
+        if (previousRecordingId != null) 'previous_recording_id': previousRecordingId,
+        if (previousChangedSinceAnalysis) 'previous_changed_since_analysis': true,
       };
 }

@@ -13,6 +13,7 @@ import '../services/analysis_service.dart';
 import '../services/app_settings.dart';
 import '../services/correction_learning.dart';
 import '../services/glossary_store.dart';
+import '../services/meeting_chain.dart';
 import '../services/recording_store.dart';
 import '../services/recording_transcriber.dart';
 import '../services/screen_awake.dart';
@@ -23,9 +24,12 @@ import '../widgets/glossary_term_dialog.dart';
 import '../widgets/round_icon_button.dart';
 
 class MeetingDetailScreen extends StatefulWidget {
-  const MeetingDetailScreen({super.key, required this.recording});
+  const MeetingDetailScreen({super.key, required this.recording, this.store});
 
   final Recording recording;
+
+  /// For tests; the app's on-disk store by default.
+  final RecordingStore? store;
 
   @override
   State<MeetingDetailScreen> createState() => _MeetingDetailScreenState();
@@ -35,16 +39,26 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   final _audioPlayer = AudioPlayer();
   final _analysisService = AnalysisService();
   final _glossary = GlossaryStore();
-  final _store = RecordingStore();
+  late final _store = widget.store ?? RecordingStore();
   late final _transcriber = RecordingTranscriber(store: _store);
   bool _isAnalyzing = false;
   bool _isTranscribing = false;
   int _transcribeProgress = 0;
 
+  /// Every saved meeting, to resolve and pick the one this follows; null
+  /// until loaded.
+  List<Recording>? _all;
+
   @override
   void initState() {
     super.initState();
     _loadAudio();
+    _loadAll();
+  }
+
+  Future<void> _loadAll() async {
+    final all = await _store.loadAll();
+    if (mounted) setState(() => _all = all);
   }
 
   Future<void> _loadAudio() async {
@@ -108,7 +122,8 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       );
       widget.recording
         ..analysis = analysis
-        ..transcriptStaleAnalysis = false;
+        ..transcriptStaleAnalysis = false
+        ..previousChangedSinceAnalysis = false;
       await _store.save(widget.recording);
       if (mounted) setState(() {});
     } catch (e) {
@@ -480,6 +495,11 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
           // Seldom used and costly to hit by mistake, so up here, out of the
           // thumb's way; each asks first (spec feature-dark-theme).
           actions: [
+            RoundIconButton(
+              icon: Icons.link,
+              tooltip: '接續上一場',
+              onPressed: busy ? null : _pickPrevious,
+            ),
             if (analysis != null && widget.recording.isTranscribed)
               RoundIconButton(
                 icon: Icons.auto_awesome,
@@ -506,7 +526,9 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
             // The untranscribed view has its own progress; this covers
             // replacing an existing transcript.
             if (_isTranscribing && widget.recording.isTranscribed) _buildRetranscribeProgress(),
-            if (analysis != null && widget.recording.transcriptStaleAnalysis && !_isTranscribing)
+            if (analysis != null &&
+                (widget.recording.transcriptStaleAnalysis || widget.recording.previousChangedSinceAnalysis) &&
+                !_isTranscribing)
               _buildStaleAnalysisBanner(),
             Expanded(
               child: TabBarView(
@@ -620,7 +642,12 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
           Icon(Icons.info_outline, size: 20, color: colors.amber),
           const SizedBox(width: 8),
           Expanded(
-            child: Text('逐字稿已更新，分析結果可能過時', style: TextStyle(color: colors.amber)),
+            child: Text(
+              widget.recording.transcriptStaleAnalysis
+                  ? '逐字稿已更新，分析結果可能過時'
+                  : '接續的會議變了，重新分析才會更新「與上次相比」',
+              style: TextStyle(color: colors.amber),
+            ),
           ),
           FilledButton(
             onPressed: _isAnalyzing ? null : _confirmReanalyze,
@@ -706,16 +733,97 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   /// are the user's own, not AI output.
   Widget _buildSummaryTab(MeetingAnalysis? analysis) {
     final summary = _buildSummary(analysis);
-    if (widget.recording.notes.isEmpty) return summary;
+    final previousLink = _buildPreviousLink();
+    if (widget.recording.notes.isEmpty && previousLink == null) return summary;
     return Column(
       children: [
-        ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.3),
-          child: _buildNotesSection(),
-        ),
+        ?previousLink,
+        if (widget.recording.notes.isNotEmpty)
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.3),
+            child: _buildNotesSection(),
+          ),
         Expanded(child: summary),
       ],
     );
+  }
+
+  /// "接續：…" above everything else on the summary tab; null when this
+  /// meeting follows none (or the list hasn't loaded yet).
+  Widget? _buildPreviousLink() {
+    final all = _all;
+    if (widget.recording.previousRecordingId == null || all == null) return null;
+    final previous = previousOf(widget.recording, all);
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: ListTile(
+        dense: true,
+        leading: Icon(previous == null ? Icons.link_off : Icons.link),
+        title: Text(
+          previous == null ? '接續的會議已刪除' : '接續：${previous.displayTitle}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(previous == null ? '點這裡重新選擇' : formatIsoDate(previous.createdAt)),
+        onTap: previous == null ? _pickPrevious : () => _openPrevious(previous),
+        trailing: previous == null
+            ? null
+            : IconButton(icon: const Icon(Icons.edit_outlined), tooltip: '更換接續', onPressed: _pickPrevious),
+      ),
+    );
+  }
+
+  Future<void> _openPrevious(Recording previous) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => MeetingDetailScreen(recording: previous, store: widget.store)));
+    // Its title or analysis may have changed there.
+    await _loadAll();
+  }
+
+  /// Picks the earlier meeting this one follows, or clears it. Changing it
+  /// marks an existing analysis stale (spec feature-cross-meeting-memory,
+  /// decision 7).
+  Future<void> _pickPrevious() async {
+    final all = await _store.loadAll();
+    if (!mounted) return;
+    setState(() => _all = all);
+    final current = widget.recording.previousRecordingId;
+    final candidates = previousCandidates(widget.recording, all);
+    final picked = await showModalBottomSheet<({String? id})>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(
+              title: Text('接續哪一場會議？'),
+              subtitle: Text('只列出比這場早的會議；日期依加入 App 的時間'),
+            ),
+            if (current != null)
+              ListTile(
+                leading: const Icon(Icons.link_off),
+                title: const Text('取消接續'),
+                onTap: () => Navigator.pop(context, (id: null)),
+              ),
+            if (candidates.isEmpty) const ListTile(title: Text('沒有更早的會議')),
+            for (final r in candidates)
+              ListTile(
+                enabled: r.analysis != null,
+                leading: Icon(r.id == current ? Icons.check : Icons.event_note_outlined),
+                title: Text(r.displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(
+                  r.analysis == null ? '${formatIsoDate(r.createdAt)} · 尚未分析' : formatIsoDate(r.createdAt),
+                ),
+                onTap: () => Navigator.pop(context, (id: r.id)),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || picked.id == current) return;
+    widget.recording.previousRecordingId = picked.id;
+    if (widget.recording.analysis != null) widget.recording.previousChangedSinceAnalysis = true;
+    _persist();
   }
 
   Widget _buildNotesSection() {

@@ -164,16 +164,17 @@ flowchart LR
     - [x] `npm test`、`npm run build` 通過（不部署，部署在 T4）
   - 備註：測試在 `functions/test/analyze.test.ts`（7 個）；只有最後一場的待辦標 `[上次待辦 i]`，更早的場次待辦用 `-` 列出當背景。
 
-- [ ] **T2 可以設定「接續哪一場」**
+- [x] **T2 可以設定「接續哪一場」**
   - 做完能看到：AppBar 的「接續上一場」按鈕列出更早的場次（沒分析的灰色）；摘要分頁上方顯示「接續：…」，點了開啟那一場；那場被刪除時顯示「接續的會議已刪除」；更換後出現「接續的會議變了」橫幅。
   - 被誰卡住：無，可以直接開工
   - 主要會動的檔案：`lib/models/recording.dart`、`lib/screens/meeting_detail_screen.dart`、`test/models/recording_test.dart`、`test/screens/`
   - 軌道：可獨立進行
   - 驗收：
-    - [ ] `previous_recording_id`、`previous_changed_since_analysis` 的 JSON 往返，舊資料讀進來是預設值
-    - [ ] widget 測試：選單只列更早的場次、沒分析的停用
-    - [ ] 接續的場次被刪除、更換接續後的橫幅
-    - [ ] `flutter test`、`flutter analyze` 通過
+    - [x] `previous_recording_id`、`previous_changed_since_analysis` 的 JSON 往返，舊資料讀進來是預設值
+    - [x] widget 測試：選單只列更早的場次、沒分析的停用
+    - [x] 接續的場次被刪除、更換接續後的橫幅
+    - [x] `flutter test`、`flutter analyze` 通過
+  - 備註：`previousCandidates`、`previousOf` 在 `lib/services/meeting_chain.dart`，`formatIsoDate` 在 `lib/utils/format.dart`。`MeetingDetailScreen` 新增選填的 `store` 參數當測試接縫：widget 測試的假時鐘裡，真的檔案讀寫不會完成。分析成功後清掉 `previousChangedSinceAnalysis`，原本排在 T3，順手在這張做了。測試：`test/screens/meeting_detail_previous_test.dart`（5 個）、`test/services/meeting_chain_test.dart`（4 個）、`test/models/recording_test.dart`（新增 2 個）。
 
 - [ ] **T3 分析時帶上前幾場，顯示「與上次相比」**
   - 做完能看到：有設定接續的會議重新分析後，摘要分頁出現「上次的待辦」「決議的變化」「新的主題」三段，時間膠囊點了跳到那裡播放。
@@ -185,7 +186,7 @@ flowchart LR
     - [ ] `toPreviousMeetingPayload`：決議攤平、待辦帶 `done`、依決定 4 截斷
     - [ ] `FollowUp` JSON 往返；序號換算成時間，超出範圍的丟掉
     - [ ] widget 測試：有和沒有 `follow_up` 時的卡片
-    - [ ] 分析成功後清掉 `previous_changed_since_analysis`
+    - [x] 分析成功後清掉 `previous_changed_since_analysis`（T2 已做）
 
 - [ ] **T4 部署與實機驗收**
   - 做完能看到：正式環境用兩場真實錄音，待辦進度判斷合理，沒有把上次的內容寫成這次的發言。
