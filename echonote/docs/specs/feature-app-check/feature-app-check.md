@@ -21,6 +21,7 @@
 - `pubspec.yaml`：`firebase_core ^4.12.1`、`cloud_functions ^6.3.5`；還沒有 `firebase_app_check`。
 - iOS 最低版本 15.6（App Attest 需要 iOS 14 以上，符合）。`ios/Runner/` 沒有 `.entitlements` 檔，App Attest 需要新增。
 - 專案沒用 Firestore；`functions/` 沒有測試框架。
+- 實作時另外做的修改（2026-10-31 spec-check 補記）：Cloud Functions 執行環境 Node.js 20 → 22（20 在 2026-10-30 停用）；`firebase_app_check` 0.4.9 帶動 `firebase_core` 4.15.2，所以 `cloud_functions` 升到 6.5.1 並 `pod update`；新增 `app_check.local.json.example`；`functions/tsconfig.test.json` 把測試編譯到 `build-test/`（不進 git、不部署）。
 
 ## 目標與範圍
 
@@ -32,8 +33,8 @@
 2. **Function 端強制檢查**：`analyzeMeeting` 加上 `enforceAppCheck: true`。沒有合法 App Check token 的呼叫，在呼叫 Claude 之前就被拒絕。
 3. **同時執行的實例上限**：`maxInstances: 3`，限制短時間內被大量呼叫時的最大花費速度。
 4. **每日呼叫上限**：全域（不分裝置）每天 50 次，以 Asia/Taipei 日期切換，用 Firestore 計數。超過上限就回 `resource-exhausted`，不呼叫 Claude。
-6. **Anthropic Console 花費上限**（你手動設定）：每月上限 US$10，用量到 50% 時通知，當最後一道防線。
 5. **App 端錯誤訊息分類**：依 `FirebaseFunctionsException.code` 給不同的中文訊息（見 UI 章節），取代現在的 `分析失敗: $e`。
+6. **Anthropic Console 花費上限**（你手動設定）：每月上限 US$10，用量到 50% 時通知，當最後一道防線。
 
 **明確不做的事**：
 
@@ -92,14 +93,17 @@
 | `unauthenticated` | 無法驗證這個 App，請確認使用的是正式版本，或稍後再試 |
 | `resource-exhausted`（每日上限） | 今天的分析次數已用完，明天再試 |
 | `resource-exhausted`（Claude 額度） | 維持現在的「Claude API 額度已達上限，請稍後再試」 |
-| `unavailable`／網路錯誤 | 網路連線有問題，請稍後再試 |
+| `unavailable` | 網路連線有問題，請稍後再試 |
+| `unknown`（iOS 斷網、逾時等網路錯誤） | 網路連線有問題，請稍後再試（<iOS 原始訊息>） |
 | 其他 | 分析失敗：<function 回傳的 message> |
+| 不是 Firebase 丟出的錯誤 | 分析失敗：<錯誤內容> |
 
 ## 邊界案例與例外處理
 
 - **Debug 版本沒登記 debug token**：會得到 `unauthenticated`。console 會印出 debug token，要把登記步驟寫進 README 或 devlog。
 - **debug token 外洩**：等於任何人都能通過 App Check，只剩每日上限擋著。token 不進 git；外洩時到 Console 刪掉舊 token、換新的。
 - **建置時忘了帶 `--dart-define`**：App 會用自動產生的 token，沒登記就會被擋，訊息是 `unauthenticated`。要把建置指令寫進 README。
+- **SDK 印出的 debug token 不一定是實際送出的那個**：就算帶了 `--dart-define`，iOS SDK 啟動時仍會印出自己產生、存在手機上的 token（2026-10-30 實測）。判斷有沒有生效要看 function 是否放行，不要看這行 log。
 - **已經安裝在手機上的舊版 App**（沒有 App Check）：部署後就無法分析，必須重新安裝新版。目前只有開發者自己的裝置，可以接受；部署順序：先部署只記錄、不擋的版本（`enforceAppCheck: false`，在 log 印出 `request.app` 是否存在），實機確認有 token 之後再改成強制。
 - **計數增加了但 Claude 呼叫失敗**：不退回計數。
 - **跨日**：計數依日期切換，換日後自動從 0 開始。
@@ -114,7 +118,7 @@
   1. 用 `curl` 不帶 App Check token 直接呼叫 function，預期得到 401／`unauthenticated`。
   2. 用實機 Profile 版本（帶 `--dart-define` token）分析一場會議，預期成功。
   3. 在 Console 暫時刪掉 debug token，實機分析預期被擋（`unauthenticated`）；再登記回去，預期恢復。（2026-10-30 改：`ffmpeg_kit_flutter_new_min` 不支援 arm64 模擬器，改用實機驗證）
-  4. 把每日上限暫時調成 1，第二次分析預期看到「今天的分析次數已用完」。
+  4. 在 Firebase Console 把今天的 `usage_daily/<日期>.count` 改成 50（不用重新部署），分析預期看到「今天的分析次數已用完」；測完改回原值。
 
 ---
 
@@ -183,14 +187,19 @@ flowchart LR
     - curl 不帶 token：log `App Check missing`，被格式檢查擋下（`INVALID_ARGUMENT`），沒有計數。
     - 實機 Profile：log `App Check ok`。啟動時 SDK 印出的「Firebase App Check debug token」跟 `app_check.local.json` 不同，那是 SDK 自己產生、存在手機上的值；實際送出的是 `--dart-define` 帶入的 token。這是推論，由 T5 強制後實機仍能分析來證實。
 
-- [ ] **T5 改成強制檢查並驗收**
+- [x] **T5 改成強制檢查並驗收**
   - 做完能看到：沒有 token 的呼叫被擋；自己的裝置照常分析；每日上限提示正確
   - 被誰卡住：T1、T4
   - 主要會動的檔案：`functions/src/index.ts`、本規格、`docs/devlogs/feature-app-check.md`（新）
   - 軌道：可獨立進行（部署前先問使用者）
   - 驗收：
-    - [ ] 測試接縫章節的 4 項手動驗收全部通過
+    - [x] 測試接縫章節的手動驗收：1、2、4 通過，3 跳過（理由見下）
     - [ ] `/spec-check`、devlog 完成
+  - 2026-10-31 驗收結果。
+    - ① curl 不帶 token：`401 UNAUTHENTICATED`。
+    - ② 實機 Profile 強制後照常分析。也證實 T4 的推論：送出的是 `--dart-define` 的 token（SDK 印出的那個從沒登記過）。
+    - ③ 跳過：刪掉 debug token 後，手機上快取的 App Check token（約 1 小時有效）讓分析照常成功；這一項驗的是 Firebase 拒絕換發新 token 的行為，① 已經證明沒有 token 會被擋。token 之後用 `npx firebase-tools@latest appcheck:debugtokens:create` 登記回去（本機 firebase CLI 14.17 沒有這個指令）。
+    - ④ 在 Console 把 `usage_daily/2026-10-31.count` 改成 50，實機看到「今天的分析次數已用完，明天再試」，之後改回。
 
 - [x] **U1 Console 設定**
   - 做完能看到：Firestore（`asia-east1`）已開、`usage_daily.expireAt` 有 TTL；Firebase App Check 已登記 iOS App 與 debug token；Anthropic Console 每月上限 US$10、50% 通知
@@ -225,3 +234,24 @@ flowchart LR
 16. Firebase Console、Anthropic Console 的設定由你操作，我提供步驟清單。
 17. 每次 `firebase deploy` 前先問過你。
 18. 只有免費 Personal Team、近期不上架：所有 build 都用 debug provider，共用一個以 `--dart-define` 帶入的 debug token；App Attest 等要上架時再做。
+
+## 驗收核對記錄
+
+### 2026-10-31
+
+**結論**：功能面全部跟規格一致，手動驗收 ①②④ 通過、③ 有理由跳過。落差 3 項，都是規格文字沒跟上，不是實作錯誤；另有 1 項行為沒驗證到。
+
+- ✅ 一致：`enforceAppCheck: true`、`maxInstances: 3`（`functions/src/index.ts:51-53`）；先檢查格式再計數（`:56-63`）；計數失敗回 `unavailable`（`:64-68`）；超過上限回 `resource-exhausted` 並帶 `daily_quota`（`:69-73`）；transaction 計數、`expireAt` 為 30 天後、失敗不退回（`:25-44`）；每天 50 次、Asia/Taipei 日期（`functions/src/quota.ts:6,9,15`）；`firestore.rules` 全部拒絕；App 端 debug provider 加上 `--dart-define` token（`lib/main.dart:22-25`）；錯誤訊息對照（`lib/services/analysis_errors.dart:10-23`，接到 `meeting_detail_screen.dart:116`）；README、`.gitignore`、`.vscode/launch.json` 都已更新。
+- ⚠️ 落差（規格沒跟上）：
+  1. 「目標與範圍」的編號順序寫成 1、2、3、4、6、5。
+  2. 測試接縫第 4 項寫「把每日上限暫時調成 1」，實際驗收的做法是直接在 Console 把 `count` 改成 50，不用重新部署。
+  3. 邊界案例寫「沒帶 `--dart-define` 時，SDK 會印出自動產生的 token」，但實測發現就算有帶，SDK 還是會印出它自己產生的那一個，容易讓人誤以為印出來的就是實際送出的 token。
+- ❓ 規格未涵蓋：Cloud Functions 執行環境升到 Node.js 22；`cloud_functions` 升到 6.5.1 並更新 pods；`app_check.local.json.example`；`functions/tsconfig.test.json` 加上 `build-test/`；非 Firebase 錯誤顯示「分析失敗：<錯誤內容>」。
+- ❓ 沒驗證到：斷網時 iOS 外掛實際回傳的錯誤碼是不是 `unavailable`。如果不是，會落到「分析失敗：…」，而不是「網路連線有問題」。
+- 處理（2026-10-31）：三項落差都改規格配合實作；規格沒提到的修改補進「現況」和 UI 表格；斷網錯誤碼用實機飛航模式測試（結果見下一筆）。
+
+### 2026-10-31（斷網測試）
+
+- 實機飛航模式分析，顯示「分析失敗：the internet connection appears to be offline」。原因：iOS 外掛 `createFlutterError` 只轉換 `com.firebase.functions` domain 的錯誤，`NSURLErrorDomain` 一律變成 `unknown`，訊息是 iOS 的英文系統文字。規格原本假設是 `unavailable`，假設錯誤。
+- 處理：`unknown` 也顯示網路訊息並附原文（`lib/services/analysis_errors.dart`），加單元測試；UI 表格拆成 `unavailable` 與 `unknown` 兩列。
+- 順帶確認：function 的 `details` 經外掛 `additionalData` 原樣傳到 Dart（`cloud_functions_platform_interface` `exception.dart:37`），每日上限的判斷確實是靠 `details.reason`，不是剛好落到 message。
