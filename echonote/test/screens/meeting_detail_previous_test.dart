@@ -1,5 +1,9 @@
 import 'package:echonote/models/recording.dart';
 import 'package:echonote/screens/meeting_detail_screen.dart';
+import 'dart:async';
+
+import 'package:echonote/services/analysis_service.dart';
+import 'package:echonote/services/glossary_store.dart';
 import 'package:echonote/services/recording_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,6 +24,28 @@ class _MemoryStore extends RecordingStore {
 
   @override
   Future<String> resolveAudioPath(Recording recording) async => '/missing/${recording.audioFileName}';
+}
+
+/// Answers when the test completes [result], and records what it was sent.
+class _FakeAnalysisService extends AnalysisService {
+  final result = Completer<MeetingAnalysis>();
+  List<Recording>? sentPrevious;
+
+  @override
+  Future<MeetingAnalysis> analyze(
+    List<TranscriptSegment> segments, {
+    List<String> glossary = const [],
+    List<UserNote> notes = const [],
+    List<Recording> previous = const [],
+  }) {
+    sentPrevious = previous;
+    return result.future;
+  }
+}
+
+class _EmptyGlossary extends GlossaryStore {
+  @override
+  Future<GlossaryLoadResult> load() async => GlossaryLoadResult([]);
 }
 
 MeetingAnalysis _analysis(String title) => MeetingAnalysis(
@@ -43,9 +69,21 @@ Recording _recording(String id, DateTime createdAt, {String? title, String? prev
   previousRecordingId: previous,
 );
 
-Future<void> _pump(WidgetTester tester, Recording recording, List<Recording> saved) async {
+Future<void> _pump(
+  WidgetTester tester,
+  Recording recording,
+  List<Recording> saved, {
+  AnalysisService? analysisService,
+}) async {
   await tester.pumpWidget(
-    MaterialApp(home: MeetingDetailScreen(recording: recording, store: _MemoryStore(saved))),
+    MaterialApp(
+      home: MeetingDetailScreen(
+        recording: recording,
+        store: _MemoryStore(saved),
+        analysisService: analysisService,
+        glossary: _EmptyGlossary(),
+      ),
+    ),
   );
   await tester.pump();
 }
@@ -176,5 +214,59 @@ void main() {
     expect(find.text('推翻　延到 12 月', findRichText: true), findsOneWidget);
     expect(find.text('上次：11 月上線'), findsOneWidget);
     expect(find.text('• 預算'), findsOneWidget);
+  });
+
+  group('re-analysis', () {
+    setUp(() => AnalysisService.available = true);
+    tearDown(() => AnalysisService.available = false);
+
+    Future<_FakeAnalysisService> startReanalysis(WidgetTester tester, Recording current, List<Recording> saved) async {
+      final service = _FakeAnalysisService();
+      await _pump(tester, current, saved, analysisService: service);
+      await tester.tap(find.byTooltip('更多'));
+      await tester.pumpAndSettle();
+      // .last: the menu sits above the stale banner's own 重新分析 button.
+      await tester.tap(find.text('重新分析').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '重新分析'));
+      await tester.pump();
+      return service;
+    }
+
+    testWidgets('shows what is running and for how long, then says it is done', (tester) async {
+      final current = _recording('current', DateTime(2026, 10, 15), title: '這場', previous: 'older')
+        ..previousChangedSinceAnalysis = true;
+      final service = await startReanalysis(tester, current, [older, current]);
+
+      expect(find.text('正在重新分析…'), findsOneWidget);
+      expect(find.text('已 0:00'), findsOneWidget);
+      expect(find.text('通常需要半分鐘，可以先看其他分頁'), findsOneWidget);
+      // The stale banner steps aside while the fix for it is running.
+      expect(find.textContaining('接續的會議變了'), findsNothing);
+      expect(service.sentPrevious?.map((r) => r.id), ['older']);
+
+      await tester.pump(const Duration(seconds: 3));
+      expect(find.text('已 0:03'), findsOneWidget);
+
+      service.result.complete(_analysis('新的標題'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('正在重新分析…'), findsNothing);
+      expect(find.text('分析完成，內容已更新'), findsOneWidget);
+      expect(current.analysis?.title, '新的標題');
+      expect(current.previousChangedSinceAnalysis, isFalse);
+    });
+
+    testWidgets('a failure removes the banner and says why', (tester) async {
+      final current = _recording('current', DateTime(2026, 10, 15), title: '這場');
+      final service = await startReanalysis(tester, current, [current]);
+
+      service.result.completeError(StateError('boom'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('正在重新分析…'), findsNothing);
+      expect(find.text('分析失敗：Bad state: boom'), findsOneWidget);
+      expect(current.analysis?.title, '這場');
+    });
   });
 }

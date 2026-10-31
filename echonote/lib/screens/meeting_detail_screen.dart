@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -24,12 +25,20 @@ import '../widgets/glossary_term_dialog.dart';
 import '../widgets/round_icon_button.dart';
 
 class MeetingDetailScreen extends StatefulWidget {
-  const MeetingDetailScreen({super.key, required this.recording, this.store});
+  const MeetingDetailScreen({
+    super.key,
+    required this.recording,
+    this.store,
+    this.analysisService,
+    this.glossary,
+  });
 
   final Recording recording;
 
-  /// For tests; the app's on-disk store by default.
+  /// For tests; the app's on-disk stores and the cloud service by default.
   final RecordingStore? store;
+  final AnalysisService? analysisService;
+  final GlossaryStore? glossary;
 
   @override
   State<MeetingDetailScreen> createState() => _MeetingDetailScreenState();
@@ -37,11 +46,16 @@ class MeetingDetailScreen extends StatefulWidget {
 
 class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   final _audioPlayer = AudioPlayer();
-  final _analysisService = AnalysisService();
-  final _glossary = GlossaryStore();
+  late final _analysisService = widget.analysisService ?? AnalysisService();
+  late final _glossary = widget.glossary ?? GlossaryStore();
   late final _store = widget.store ?? RecordingStore();
   late final _transcriber = RecordingTranscriber(store: _store);
   bool _isAnalyzing = false;
+
+  /// Seconds since the running analysis started: Claude gives no progress,
+  /// so the banner shows time passed instead.
+  int _analysisSeconds = 0;
+  Timer? _analysisTimer;
   bool _isTranscribing = false;
   int _transcribeProgress = 0;
 
@@ -72,6 +86,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
 
   @override
   void dispose() {
+    _analysisTimer?.cancel();
     ScreenAwake.instance.release(this);
     _audioPlayer.dispose();
     super.dispose();
@@ -111,7 +126,13 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       ).showSnackBar(SnackBar(content: Text(Platform.isAndroid ? 'Android 版尚未支援分析' : '分析服務無法使用')));
       return;
     }
-    setState(() => _isAnalyzing = true);
+    setState(() {
+      _isAnalyzing = true;
+      _analysisSeconds = 0;
+    });
+    _analysisTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() => _analysisSeconds++);
+    });
     try {
       // A corrupt glossary loads as empty: analyze without it.
       final glossary = (await _glossary.load()).terms.map((t) => t.term).toList();
@@ -127,11 +148,15 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
         ..transcriptStaleAnalysis = false
         ..previousChangedSinceAnalysis = false;
       await _store.save(widget.recording);
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('分析完成，內容已更新')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(analysisErrorMessage(e))));
     } finally {
+      _analysisTimer?.cancel();
+      _analysisTimer = null;
       if (mounted) setState(() => _isAnalyzing = false);
     }
   }
@@ -546,9 +571,11 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
             // The untranscribed view has its own progress; this covers
             // replacing an existing transcript.
             if (_isTranscribing && widget.recording.isTranscribed) _buildRetranscribeProgress(),
+            if (_isAnalyzing) _buildAnalysisProgress(),
             if (analysis != null &&
                 (widget.recording.transcriptStaleAnalysis || widget.recording.previousChangedSinceAnalysis) &&
-                !_isTranscribing)
+                !_isTranscribing &&
+                !_isAnalyzing)
               _buildStaleAnalysisBanner(),
             Expanded(
               child: TabBarView(
@@ -641,6 +668,40 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
           const SizedBox(height: 4),
           LinearProgressIndicator(
             value: _transcribeProgress > 0 ? _transcribeProgress / 100 : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Same place and look as re-transcription, on every tab, so any long
+  /// action reads the same; the old results stay readable meanwhile.
+  Widget _buildAnalysisProgress() {
+    final theme = Theme.of(context);
+    final again = widget.recording.analysis != null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(again ? '正在重新分析…' : '正在分析…')),
+              Text(
+                '已 ${formatLength(_analysisSeconds * 1000)}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const LinearProgressIndicator(),
+          const SizedBox(height: 4),
+          Text(
+            again ? '通常需要半分鐘，可以先看其他分頁' : '通常需要半分鐘',
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
         ],
       ),
