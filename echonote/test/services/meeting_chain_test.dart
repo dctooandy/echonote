@@ -137,4 +137,68 @@ void main() {
       expect((((payload['todos'] as List).first as Map)['task'] as String).runes.length, previousItemMaxChars);
     });
   });
+
+  group('series (spec feature-chain-links)', () {
+    // Website weekly: w1 <- w2 <- w3, and w2 <- kick (a branch).
+    // Trip: t1 <- t2. Alone: solo. Orphan follows a deleted meeting.
+    final w1 = _r('w1', DateTime(2026, 10, 31));
+    final w2 = _r('w2', DateTime(2026, 11, 1, 14), previous: 'w1');
+    final kick = _r('kick', DateTime(2026, 11, 3), previous: 'w2');
+    final w3 = _r('w3', DateTime(2026, 11, 8), previous: 'w2');
+    final t1 = _r('t1', DateTime(2026, 10, 20));
+    final t2 = _r('t2', DateTime(2026, 11, 1, 12), previous: 't1');
+    final solo = _r('solo', DateTime(2026, 11, 1, 13));
+    final orphan = _r('orphan', DateTime(2026, 11, 2), previous: 'gone');
+    final all = [solo, w3, t2, w1, kick, orphan, w2, t1];
+
+    test('followers are the meetings that follow it, oldest first', () {
+      expect(followersOf(w2, all).map((r) => r.id), ['kick', 'w3']);
+      expect(followersOf(w3, all), isEmpty);
+    });
+
+    test('series group linked meetings, newest first; lone meetings are left out', () {
+      final series = seriesOf(all);
+      expect(series.map((s) => s.recordings.map((r) => r.id).toList()), [
+        ['w3', 'kick', 'w2', 'w1'],
+        ['t2', 't1'],
+      ]);
+      expect(series.first.name, w3.displayTitle);
+      expect(series.first.latest, DateTime(2026, 11, 8));
+      expect(series.first.contains(kick), isTrue);
+      expect(series.first.contains(solo), isFalse);
+    });
+
+    test('colors go by the age of the series, so new recordings never recolor one', () {
+      final colors = {for (final s in seriesOf(all)) s.recordings.last.id: s.colorIndex};
+      expect(colors, {'t1': 0, 'w1': 1});
+      final later = [...all, _r('w4', DateTime(2026, 11, 15), previous: 'w3'), _r('n1', DateTime(2026, 11, 9)), _r('n2', DateTime(2026, 11, 10), previous: 'n1')];
+      final again = {for (final s in seriesOf(later)) s.recordings.last.id: s.colorIndex};
+      expect(again, {'t1': 0, 'w1': 1, 'n1': 2});
+    });
+
+    test('a deleted first meeting splits the series', () {
+      final series = seriesOf(all.where((r) => r.id != 'w2').toList());
+      expect(series.map((s) => s.recordings.map((r) => r.id).toList()), [
+        ['t2', 't1'],
+      ]);
+    });
+
+    test('the single view hint says what it follows and how many follow it', () {
+      expect(chainHint(w2, all), '↩ 接續 10/31 · ↪ 2 場後續');
+      expect(chainHint(w1, all), '↪ 1 場後續');
+      expect(chainHint(w3, all), '↩ 接續 11/1');
+      expect(chainHint(solo, all), isNull);
+      expect(chainHint(orphan, all), isNull);
+    });
+
+    test('inside a frame, only a branch says what it follows', () {
+      final website = seriesOf(all).first;
+      expect([for (var i = 0; i < website.recordings.length; i++) seriesRowHint(website, i)], [
+        '接續 11/1',
+        null,
+        null,
+        null,
+      ]);
+    });
+  });
 }

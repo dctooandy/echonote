@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'settings_store.dart';
 
-export 'settings_store.dart' show Handedness;
+export 'settings_store.dart' show Handedness, HomeView;
 
 /// The settings the whole app reacts to straight away: theme and
 /// handedness (spec feature-dark-theme). Read once before the first frame,
@@ -12,21 +12,25 @@ class AppSettings extends ChangeNotifier {
     this._store,
     this._themeMode = ThemeMode.dark,
     this._handedness = Handedness.right,
+    this._homeView = HomeView.single,
   });
 
   static Future<AppSettings> load(SettingsStore store) async => AppSettings(
     store: store,
     themeMode: await store.themeMode(),
     handedness: await store.handedness(),
+    homeView: await store.homeView(),
   );
 
   /// Null keeps changes in memory only (tests).
   final SettingsStore? _store;
   ThemeMode _themeMode;
   Handedness _handedness;
+  HomeView _homeView;
 
   ThemeMode get themeMode => _themeMode;
   Handedness get handedness => _handedness;
+  HomeView get homeView => _homeView;
 
   Future<void> setThemeMode(ThemeMode mode) async {
     if (mode == _themeMode) return;
@@ -40,6 +44,13 @@ class AppSettings extends ChangeNotifier {
     _handedness = hand;
     notifyListeners();
     await _store?.setHandedness(hand);
+  }
+
+  Future<void> setHomeView(HomeView view) async {
+    if (view == _homeView) return;
+    _homeView = view;
+    notifyListeners();
+    await _store?.setHomeView(view);
   }
 }
 

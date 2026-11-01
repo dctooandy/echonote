@@ -133,7 +133,7 @@ void main() {
 
     expect(current.previousRecordingId, 'older');
     expect(current.previousChangedSinceAnalysis, isTrue);
-    expect(find.text('接續：十月一日週會'), findsOneWidget);
+    expect(find.text('↩ 接續：十月一日週會'), findsOneWidget);
     expect(find.text('接續的會議變了，重新分析才會更新「與上次相比」'), findsOneWidget);
   });
 
@@ -149,17 +149,80 @@ void main() {
     expect(current.previousChangedSinceAnalysis, isFalse);
   });
 
-  testWidgets('cancelling the link clears it', (tester) async {
+  testWidgets('cancelling the link from the picker asks first, then clears it', (tester) async {
     final current = _recording('current', DateTime(2026, 10, 15), title: '這場', previous: 'older');
     await _pump(tester, current, [older, current]);
-    expect(find.text('接續：十月一日週會'), findsOneWidget);
+    expect(find.text('↩ 接續：十月一日週會'), findsOneWidget);
 
     await _openPicker(tester);
     await tester.tap(find.text('取消接續'));
     await tester.pumpAndSettle();
+    expect(find.text('取消接續？'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, '取消接續'));
+    await tester.pumpAndSettle();
 
     expect(current.previousRecordingId, isNull);
+    expect(current.previousChangedSinceAnalysis, isTrue);
     expect(find.textContaining('接續：'), findsNothing);
+  });
+
+  group('the chain card (spec feature-chain-links)', () {
+    final middle = _recording('middle', DateTime(2026, 10, 15), title: '這場', previous: 'older');
+    final next1 = _recording('next1', DateTime(2026, 10, 22), title: '十月廿二日週會', previous: 'middle');
+    final next2 = _recording('next2', DateTime(2026, 10, 23), title: '專案會', previous: 'middle');
+
+    testWidgets('shows on every tab, closed, with what it follows and how many follow it', (tester) async {
+      await _pump(tester, middle, [older, middle, next1, next2]);
+      const summary = '↩ 接續：十月一日週會 · ↪ 2 場後續';
+      expect(find.text(summary), findsOneWidget);
+      expect(find.text('專案會'), findsNothing);
+      for (final tab in ['待辦', '逐字稿', '紀錄']) {
+        await tester.tap(find.text(tab));
+        await tester.pumpAndSettle();
+        expect(find.text(summary), findsOneWidget, reason: tab);
+      }
+    });
+
+    testWidgets('opens to the previous meeting and every follower', (tester) async {
+      await _pump(tester, middle, [older, middle, next1, next2]);
+      await tester.tap(find.text('↩ 接續：十月一日週會 · ↪ 2 場後續'));
+      await tester.pumpAndSettle();
+      expect(find.text('上一場 · 2026-10-01'), findsOneWidget);
+      expect(find.text('十月廿二日週會'), findsOneWidget);
+      expect(find.text('專案會'), findsOneWidget);
+      expect(find.text('後續 · 2026-10-23'), findsOneWidget);
+    });
+
+    testWidgets('unlinking asks first; keeping it changes nothing', (tester) async {
+      final current = _recording('current', DateTime(2026, 10, 15), title: '這場', previous: 'older');
+      await _pump(tester, current, [older, current]);
+      await tester.tap(find.text('↩ 接續：十月一日週會'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('取消接續'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('「十月一日週會（2026-10-01）」'), findsOneWidget);
+      expect(find.textContaining('不會刪除錄音'), findsOneWidget);
+      await tester.tap(find.text('保留'));
+      await tester.pumpAndSettle();
+      expect(current.previousRecordingId, 'older');
+      expect(current.previousChangedSinceAnalysis, isFalse);
+
+      await tester.tap(find.byTooltip('取消接續'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '取消接續'));
+      await tester.pumpAndSettle();
+      expect(current.previousRecordingId, isNull);
+      expect(current.previousChangedSinceAnalysis, isTrue);
+      expect(find.textContaining('接續：'), findsNothing);
+    });
+
+    testWidgets('a meeting with no links has no card', (tester) async {
+      final alone = _recording('alone', DateTime(2026, 10, 15), title: '這場');
+      await _pump(tester, alone, [older, alone]);
+      expect(find.textContaining('接續'), findsNothing);
+      expect(find.textContaining('場後續'), findsNothing);
+    });
   });
 
   testWidgets('a deleted previous meeting says so', (tester) async {

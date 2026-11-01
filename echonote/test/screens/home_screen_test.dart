@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:echonote/screens/home_screen.dart';
 import 'package:echonote/screens/live_record_screen.dart';
 import 'package:echonote/services/app_settings.dart';
+import 'package:echonote/services/settings_store.dart';
 import 'package:echonote/services/audio_duration_probe.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -43,15 +44,16 @@ void main() {
 
   tearDown(() => dir.delete(recursive: true));
 
-  void writeEntry(String id, {int? durationMs}) {
+  void writeEntry(String id, {int? durationMs, String createdAt = '2026-10-22T14:30:05.000', String? previous}) {
     final history = Directory('${dir.path}/history')..createSync(recursive: true);
     File('${history.path}/$id.json').writeAsStringSync(jsonEncode({
       'id': id,
       'audio_name': '錄音 $id',
-      'created_at': '2026-10-22T14:30:05.000',
+      'created_at': createdAt,
       'audio_file_name': '$id.wav',
       'segments': [],
       'duration_ms': ?durationMs,
+      'previous_recording_id': ?previous,
     }));
   }
 
@@ -141,5 +143,72 @@ void main() {
     await settle(tester);
 
     expect(find.byType(LiveRecordScreen), findsOneWidget);
+  });
+
+  group('single and series views (spec feature-chain-links)', () {
+    // w1 <- w2 <- w3, w2 <- kick; t1 <- t2; solo alone.
+    void writeLinked() {
+      writeEntry('w1', createdAt: '2026-10-31T16:52:00.000');
+      writeEntry('w2', createdAt: '2026-11-01T14:05:00.000', previous: 'w1');
+      writeEntry('kick', createdAt: '2026-11-03T10:30:00.000', previous: 'w2');
+      writeEntry('w3', createdAt: '2026-11-08T14:00:00.000', previous: 'w2');
+      writeEntry('t1', createdAt: '2026-10-20T11:00:00.000');
+      writeEntry('t2', createdAt: '2026-11-01T12:33:00.000', previous: 't1');
+      writeEntry('solo', createdAt: '2026-11-01T13:11:00.000');
+    }
+
+    Future<AppSettings> open(WidgetTester tester, {HomeView view = HomeView.single}) async {
+      // Tall enough that every row is built.
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final settings = AppSettings(store: SettingsStore(documentsDir: () async => dir), homeView: view);
+      await tester.pumpWidget(
+        AppSettingsScope(
+          settings: settings,
+          child: MaterialApp(home: HomeScreen(durationProbe: _FakeProbe({}))),
+        ),
+      );
+      await settle(tester);
+      await settle(tester); // seven files to read
+      return settings;
+    }
+
+    testWidgets('the single view lists every meeting and says how they link', (tester) async {
+      writeLinked();
+      await open(tester);
+
+      expect(find.text('錄音 solo'), findsOneWidget);
+      expect(find.textContaining('↩ 接續 10/31 · ↪ 2 場後續'), findsOneWidget);
+      expect(find.textContaining('↪ 1 場後續'), findsNWidgets(2));
+      expect(find.textContaining('↩ 接續 11/1'), findsNWidgets(2));
+      expect(find.textContaining('↩ 接續 10/20'), findsOneWidget);
+    });
+
+    testWidgets('the series view groups linked meetings, hides lone ones, and is remembered', (tester) async {
+      writeLinked();
+      final settings = await open(tester);
+
+      await tester.tap(find.text('連動'));
+      await settle(tester);
+
+      expect(settings.homeView, HomeView.series);
+      expect(find.text('錄音 solo'), findsNothing);
+      expect(find.text('4 場 · 最近 11/8'), findsOneWidget);
+      expect(find.text('2 場 · 最近 11/1'), findsOneWidget);
+      expect(find.text('另有 1 場沒有接續，在單獨檢視'), findsOneWidget);
+      // The newest series on top; the branch says what it follows.
+      expect(tester.getTopLeft(find.text('4 場 · 最近 11/8')).dy, lessThan(tester.getTopLeft(find.text('2 場 · 最近 11/1')).dy));
+      expect(find.textContaining('接續 11/1'), findsOneWidget);
+
+      final stored = jsonDecode(File('${dir.path}/settings.json').readAsStringSync()) as Map<String, dynamic>;
+      expect(stored['home_view'], 'series');
+    });
+
+    testWidgets('the series view without any links says how to make one', (tester) async {
+      writeEntry('solo');
+      await open(tester, view: HomeView.series);
+      expect(find.textContaining('還沒有接續的會議'), findsOneWidget);
+    });
   });
 }

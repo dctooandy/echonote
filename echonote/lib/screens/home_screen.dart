@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models/recording.dart';
 import '../services/audio_duration_probe.dart';
+import '../services/meeting_chain.dart';
 import '../services/app_settings.dart';
 import '../services/recording_store.dart';
 import '../theme/app_theme.dart';
@@ -188,75 +189,180 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             );
           }
-          return ListView.builder(
-            // Room under the last card for the record buttons.
-            padding: const EdgeInsets.only(top: 4, bottom: 150),
-            itemCount: recordings.length,
-            itemBuilder: (context, index) {
-              final recording = recordings[index];
-              final status = _Status.of(context, recording);
-              return Dismissible(
-                key: ValueKey(recording.id),
-                direction: DismissDirection.endToStart,
-                background: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.error,
-                    borderRadius: BorderRadius.circular(kCardRadius),
-                  ),
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Icon(Icons.delete, color: Theme.of(context).colorScheme.onError),
+          final view = AppSettingsScope.of(context).homeView;
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                child: SegmentedButton<HomeView>(
+                  showSelectedIcon: false,
+                  style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                  segments: const [
+                    ButtonSegment(value: HomeView.single, label: Text('單獨')),
+                    ButtonSegment(value: HomeView.series, label: Text('連動')),
+                  ],
+                  selected: {view},
+                  onSelectionChanged: (picked) => AppSettingsScope.of(context).setHomeView(picked.single),
                 ),
-                confirmDismiss: (_) => confirmDeleteRecording(context, recording),
-                onDismissed: (_) async {
-                  // Out of the list right away: a dismissed Dismissible must
-                  // leave the tree before the next frame.
-                  recordings.remove(recording);
-                  try {
-                    await _store.delete(recording);
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(SnackBar(content: Text('刪除失敗: $e')));
-                    }
-                  }
-                  _reload();
-                },
-                child: Card(
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                    leading: CircleAvatar(
-                      radius: 19,
-                      backgroundColor: status.background,
-                      foregroundColor: status.color,
-                      child: Icon(status.icon, size: 20),
-                    ),
-                    title: Text(
-                      recording.displayTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(
-                      formatListDate(recording.createdAt.toLocal(), DateTime.now()),
-                      style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                    ),
-                    trailing: _trailing(context, recording),
-                    onTap: () async {
-                      await Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => MeetingDetailScreen(recording: recording),
-                        ),
-                      );
-                      _reload();
-                    },
-                  ),
-                ),
-              );
-            },
+              ),
+              Expanded(
+                child: view == HomeView.single
+                    ? _buildSingleList(recordings)
+                    : _buildSeriesList(recordings),
+              ),
+            ],
           );
         },
+      ),
+    );
+  }
+
+  /// Room under the last card for the record buttons.
+  static const _listPadding = EdgeInsets.only(top: 4, bottom: 150);
+
+  /// One meeting at a time, newest first, each saying what it follows
+  /// (spec feature-chain-links, decision 4).
+  Widget _buildSingleList(List<Recording> recordings) => ListView.builder(
+    padding: _listPadding,
+    itemCount: recordings.length,
+    itemBuilder: (context, index) {
+      final recording = recordings[index];
+      return _row(recording, recordings, hint: chainHint(recording, recordings));
+    },
+  );
+
+  /// Only linked meetings, one colored frame per series (spec
+  /// feature-chain-links, decision 5).
+  Widget _buildSeriesList(List<Recording> recordings) {
+    final series = seriesOf(recordings);
+    final linked = series.fold(0, (n, s) => n + s.recordings.length);
+    final alone = recordings.length - linked;
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+    if (series.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text('還沒有接續的會議。在會議的「⋯」選單選「接續上一場」就能串起來', textAlign: TextAlign.center, style: TextStyle(color: muted)),
+        ),
+      );
+    }
+    return ListView(
+      padding: _listPadding,
+      children: [
+        for (final s in series) _seriesFrame(s, recordings),
+        if (alone > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Text('另有 $alone 場沒有接續，在單獨檢視', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: muted)),
+          ),
+      ],
+    );
+  }
+
+  Widget _seriesFrame(MeetingSeries series, List<Recording> recordings) {
+    final color = seriesColor(context, series.colorIndex);
+    return Container(
+      key: ValueKey('series-${series.recordings.last.id}'),
+      margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        border: Border.all(color: color),
+        borderRadius: BorderRadius.circular(kCardRadius + 4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Row(
+              children: [
+                Icon(Icons.circle, size: 10, color: color),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    series.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: color, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Text(
+                  '${series.recordings.length} 場 · 最近 ${formatMonthDay(series.latest)}',
+                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+          for (var i = 0; i < series.recordings.length; i++)
+            _row(series.recordings[i], recordings, hint: seriesRowHint(series, i)),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(Recording recording, List<Recording> recordings, {String? hint}) {
+    final status = _Status.of(context, recording);
+    final date = formatListDate(recording.createdAt.toLocal(), DateTime.now());
+    return Dismissible(
+      key: ValueKey(recording.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.error,
+          borderRadius: BorderRadius.circular(kCardRadius),
+        ),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Icon(Icons.delete, color: Theme.of(context).colorScheme.onError),
+      ),
+      confirmDismiss: (_) => confirmDeleteRecording(context, recording),
+      onDismissed: (_) async {
+        // Out of the list right away: a dismissed Dismissible must
+        // leave the tree before the next frame.
+        recordings.remove(recording);
+        try {
+          await _store.delete(recording);
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('刪除失敗: $e')));
+          }
+        }
+        _reload();
+      },
+      child: Card(
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+          leading: CircleAvatar(
+            radius: 19,
+            backgroundColor: status.background,
+            foregroundColor: status.color,
+            child: Icon(status.icon, size: 20),
+          ),
+          title: Text(
+            recording.displayTitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            hint == null ? date : '$date · $hint',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+          ),
+          trailing: _trailing(context, recording),
+          onTap: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => MeetingDetailScreen(recording: recording),
+              ),
+            );
+            _reload();
+          },
+        ),
       ),
     );
   }

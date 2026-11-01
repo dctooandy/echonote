@@ -31,3 +31,6 @@ String formatListDate(DateTime t, DateTime now) {
 /// picker and in the analysis request (spec feature-cross-meeting-memory).
 String formatIsoDate(DateTime t) =>
     '${t.year.toString().padLeft(4, '0')}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+
+/// 10/31: a date in a short hint.
+String formatMonthDay(DateTime t) => '${t.month}/${t.day}';
