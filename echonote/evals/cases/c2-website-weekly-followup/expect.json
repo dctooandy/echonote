@@ -1,0 +1,126 @@
+{
+  "description": "接續上一場：官網改版週會第二場，previous_meetings 凍結了第一場的結論（5 筆待辦、4 個決議）。陷阱：只在第一場出現的 Meetup 贊助、申請網域、阿傑。",
+  "must_include": [
+    {
+      "id": "延到 11/22",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "11月22",
+        "11/22",
+        "十一月二十二"
+      ]
+    },
+    {
+      "id": "改成綠色",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "綠色"
+      ]
+    }
+  ],
+  "must_not_include": [
+    {
+      "id": "上一場的內容",
+      "in": [
+        "summary",
+        "todos",
+        "structured_minutes"
+      ],
+      "terms": [
+        "Mid-Up",
+        "Meetup",
+        "贊助",
+        "網域",
+        "阿傑"
+      ]
+    }
+  ],
+  "todos": [
+    {
+      "id": "FAQ 草稿",
+      "any_of": [
+        "FAQ",
+        "F&Q",
+        "常見問題"
+      ],
+      "owner_any_of": [
+        "小華"
+      ]
+    }
+  ],
+  "todo_progress": [
+    {
+      "id": "首頁文案已完成",
+      "previous_todo_index": 0,
+      "status": "done"
+    },
+    {
+      "id": "外包報價進行中",
+      "previous_todo_index": 1,
+      "status": "in_progress"
+    },
+    {
+      "id": "申請網域沒提到",
+      "previous_todo_index": 2,
+      "status": "not_mentioned"
+    },
+    {
+      "id": "客戶推薦已完成",
+      "previous_todo_index": 3,
+      "status": "done"
+    },
+    {
+      "id": "Meetup 沒提到",
+      "previous_todo_index": 4,
+      "status": "not_mentioned"
+    }
+  ],
+  "decision_changes": [
+    {
+      "id": "上線日期修改",
+      "previous_any_of": [
+        "15"
+      ],
+      "change": "revised"
+    },
+    {
+      "id": "主色推翻",
+      "previous_any_of": [
+        "藍"
+      ],
+      "change": "reversed"
+    },
+    {
+      "id": "中文版延續",
+      "previous_any_of": [
+        "中文"
+      ],
+      "change": "continued"
+    }
+  ],
+  "new_topics": [
+    {
+      "id": "FAQ 頁",
+      "any_of": [
+        "FAQ",
+        "F&Q",
+        "常見問題"
+      ]
+    },
+    {
+      "id": "預算",
+      "any_of": [
+        "預算"
+      ]
+    }
+  ],
+  "highlight_contexts": {
+    "count": 0
+  }
+}

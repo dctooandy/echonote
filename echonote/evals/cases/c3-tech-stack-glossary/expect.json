@@ -1,0 +1,139 @@
+{
+  "description": "自訂詞庫：轉錄時沒有詞庫，逐字稿把專有名詞和人名轉錯（revalpuff、creaselytix、tasfly、蔡醫真、吳成漢），分析時才帶詞庫。陷阱：詞庫裡的 Kotlin 會議沒提到。",
+  "must_include": [
+    {
+      "id": "Flutter",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "Flutter"
+      ]
+    },
+    {
+      "id": "Riverpod",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "Riverpod"
+      ]
+    },
+    {
+      "id": "Firebase",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "Firebase"
+      ]
+    },
+    {
+      "id": "Crashlytics",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "Crashlytics"
+      ]
+    },
+    {
+      "id": "TestFlight",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "TestFlight"
+      ]
+    },
+    {
+      "id": "蔡宜蓁",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "宜蓁"
+      ]
+    },
+    {
+      "id": "吳承翰",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "承翰"
+      ]
+    }
+  ],
+  "must_not_include": [
+    {
+      "id": "錯字沒改",
+      "in": [
+        "summary",
+        "todos",
+        "structured_minutes",
+        "follow_up",
+        "highlight_contexts"
+      ],
+      "terms": [
+        "revalpuff",
+        "creaselytix",
+        "tas5",
+        "tasfly",
+        "蔡醫真",
+        "吳成漢",
+        "乘汗",
+        "一針"
+      ]
+    },
+    {
+      "id": "Kotlin 陷阱",
+      "in": [
+        "summary",
+        "todos",
+        "structured_minutes",
+        "follow_up",
+        "highlight_contexts"
+      ],
+      "terms": [
+        "Kotlin"
+      ]
+    }
+  ],
+  "todos": [
+    {
+      "id": "Riverpod 範例",
+      "any_of": [
+        "Riverpod"
+      ],
+      "owner_any_of": [
+        "宜蓁"
+      ]
+    },
+    {
+      "id": "Firebase 專案",
+      "any_of": [
+        "Firebase"
+      ],
+      "owner_any_of": [
+        "承翰"
+      ]
+    },
+    {
+      "id": "TestFlight 群組",
+      "any_of": [
+        "TestFlight"
+      ]
+    }
+  ],
+  "highlight_contexts": {
+    "count": 0
+  }
+}

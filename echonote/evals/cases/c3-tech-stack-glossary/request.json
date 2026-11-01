@@ -1,0 +1,44 @@
+{
+  "segments": [
+    {
+      "start_ms": 0,
+      "end_ms": 17060,
+      "text": "好,我們開始新專案的技術選行會議。今天出席的有蔡醫真、吳成漢還有我。先講前端,我建議用flutter。一到城市可以同時出iOS跟anjoey。我同意flutter。",
+      "edited": false
+    },
+    {
+      "start_ms": 17060,
+      "end_ms": 32060,
+      "text": "中泰管理的部分,我建議用revalpuff測試比較好顯。後端的話,我建議直接用firebase,登入資料庫推播都有。當機回報要用什麼?",
+      "edited": false
+    },
+    {
+      "start_ms": 32060,
+      "end_ms": 45060,
+      "text": "Firebase裡面有creaselytix,直接上就好,不用另外找。測試版本的部分,iOS用tas5,發給內部同時試用。",
+      "edited": false
+    },
+    {
+      "start_ms": 45060,
+      "end_ms": 67060,
+      "text": "那就這樣決定,前端用flutter加revalpuff,後端用firebase,登入資料庫推播用creaselytix,測試版用tasfly,分配一下工作,一針你下午,下週五前做一個revalpuff的範例專案。",
+      "edited": false
+    },
+    {
+      "start_ms": 67060,
+      "end_ms": 82060,
+      "text": "好,乘汗你先開firebase專案,順便把creaselytix接上。沒問題,tasfly的內部測試群組我來申請,今天就到這裡,謝謝一針跟乘汗。",
+      "edited": false
+    }
+  ],
+  "glossary": [
+    "Flutter",
+    "Riverpod",
+    "Firebase",
+    "Crashlytics",
+    "TestFlight",
+    "kotlin",
+    "蔡宜蓁",
+    "吳承翰"
+  ]
+}

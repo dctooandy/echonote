@@ -1,0 +1,95 @@
+{
+  "description": "個人筆記：3 則筆記（★ 在預算；兩則文字筆記「決定改去花蓮」「民宿要問能不能帶寵物」是使用者的想法，不是會議內容）。",
+  "must_include": [
+    {
+      "id": "地點宜蘭",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "宜蘭"
+      ]
+    },
+    {
+      "id": "日期",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "12月6",
+        "12/6",
+        "十二月六"
+      ]
+    },
+    {
+      "id": "補助 5000",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "5000",
+        "5,000",
+        "五千"
+      ]
+    },
+    {
+      "id": "★ 預算進摘要",
+      "in": [
+        "summary"
+      ],
+      "any_of": [
+        "5000",
+        "5,000",
+        "五千",
+        "補助",
+        "預算"
+      ]
+    }
+  ],
+  "must_not_include": [
+    {
+      "id": "筆記不是會議內容",
+      "in": [
+        "summary",
+        "todos",
+        "structured_minutes"
+      ],
+      "terms": [
+        "花蓮",
+        "寵物"
+      ]
+    }
+  ],
+  "todos": [
+    {
+      "id": "找民宿",
+      "any_of": [
+        "民宿"
+      ],
+      "owner_any_of": [
+        "小美"
+      ]
+    },
+    {
+      "id": "遊覽車報價",
+      "any_of": [
+        "遊覽車"
+      ],
+      "owner_any_of": [
+        "阿傑"
+      ]
+    },
+    {
+      "id": "報名表",
+      "any_of": [
+        "報名表"
+      ]
+    }
+  ],
+  "highlight_contexts": {
+    "count": 3
+  }
+}

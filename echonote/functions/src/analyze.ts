@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 // Pure request handling for analyzeMeeting: validation, prompt and schema.
 // Kept free of Firebase and Anthropic imports so it can be exercised
 // directly (see the spec's T7 notes).
@@ -343,3 +345,35 @@ export const outputSchema = {
   required: ["summary", "todos", "structured_minutes", "highlight_contexts", "follow_up"],
   additionalProperties: false,
 } as const;
+
+export const ANALYSIS_MODEL = "claude-haiku-4-5";
+export const ANALYSIS_MAX_TOKENS = 6000;
+
+/**
+ * Everything messages.create gets, for production and the eval set alike,
+ * so the two can't drift apart (spec feature-analysis-eval-set). [model]
+ * is overridable for the eval set only.
+ */
+export function buildAnalysisParams(req: AnalyzeMeetingRequest, options: { model?: string } = {}) {
+  return {
+    model: options.model ?? ANALYSIS_MODEL,
+    max_tokens: ANALYSIS_MAX_TOKENS,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: "user" as const, content: buildUserMessage(req) }],
+    output_config: {
+      format: { type: "json_schema" as const, schema: outputSchema },
+    },
+  };
+}
+
+/**
+ * Short hash of the prompt and schema, so eval reports say which prompt
+ * they ran without anyone bumping a version by hand.
+ */
+export function promptVersion(): string {
+  return promptHash(SYSTEM_PROMPT, outputSchema);
+}
+
+export function promptHash(system: string, schema: unknown): string {
+  return createHash("sha256").update(system).update(JSON.stringify(schema)).digest("hex").slice(0, 8);
+}

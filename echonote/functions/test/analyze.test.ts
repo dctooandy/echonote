@@ -7,7 +7,11 @@ import {
   PREVIOUS_TODOS_MAX,
   PREVIOUS_ITEM_MAX_CHARS,
   PreviousMeeting,
+  SYSTEM_PROMPT,
+  buildAnalysisParams,
   buildUserMessage,
+  promptHash,
+  promptVersion,
   outputSchema,
   validateRequest,
 } from "../src/analyze";
@@ -120,4 +124,26 @@ test("follow_up is a required part of the output", () => {
     [...followUp.properties.decision_changes.items.properties.change.enum],
     ["continued", "revised", "reversed"]
   );
+});
+
+test("analysis params match what production has always sent", () => {
+  const params = buildAnalysisParams({ segments });
+  assert.equal(params.model, "claude-haiku-4-5");
+  assert.equal(params.max_tokens, 6000);
+  assert.equal(params.system, SYSTEM_PROMPT);
+  assert.deepEqual(params.messages, [{ role: "user", content: buildUserMessage({ segments }) }]);
+  assert.deepEqual(params.output_config, { format: { type: "json_schema", schema: outputSchema } });
+});
+
+test("the eval set can swap the model, and nothing else", () => {
+  const params = buildAnalysisParams({ segments }, { model: "claude-haiku-5-5" });
+  assert.equal(params.model, "claude-haiku-5-5");
+  assert.deepEqual({ ...params, model: "x" }, { ...buildAnalysisParams({ segments }), model: "x" });
+});
+
+test("prompt version is a stable short hash", () => {
+  assert.match(promptVersion(), /^[0-9a-f]{8}$/);
+  assert.equal(promptVersion(), promptHash(SYSTEM_PROMPT, outputSchema));
+  assert.notEqual(promptHash(SYSTEM_PROMPT + "。", outputSchema), promptVersion());
+  assert.notEqual(promptHash(SYSTEM_PROMPT, { ...outputSchema, required: [] }), promptVersion());
 });
