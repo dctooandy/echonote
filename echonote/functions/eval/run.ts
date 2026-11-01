@@ -71,10 +71,13 @@ async function main() {
   console.log(`模型 ${model}，prompt ${promptVersion()}，每筆 ${runs} 次：`);
   for (const c of cases) {
     const params = buildAnalysisParams(c.request, { model });
+    // With output_config: the schema adds ~2,600 tokens of input, which
+    // also lifts the short cases past Haiku 4.5's 4,096-token cache minimum.
     const { input_tokens } = await client.messages.countTokens({
       model: params.model,
       system: params.system,
       messages: params.messages,
+      output_config: params.output_config,
     });
     const cost = estimateCaseCost(model, input_tokens, runs, TYPICAL_OUTPUT_TOKENS);
     estimated += cost;
@@ -92,7 +95,10 @@ async function main() {
     return;
   }
 
-  const id = `${new Date().toISOString().slice(0, 16).replace(/[-:]/g, "").replace("T", "-")}_${model}`;
+  const now = new Date();
+  const two = (n: number) => String(n).padStart(2, "0");
+  // Local time, so the folder name matches the clock the person running it sees.
+  const id = `${now.getFullYear()}${two(now.getMonth() + 1)}${two(now.getDate())}-${two(now.getHours())}${two(now.getMinutes())}_${model}`;
   const runsDir = join(evalsRoot, "runs");
   const record: RunRecord = {
     id,
