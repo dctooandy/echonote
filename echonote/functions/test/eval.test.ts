@@ -110,16 +110,17 @@ test("comparison lists rate changes, edited checks, and added or removed cases",
     { name: "c1", private: false, expectHash: "h2", calls: [call([["a", true], ["b", true]])] },
     { name: "new", private: false, expectHash: "y", calls: [call([["a", true]])] },
   ]);
-  const { changes, added, removed } = compareRuns(after, before);
-  assert.deepEqual(changes, [
-    { caseName: "c1", key: "a", before: 1, after: 1, expectChanged: true },
-    { caseName: "c1", key: "b", before: 0, after: 1, expectChanged: true },
-  ]);
+  const { changes, added, removed, editedCases } = compareRuns(after, before);
+  // Only rates that moved; check "a" kept its rate, so it isn't listed.
+  assert.deepEqual(changes, [{ caseName: "c1", key: "b", before: 0, after: 1, expectChanged: true }]);
   assert.deepEqual(added, ["new"]);
   assert.deepEqual(removed, ["old"]);
+  assert.deepEqual(editedCases, ["c1"]);
 
   const report = renderReport(after, before);
   assert.match(report, /\| c1 \| b \| 0% \| 100% \| 變好（檢查本身被修改過） \|/);
+  assert.doesNotMatch(report, /\| c1 \| a \|/);
+  assert.match(report, /檢查被修改過的案例：c1/);
   assert.match(report, /新增的案例：new/);
   assert.match(report, /整體通過率：100%/);
 });
