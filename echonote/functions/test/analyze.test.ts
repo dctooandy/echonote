@@ -147,3 +147,31 @@ test("prompt version is a stable short hash", () => {
   assert.notEqual(promptHash(SYSTEM_PROMPT + "。", outputSchema), promptVersion());
   assert.notEqual(promptHash(SYSTEM_PROMPT, { ...outputSchema, required: [] }), promptVersion());
 });
+
+test("user notes are sent as the user's private notes, not as highlights of the meeting", () => {
+  const message = buildUserMessage({
+    segments,
+    highlights: [
+      { note_index: 0, segment_index: 1, text: " 要問含不含稅 " },
+      { note_index: 1, segment_index: 0, text: null },
+    ],
+  });
+  const section = message.match(/<user_notes>\n([\s\S]*)\n<\/user_notes>/)?.[1] ?? "";
+  assert.match(section, /^\[筆記 0\] 標在逐字稿 \[1\]：要問含不含稅$/m);
+  assert.match(section, /^\[筆記 1\] 標在逐字稿 \[0\]：（★ 標記，沒有文字）$/m);
+  assert.doesNotMatch(message, /user_highlights|\[重點/);
+  assert.doesNotMatch(buildUserMessage({ segments, highlights: [] }), /<user_notes>/);
+});
+
+test("the prompt keeps note text out of the output and asks for one context per note", () => {
+  assert.doesNotMatch(SYSTEM_PROMPT, /user_highlights/);
+  assert.match(SYSTEM_PROMPT, /不是會議發言/);
+  // The leak case: a note that reads like an add-on to a todo.
+  assert.match(SYSTEM_PROMPT, /看起來像.*補充時也一樣/);
+  // key_points cover the transcript at the note, not the note.
+  assert.match(SYSTEM_PROMPT, /逐字稿那句的內容，不是筆記文字/);
+  assert.match(SYSTEM_PROMPT, /筆數必須等於筆記數/);
+  const contexts = outputSchema.properties.highlight_contexts;
+  assert.match(contexts.description, /<user_notes>/);
+  assert.match(contexts.items.properties.note_index.description, /<user_notes>/);
+});

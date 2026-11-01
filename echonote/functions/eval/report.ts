@@ -82,16 +82,20 @@ export function compareRuns(current: RunRecord, baseline: RunRecord): {
   removed: string[];
   addedChecks: CheckRef[];
   removedChecks: CheckRef[];
+  /** Shared cases whose expect.json changed between the runs. */
+  editedCases: string[];
 } {
   const changes: Change[] = [];
   const addedChecks: CheckRef[] = [];
   const removedChecks: CheckRef[] = [];
+  const editedCases: string[] = [];
   const baseCases = new Map(baseline.cases.map((c) => [c.name, c]));
   for (const c of current.cases) {
     const base = baseCases.get(c.name);
     if (!base) continue;
     const now = passCounts(c);
     const before = passCounts(base);
+    if (c.expectHash !== base.expectHash) editedCases.push(c.name);
     for (const key of now.keys()) if (!before.has(key)) addedChecks.push({ caseName: c.name, key });
     for (const key of before.keys()) if (!now.has(key)) removedChecks.push({ caseName: c.name, key });
     for (const [key, counts] of now) {
@@ -99,7 +103,7 @@ export function compareRuns(current: RunRecord, baseline: RunRecord): {
       if (!old || counts.total === 0 || old.total === 0) continue;
       const rateNow = counts.pass / counts.total;
       const rateBefore = old.pass / old.total;
-      if (rateNow !== rateBefore || c.expectHash !== base.expectHash) {
+      if (rateNow !== rateBefore) {
         changes.push({ caseName: c.name, key, before: rateBefore, after: rateNow, expectChanged: c.expectHash !== base.expectHash });
       }
     }
@@ -111,6 +115,7 @@ export function compareRuns(current: RunRecord, baseline: RunRecord): {
     removed: baseline.cases.filter((c) => !currentNames.has(c.name)).map((c) => c.name),
     addedChecks,
     removedChecks,
+    editedCases,
   };
 }
 
@@ -160,7 +165,7 @@ export function renderReport(run: RunRecord, baseline?: RunRecord): string {
   );
 
   if (baseline) {
-    const { changes, added, removed, addedChecks, removedChecks } = compareRuns(run, baseline);
+    const { changes, added, removed, addedChecks, removedChecks, editedCases } = compareRuns(run, baseline);
     lines.push(`## 跟基準輪 ${baseline.id} 比較`, "");
     lines.push(`基準：\`${baseline.model}\`、prompt \`${baseline.promptVersion}\`、commit \`${baseline.gitCommit}\``, "");
     if (changes.length === 0) lines.push("通過率沒有變化。");
@@ -174,6 +179,7 @@ export function renderReport(run: RunRecord, baseline?: RunRecord): string {
     if (added.length) lines.push("", `新增的案例：${added.join("、")}`);
     if (removed.length) lines.push("", `已移除的案例：${removed.join("、")}`);
     const refs = (list: CheckRef[]) => list.map((r) => `${r.caseName}：${r.key}`).join("、");
+    if (editedCases.length) lines.push("", `檢查被修改過的案例：${editedCases.join("、")}（\`expect.json\` 跟基準輪不同，通過率不能直接比）`);
     if (addedChecks.length) lines.push("", `新增的檢查：${refs(addedChecks)}`);
     if (removedChecks.length) lines.push("", `已移除的檢查：${refs(removedChecks)}`);
     lines.push("");

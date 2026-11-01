@@ -55,7 +55,8 @@
       "in": [
         "summary",
         "todos",
-        "structured_minutes"
+        "structured_minutes",
+        "highlight_contexts"
       ],
       "terms": [
         "花蓮",
