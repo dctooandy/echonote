@@ -134,28 +134,37 @@ List<MeetingSeries> seriesOf(List<Recording> all) {
   return series..sort((a, b) => b.latest.compareTo(a.latest));
 }
 
-/// The single view's hint after the date: "↩ 接續 10/31 · ↪ 2 場後續", or
-/// null for a meeting with no links (spec feature-chain-links, decision 4).
-String? chainHint(Recording recording, List<Recording> all) {
-  final previous = previousOf(recording, all);
-  final followers = followersOf(recording, all).length;
-  final parts = [
-    if (previous != null) '↩ 接續 ${formatMonthDay(previous.createdAt)}',
-    if (followers > 0) '↪ $followers 場後續',
-  ];
-  return parts.isEmpty ? null : parts.join(' · ');
+/// What a meeting links to, for the hint after its date in the list: the
+/// day of the meeting it follows, and how many follow it (spec
+/// feature-chain-links, decisions 4 and 14).
+class ChainHint {
+  const ChainHint({this.follows, this.followers = 0});
+
+  /// "10/31", or null when it follows none (or that one was deleted).
+  final String? follows;
+  final int followers;
+
+  bool get isEmpty => follows == null && followers == 0;
 }
 
-/// Inside a series frame, newest first: "接續 11/1" when the meeting a row
-/// follows isn't the row right below it (a branch), else null (decision
-/// 10).
-String? seriesRowHint(MeetingSeries series, int index) {
+/// The "全部" list's hint: what it follows and how many follow it.
+ChainHint chainHint(Recording recording, List<Recording> all) {
+  final previous = previousOf(recording, all);
+  return ChainHint(
+    follows: previous == null ? null : formatMonthDay(previous.createdAt),
+    followers: followersOf(recording, all).length,
+  );
+}
+
+/// Inside a series frame, newest first, only a branch says what it follows:
+/// a row whose previous meeting isn't the row right below it (decision 10).
+ChainHint seriesRowHint(MeetingSeries series, int index) {
   final recording = series.recordings[index];
   final below = index + 1 < series.recordings.length ? series.recordings[index + 1] : null;
   final previousId = recording.previousRecordingId;
-  if (previousId == null || previousId == below?.id) return null;
+  if (previousId == null || previousId == below?.id) return const ChainHint();
   for (final r in series.recordings) {
-    if (r.id == previousId) return '接續 ${formatMonthDay(r.createdAt)}';
+    if (r.id == previousId) return ChainHint(follows: formatMonthDay(r.createdAt));
   }
-  return null;
+  return const ChainHint();
 }

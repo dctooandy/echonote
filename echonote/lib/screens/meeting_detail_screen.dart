@@ -884,8 +884,8 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     final color = series == null ? scheme.primary : seriesColor(context, series.colorIndex);
     final muted = TextStyle(color: scheme.onSurfaceVariant);
     final summary = [
-      if (followsOne) previous == null ? '接續的會議已刪除' : '↩ 接續：${previous.displayTitle}',
-      if (followers.isNotEmpty) '↪ ${followers.length} 場後續',
+      if (followsOne) previous == null ? '接續的會議已刪除' : '← 接續：${previous.displayTitle}',
+      if (followers.isNotEmpty) '→ ${followers.length} 場後續',
     ].join(' · ');
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 6, 12, 2),

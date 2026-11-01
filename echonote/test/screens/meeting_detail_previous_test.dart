@@ -133,7 +133,7 @@ void main() {
 
     expect(current.previousRecordingId, 'older');
     expect(current.previousChangedSinceAnalysis, isTrue);
-    expect(find.text('↩ 接續：十月一日週會'), findsOneWidget);
+    expect(find.text('← 接續：十月一日週會'), findsOneWidget);
     expect(find.text('接續的會議變了，重新分析才會更新「與上次相比」'), findsOneWidget);
   });
 
@@ -152,7 +152,7 @@ void main() {
   testWidgets('cancelling the link from the picker asks first, then clears it', (tester) async {
     final current = _recording('current', DateTime(2026, 10, 15), title: '這場', previous: 'older');
     await _pump(tester, current, [older, current]);
-    expect(find.text('↩ 接續：十月一日週會'), findsOneWidget);
+    expect(find.text('← 接續：十月一日週會'), findsOneWidget);
 
     await _openPicker(tester);
     await tester.tap(find.text('取消接續'));
@@ -173,7 +173,7 @@ void main() {
 
     testWidgets('shows on every tab, closed, with what it follows and how many follow it', (tester) async {
       await _pump(tester, middle, [older, middle, next1, next2]);
-      const summary = '↩ 接續：十月一日週會 · ↪ 2 場後續';
+      const summary = '← 接續：十月一日週會 · → 2 場後續';
       expect(find.text(summary), findsOneWidget);
       expect(find.text('專案會'), findsNothing);
       for (final tab in ['待辦', '逐字稿', '紀錄']) {
@@ -185,7 +185,7 @@ void main() {
 
     testWidgets('opens to the previous meeting and every follower', (tester) async {
       await _pump(tester, middle, [older, middle, next1, next2]);
-      await tester.tap(find.text('↩ 接續：十月一日週會 · ↪ 2 場後續'));
+      await tester.tap(find.text('← 接續：十月一日週會 · → 2 場後續'));
       await tester.pumpAndSettle();
       expect(find.text('上一場 · 2026-10-01'), findsOneWidget);
       expect(find.text('十月廿二日週會'), findsOneWidget);
@@ -196,7 +196,7 @@ void main() {
     testWidgets('unlinking asks first; keeping it changes nothing', (tester) async {
       final current = _recording('current', DateTime(2026, 10, 15), title: '這場', previous: 'older');
       await _pump(tester, current, [older, current]);
-      await tester.tap(find.text('↩ 接續：十月一日週會'));
+      await tester.tap(find.text('← 接續：十月一日週會'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byTooltip('取消接續'));

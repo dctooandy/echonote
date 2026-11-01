@@ -179,27 +179,33 @@ void main() {
       await open(tester);
 
       expect(find.text('錄音 solo'), findsOneWidget);
-      expect(find.textContaining('↩ 接續 10/31 · ↪ 2 場後續'), findsOneWidget);
-      expect(find.textContaining('↪ 1 場後續'), findsNWidgets(2));
-      expect(find.textContaining('↩ 接續 11/1'), findsNWidgets(2));
-      expect(find.textContaining('↩ 接續 10/20'), findsOneWidget);
+      expect(find.text('接續 10/31'), findsOneWidget);
+      expect(find.text('2 場後續'), findsOneWidget);
+      expect(find.text('1 場後續'), findsNWidgets(2));
+      expect(find.text('接續 11/1'), findsNWidgets(2));
+      expect(find.text('接續 10/20'), findsOneWidget);
+      expect(find.byIcon(Icons.subdirectory_arrow_left), findsNWidgets(4));
+      // Each hint in its series' color: website and trip differ.
+      Color colorOf(String text) => tester.widget<Text>(find.text(text)).style!.color!;
+      expect(colorOf('接續 10/31'), colorOf('2 場後續'));
+      expect(colorOf('接續 10/31'), isNot(colorOf('接續 10/20')));
     });
 
     testWidgets('the series view groups linked meetings, hides lone ones, and is remembered', (tester) async {
       writeLinked();
       final settings = await open(tester);
 
-      await tester.tap(find.text('連動'));
+      await tester.tap(find.text('系列'));
       await settle(tester);
 
       expect(settings.homeView, HomeView.series);
       expect(find.text('錄音 solo'), findsNothing);
       expect(find.text('4 場 · 最近 11/8'), findsOneWidget);
       expect(find.text('2 場 · 最近 11/1'), findsOneWidget);
-      expect(find.text('另有 1 場沒有接續，在單獨檢視'), findsOneWidget);
+      expect(find.text('另有 1 場沒有接續，在「全部」裡'), findsOneWidget);
       // The newest series on top; the branch says what it follows.
       expect(tester.getTopLeft(find.text('4 場 · 最近 11/8')).dy, lessThan(tester.getTopLeft(find.text('2 場 · 最近 11/1')).dy));
-      expect(find.textContaining('接續 11/1'), findsOneWidget);
+      expect(find.text('接續 11/1'), findsOneWidget);
 
       final stored = jsonDecode(File('${dir.path}/settings.json').readAsStringSync()) as Map<String, dynamic>;
       expect(stored['home_view'], 'series');
@@ -210,5 +216,24 @@ void main() {
       await open(tester, view: HomeView.series);
       expect(find.textContaining('還沒有接續的會議'), findsOneWidget);
     });
+  });
+
+  testWidgets('the view tabs sit on the thumb side', (tester) async {
+    writeEntry('1');
+    Future<double> tabsX(Handedness hand) async {
+      await tester.pumpWidget(
+        AppSettingsScope(
+          settings: AppSettings(handedness: hand),
+          child: MaterialApp(home: HomeScreen(durationProbe: _FakeProbe({}))),
+        ),
+      );
+      await settle(tester);
+      return tester.getCenter(find.text('系列')).dx;
+    }
+
+    final width = tester.view.physicalSize.width / tester.view.devicePixelRatio;
+    expect(await tabsX(Handedness.right), greaterThan(width / 2));
+    expect(await tabsX(Handedness.left), lessThan(width / 2));
+    expect(find.text('全部'), findsOneWidget);
   });
 }

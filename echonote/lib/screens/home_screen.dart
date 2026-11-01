@@ -11,6 +11,7 @@ import '../services/recording_store.dart';
 import '../theme/app_theme.dart';
 import '../utils/format.dart';
 import '../widgets/confirm_delete_dialog.dart';
+import '../widgets/marquee.dart';
 import '../widgets/round_icon_button.dart';
 import 'glossary_screen.dart';
 import 'import_screen.dart';
@@ -192,18 +193,11 @@ class _HomeScreenState extends State<HomeScreen> {
           final view = AppSettingsScope.of(context).homeView;
           return Column(
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-                child: SegmentedButton<HomeView>(
-                  showSelectedIcon: false,
-                  style: const ButtonStyle(visualDensity: VisualDensity.compact),
-                  segments: const [
-                    ButtonSegment(value: HomeView.single, label: Text('單獨')),
-                    ButtonSegment(value: HomeView.series, label: Text('連動')),
-                  ],
-                  selected: {view},
-                  onSelectionChanged: (picked) => AppSettingsScope.of(context).setHomeView(picked.single),
-                ),
+              _ViewTabs(
+                selected: view,
+                // On the thumb's side, like the record buttons.
+                alignment: leftHanded ? Alignment.centerLeft : Alignment.centerRight,
+                onSelected: AppSettingsScope.of(context).setHomeView,
               ),
               Expanded(
                 child: view == HomeView.single
@@ -222,14 +216,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// One meeting at a time, newest first, each saying what it follows
   /// (spec feature-chain-links, decision 4).
-  Widget _buildSingleList(List<Recording> recordings) => ListView.builder(
-    padding: _listPadding,
-    itemCount: recordings.length,
-    itemBuilder: (context, index) {
-      final recording = recordings[index];
-      return _row(recording, recordings, hint: chainHint(recording, recordings));
-    },
-  );
+  Widget _buildSingleList(List<Recording> recordings) {
+    // The hint takes its series' color, so a series reads as one here too
+    // (decision 14).
+    final colorOf = {
+      for (final s in seriesOf(recordings))
+        for (final r in s.recordings) r.id: s.colorIndex,
+    };
+    return ListView.builder(
+      padding: _listPadding,
+      itemCount: recordings.length,
+      itemBuilder: (context, index) {
+        final recording = recordings[index];
+        final color = colorOf[recording.id];
+        return _row(
+          recording,
+          recordings,
+          hint: chainHint(recording, recordings),
+          hintColor: color == null ? null : seriesColor(context, color),
+        );
+      },
+    );
+  }
 
   /// Only linked meetings, one colored frame per series (spec
   /// feature-chain-links, decision 5).
@@ -253,7 +261,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (alone > 0)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Text('另有 $alone 場沒有接續，在單獨檢視', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: muted)),
+            child: Text('另有 $alone 場沒有接續，在「全部」裡', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: muted)),
           ),
       ],
     );
@@ -295,13 +303,13 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           for (var i = 0; i < series.recordings.length; i++)
-            _row(series.recordings[i], recordings, hint: seriesRowHint(series, i)),
+            _row(series.recordings[i], recordings, hint: seriesRowHint(series, i), hintColor: color),
         ],
       ),
     );
   }
 
-  Widget _row(Recording recording, List<Recording> recordings, {String? hint}) {
+  Widget _row(Recording recording, List<Recording> recordings, {ChainHint hint = const ChainHint(), Color? hintColor}) {
     final status = _Status.of(context, recording);
     final date = formatListDate(recording.createdAt.toLocal(), DateTime.now());
     return Dismissible(
@@ -347,12 +355,7 @@ class _HomeScreenState extends State<HomeScreen> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          subtitle: Text(
-            hint == null ? date : '$date · $hint',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-          ),
+          subtitle: _DateLine(date: date, hint: hint, color: hintColor ?? Theme.of(context).colorScheme.primary),
           trailing: _trailing(context, recording),
           onTap: () async {
             await Navigator.of(context).push(
@@ -363,6 +366,96 @@ class _HomeScreenState extends State<HomeScreen> {
             _reload();
           },
         ),
+      ),
+    );
+  }
+}
+
+/// 全部 and 系列 as two wide tabs over most of the row, on the thumb's side,
+/// the current one underlined (spec feature-chain-links, decision 14):
+/// each is a big target without a taller row.
+class _ViewTabs extends StatelessWidget {
+  const _ViewTabs({required this.selected, required this.alignment, required this.onSelected});
+
+  final HomeView selected;
+  final Alignment alignment;
+  final ValueChanged<HomeView> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    Widget tab(HomeView view, String label) {
+      final on = view == selected;
+      return Expanded(
+        child: InkWell(
+          onTap: on ? null : () => onSelected(view),
+          child: Container(
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: on ? scheme.primary : Colors.transparent, width: 3)),
+            ),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: on ? FontWeight.w600 : FontWeight.w400,
+                color: on ? scheme.onSurface : scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Align(
+        alignment: alignment,
+        child: FractionallySizedBox(
+          widthFactor: 0.62,
+          child: Container(
+            height: 44,
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: scheme.outlineVariant))),
+            child: Row(children: [tab(HomeView.single, '全部'), tab(HomeView.series, '系列')]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The date under a meeting's title, then what it links to in its
+/// series' color, with arrow icons rather than ↩/↪ (iOS draws those as
+/// emoji). Scrolls when too long for one line (decisions 13 to 15).
+class _DateLine extends StatelessWidget {
+  const _DateLine({required this.date, required this.hint, required this.color});
+
+  final String date;
+  final ChainHint hint;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant);
+    if (hint.isEmpty) return Text(date, maxLines: 1, overflow: TextOverflow.ellipsis, style: muted);
+    final linked = TextStyle(color: color, fontWeight: FontWeight.w600);
+    Widget part(IconData icon, String text) => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 15, color: color),
+        const SizedBox(width: 2),
+        Text(text, style: linked),
+      ],
+    );
+    return Marquee(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('$date · ', style: muted),
+          if (hint.follows != null) part(Icons.subdirectory_arrow_left, '接續 ${hint.follows}'),
+          if (hint.follows != null && hint.followers > 0) Text(' · ', style: linked),
+          if (hint.followers > 0) part(Icons.subdirectory_arrow_right, '${hint.followers} 場後續'),
+        ],
       ),
     );
   }

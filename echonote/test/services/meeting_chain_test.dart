@@ -183,22 +183,28 @@ void main() {
       ]);
     });
 
-    test('the single view hint says what it follows and how many follow it', () {
-      expect(chainHint(w2, all), '↩ 接續 10/31 · ↪ 2 場後續');
-      expect(chainHint(w1, all), '↪ 1 場後續');
-      expect(chainHint(w3, all), '↩ 接續 11/1');
-      expect(chainHint(solo, all), isNull);
-      expect(chainHint(orphan, all), isNull);
+    test('the list hint says what it follows and how many follow it', () {
+      String hint(Recording r) {
+        final h = chainHint(r, all);
+        return '${h.follows}/${h.followers}';
+      }
+
+      expect(hint(w2), '10/31/2');
+      expect(hint(w1), 'null/1');
+      expect(hint(w3), '11/1/0');
+      expect(chainHint(solo, all).isEmpty, isTrue);
+      expect(chainHint(orphan, all).isEmpty, isTrue);
     });
 
     test('inside a frame, only a branch says what it follows', () {
       final website = seriesOf(all).first;
-      expect([for (var i = 0; i < website.recordings.length; i++) seriesRowHint(website, i)], [
-        '接續 11/1',
+      expect([for (var i = 0; i < website.recordings.length; i++) seriesRowHint(website, i).follows], [
+        '11/1',
         null,
         null,
         null,
       ]);
+      expect(seriesRowHint(website, 1).followers, 0, reason: 'the frame shows its followers already');
     });
   });
 }
