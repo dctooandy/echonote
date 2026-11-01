@@ -1114,62 +1114,104 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
         '[Detail] todo timestamps: '
         '${a.todos.map((t) => t.sourceTimestampMs).toList()}',
       );
+      final muted = Theme.of(context).colorScheme.onSurfaceVariant;
       return ListView.builder(
         padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: a.todos.length,
         itemBuilder: (context, index) {
           final todo = a.todos[index];
+          final meta = [
+            if (todo.owner != null) todo.owner!,
+            if (todo.dueDate != null) '期限 ${todo.dueDate}',
+          ].join(' · ');
+          // The task gets the whole first line; the actions sit below it
+          // so they don't squeeze it (spec feature-todo-layout, option A).
           return Card(
-            child: ListTile(
-              leading: Checkbox(
-                value: todo.done,
-                onChanged: (value) {
-                  todo.done = value ?? false;
-                  _persist();
-                },
-              ),
-              title: Text(
-                todo.task,
-                style: todo.done
-                    ? TextStyle(
-                        decoration: TextDecoration.lineThrough,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      )
-                    : null,
-              ),
-              subtitle: Text(
-                [
-                  if (todo.owner != null) '負責人: ${todo.owner}',
-                  if (todo.dueDate != null) '期限: ${todo.dueDate}',
-                ].join('　'),
-              ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
               onTap: todo.sourceTimestampMs != null
                   ? () => _seekAndPlay(Duration(milliseconds: todo.sourceTimestampMs!))
                   : null,
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (todo.sourceTimestampMs != null) _TimePill(todo.sourceTimestampMs!),
-                  IconButton(
-                    icon: const Icon(Icons.edit, size: 18),
-                    tooltip: '編輯待辦',
-                    onPressed: () => _editTodoTask(todo),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    tooltip: '刪除待辦',
-                    onPressed: () {
-                      a.todos.removeAt(index);
-                      _persist();
-                    },
-                  ),
-                ],
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 6, 4, 2),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Checkbox(
+                      value: todo.done,
+                      onChanged: (value) {
+                        todo.done = value ?? false;
+                        _persist();
+                      },
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10, right: 8),
+                            child: Text(
+                              todo.task,
+                              style: TextStyle(
+                                fontSize: 18,
+                                height: 1.4,
+                                fontWeight: FontWeight.w500,
+                                decoration: todo.done ? TextDecoration.lineThrough : null,
+                                color: todo.done ? muted : null,
+                              ),
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(meta, style: TextStyle(fontSize: 13, color: muted)),
+                              ),
+                              if (todo.sourceTimestampMs != null) _TimePill(todo.sourceTimestampMs!),
+                              IconButton(
+                                icon: const Icon(Icons.edit_outlined, size: 20),
+                                tooltip: '編輯待辦',
+                                onPressed: () => _editTodoTask(todo),
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.delete_outline, size: 20, color: Theme.of(context).colorScheme.error),
+                                tooltip: '刪除待辦',
+                                onPressed: () => _confirmDeleteTodo(a, todo),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
         },
       );
     });
+  }
+
+  /// A deleted todo can't be brought back, so ask first, naming the todo.
+  Future<void> _confirmDeleteTodo(MeetingAnalysis analysis, Todo todo) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('刪除這筆待辦？'),
+        content: Text('「${todo.task}」\n刪除後無法復原。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('刪除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    analysis.todos.remove(todo);
+    _persist();
   }
 
   Widget _buildTranscriptTab() {
