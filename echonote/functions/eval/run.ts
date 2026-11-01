@@ -9,13 +9,13 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { ANALYSIS_MAX_TOKENS, ANALYSIS_MODEL, buildAnalysisParams, promptVersion } from "../src/analyze";
 import { EvalCase, loadCases } from "./cases";
 import { gradeOutput } from "./grade";
 import { TYPICAL_OUTPUT_TOKENS, callCost, estimateCaseCost } from "./pricing";
-import { CallRecord, RunRecord, renderReport } from "./report";
+import { CallRecord, RunRecord, loadBaseline, renderReport } from "./report";
 
 function option(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -37,14 +37,6 @@ function cachedParams(c: EvalCase, model: string) {
   };
 }
 
-function latestRun(runsDir: string, except: string): string | undefined {
-  if (!existsSync(runsDir)) return undefined;
-  return readdirSync(runsDir)
-    .filter((d) => d !== except && existsSync(join(runsDir, d, "run.json")))
-    .sort()
-    .pop();
-}
-
 async function main() {
   const args = process.argv.slice(2);
   const model = option(args, "--model") ?? ANALYSIS_MODEL;
@@ -61,7 +53,9 @@ async function main() {
 
   const cases = loadCases(evalsRoot, names);
   if (cases.length === 0) throw new Error(`${evalsRoot} 底下沒有案例`);
-  if (!existsSync(join(evalsRoot, "private"))) console.log("（沒有 evals/private/，只跑照稿案例）");
+  const notes: string[] = [];
+  if (!existsSync(join(evalsRoot, "private"))) notes.push("沒有 evals/private/，只跑照稿案例");
+  notes.forEach((n) => console.log(`（${n}）`));
 
   const client = new Anthropic({ apiKey });
 
@@ -100,6 +94,8 @@ async function main() {
   // Local time, so the folder name matches the clock the person running it sees.
   const id = `${now.getFullYear()}${two(now.getMonth() + 1)}${two(now.getDate())}-${two(now.getHours())}${two(now.getMinutes())}_${model}`;
   const runsDir = join(evalsRoot, "runs");
+  // Before any call: a wrong --baseline must not cost a run.
+  const baseline = loadBaseline(runsDir, option(args, "--baseline"), id);
   const record: RunRecord = {
     id,
     startedAt: new Date().toISOString(),
@@ -112,6 +108,7 @@ async function main() {
     estimatedUsd: estimated,
     totalCostUsd: 0,
     completed: true,
+    notes,
     cases: [],
   };
 
@@ -162,11 +159,6 @@ async function main() {
       console.log(`  ${c.name} #${i + 1}：${call.ok ? `${call.checks.length - failed}/${call.checks.length} 通過` : `失敗：${call.error}`}，US$${call.costUsd.toFixed(4)}`);
     }
   }
-
-  const baselineId = option(args, "--baseline") ?? latestRun(runsDir, id);
-  const baselinePath = baselineId ? join(runsDir, baselineId, "run.json") : undefined;
-  if (baselineId && (!baselinePath || !existsSync(baselinePath))) throw new Error(`找不到基準輪 ${baselineId}`);
-  const baseline = baselinePath ? (JSON.parse(readFileSync(baselinePath, "utf8")) as RunRecord) : undefined;
 
   const out = join(runsDir, id);
   mkdirSync(out, { recursive: true });

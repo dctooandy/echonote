@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadCases } from "../eval/cases";
 import { callCost, estimateCaseCost, priceOf } from "../eval/pricing";
-import { CaseRecord, RunRecord, compareRuns, passCounts, renderReport } from "../eval/report";
+import { CaseRecord, RunRecord, compareRuns, loadBaseline, passCounts, renderReport } from "../eval/report";
 
 const close = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
 
@@ -132,4 +132,34 @@ test("the report says when the budget cut the run short, and marks shaky checks"
   assert.match(report, /未跑完/);
   assert.match(report, /### c1（私人）/);
   assert.match(report, /\| a \| 1\/2 ⚠️ \| a 沒過 \|/);
+});
+
+test("comparison lists checks that were added, renamed or removed in a shared case", () => {
+  const before = run("1", [{ name: "c5", private: true, expectHash: "h1", calls: [call([["光電", false], ["安全性", true]])] }]);
+  const after = run("2", [{ name: "c5", private: true, expectHash: "h2", calls: [call([["光電或太陽能", true], ["安全性", true]])] }]);
+  const { addedChecks, removedChecks } = compareRuns(after, before);
+  assert.deepEqual(addedChecks, [{ caseName: "c5", key: "光電或太陽能" }]);
+  assert.deepEqual(removedChecks, [{ caseName: "c5", key: "光電" }]);
+
+  const report = renderReport(after, before);
+  assert.match(report, /新增的檢查：c5：光電或太陽能/);
+  assert.match(report, /已移除的檢查：c5：光電/);
+});
+
+test("the report carries notes about the run", () => {
+  const report = renderReport({ ...run("1", []), notes: ["沒有 evals/private/，只跑照稿案例"] });
+  assert.match(report, /- 沒有 evals\/private\/，只跑照稿案例/);
+});
+
+test("the baseline is resolved before any call: latest run by default, error when the named one is missing", () => {
+  const runsDir = join(mkdtempSync(join(tmpdir(), "runs-")), "runs");
+  assert.equal(loadBaseline(runsDir, undefined, "now"), undefined);
+  for (const id of ["20261101-0554_a", "20261101-1430_a", "now"]) {
+    mkdirSync(join(runsDir, id), { recursive: true });
+    writeFileSync(join(runsDir, id, "run.json"), JSON.stringify(run(id, [])));
+  }
+  mkdirSync(join(runsDir, "zz-no-record"));
+  assert.equal(loadBaseline(runsDir, undefined, "now")?.id, "20261101-1430_a");
+  assert.equal(loadBaseline(runsDir, "20261101-0554_a", "now")?.id, "20261101-0554_a");
+  assert.throws(() => loadBaseline(runsDir, "typo", "now"), /找不到基準輪 typo/);
 });

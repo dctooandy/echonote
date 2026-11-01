@@ -76,9 +76,13 @@ C6～C7（再 1～2 場真實會議）這一版不做。照稿案例的逐字稿
   - `--budget <美元>`：預設 0.5
   - `--baseline <輪次資料夾>`：預設上一輪
   - `--label <文字>`：寫進報告，方便辨識這一輪改了什麼
-- API key：讀 `functions/.env.local` 的 `EVAL_ANTHROPIC_API_KEY`（用 Node 22 的 `--env-file`）。變數名稱刻意跟正式環境的 secret `ANTHROPIC_API_KEY` 不同，避免 Firebase 模擬器把兩者混在一起。
+  - `--evals <資料夾>`：預設 App 根目錄的 `evals/`（測試或另一份案例集用）
+  - `--yes`：沒有加時只估算、不送出；看過估算再加上 `--yes` 執行
+- API key：讀 `functions/.env.local` 的 `EVAL_ANTHROPIC_API_KEY`（用 Node 22 的 `--env-file-if-exists`，檔案不存在時由腳本自己報「沒有 key」）。變數名稱刻意跟正式環境的 secret `ANTHROPIC_API_KEY` 不同，避免 Firebase 模擬器把兩者混在一起。
 - 執行前先估算這一輪的費用（見邊界案例），超過 `--budget` 就停下來，列出估算，不送出任何請求。
 - 依序執行，不並行；每次呼叫的 `stop_reason`、`usage`、耗時都記錄下來。
+- user message 加上 `cache_control`（prompt 快取），同一筆的第 2～N 次讀快取；其他參數跟正式環境一樣。
+- 基準輪在送出第一個請求之前就讀好：`--baseline` 指定的輪次不存在時直接報錯，不花錢。
 - 錯誤：key 沒設定、案例格式錯誤、request 沒通過 `validateRequest` → 開跑前就失敗，不花錢。單次呼叫失敗（SDK 重試後仍失敗）→ 那一次記為失敗，繼續跑其他的。
 
 ## 資料表異動
@@ -129,13 +133,13 @@ C6～C7（再 1～2 場真實會議）這一版不做。照稿案例的逐字稿
 - 所有 `previous_todo_index` 都在 `previous_meetings` 最後一場的待辦範圍內。
 - 輸出沒有簡體字（用常見簡繁對照字的小清單檢查）。
 
-### 評測結果：`evals/runs/<YYYYMMDD-HHmm>_<model>/`（不進 git）
+### 評測結果：`evals/runs/<YYYYMMDD-HHmm>_<model>/`（不進 git；時間是執行者的本機時間）
 
 - `run.json`：模型、PROMPT_VERSION、git commit、label、每次呼叫的原始輸出、usage、耗時、每項檢查的結果。
 - `report.md`：
-  - 開頭：模型、prompt 版本、總花費、總體通過率、跟基準輪的比較（哪幾項變好、變差）。
-  - 每筆案例：每項檢查「3 次中通過幾次」，失敗的列出實際內容。
-  - 附錄：每次的摘要、待辦、`follow_up` 原文，方便人工比對。
+  - 開頭：模型、prompt 版本、總花費、總體通過率、這一輪的註記（例如沒有 `evals/private/`）、跟基準輪的比較（哪幾項變好、變差，新增或移除的案例和檢查）。
+  - 每筆案例：每項檢查「N 次中通過幾次」，失敗的列出實際內容。呼叫失敗（API 錯誤）的那一次不算進分母，另外列出「幾次呼叫失敗」和錯誤訊息。
+  - 附錄：每次的完整輸出（JSON），方便人工比對。
 
 ## 權限與狀態機
 
@@ -147,7 +151,7 @@ C6～C7（再 1～2 場真實會議）這一版不做。照稿案例的逐字稿
 
 ## 邊界案例與例外處理
 
-- **費用估算**：用 `messages.countTokens` 算每筆的輸入 token，輸出以 `max_tokens` 的上限估算最壞情況，乘上次數和模型單價。單價寫在腳本的價格表裡，見待確認 5。
+- **費用估算**：用 `messages.countTokens` 算每筆的輸入 token（要帶 `output_config`，schema 約占 2,600 token），輸出以典型值 3000 token 估算，乘上次數和模型單價（含快取寫入、讀取）；用這個估算判斷有沒有超過 `--budget`。每次都寫滿 `max_tokens` 的最壞情況只列出來給人看，不拿來擋（照最壞情況，5 筆 × 3 次就超過 US$0.5）。單價寫在 `functions/eval/pricing.ts` 的價格表裡。
 - **實際花費超過上限**（估算偏低時）：每次呼叫後累加實際花費，超過 `--budget` 就停在那裡，報告標示「未跑完」。
 - **模型不支援結構化輸出或參數**（例如之後換模型）：那一次記為失敗，錯誤訊息寫進報告。
 - **SDK 重試後仍然 429 或 5xx**：那一次記為失敗，繼續跑。
@@ -162,7 +166,7 @@ C6～C7（再 1～2 場真實會議）這一版不做。照稿案例的逐字稿
   - `buildAnalysisParams`：預設模型和 `max_tokens` 跟現在的線上參數一致；可以覆寫模型。
   - `promptVersion()`：內容不變時雜湊不變；改一個字就變。
   - 檢查器 `gradeOutput(output, request, expect)`：每種檢查各有通過和失敗的例子（用手寫的假輸出，不呼叫 API）。
-  - 費用估算 `estimateCost(tokens, runs, model)` 和報告比較 `compareRuns(current, baseline)`。
+  - 費用估算 `estimateCaseCost(model, inputTokens, runs, outputTokens)`、報告比較 `compareRuns(current, baseline)`、基準輪 `loadBaseline(runsDir, named, except)`。
 - **匯出工具**：直接呼叫 App 的 `buildHighlights`、`previousChain`、`toPreviousMeetingPayload`，所以只測轉檔本身：給一份假的容器資料夾，輸出的 `request.json` 欄位正確、帶不帶詞庫依參數、接續的前幾場正確凍結。
 - **手動**：第一輪實際跑一次，人工看報告的附錄，確認檢查結果跟自己讀的判斷一致。
 
@@ -292,3 +296,20 @@ flowchart LR
   - C5 的檢查改成「光電或太陽能」（`any_of` 加上「太陽能」），並拿掉說明裡的「草稿」字樣，`expect.json` 定案。下一輪報告會標出 C5「檢查本身被修改過」。
   - C4 的兩個 prompt 問題不在這個分支修：這個分支的範圍是建立評測集，不改分析行為。合併後另開 `fix/notes-leak`，以這一輪為基準，用評測集比對修改前後；修好的 prompt 要部署，部署前先問使用者。
   - C2 的「預算」是模型不穩定，檢查不改，之後的輪次繼續觀察。
+
+## 驗收核對記錄
+
+### 2026-11-01（`/spec-check`，commit `4e913e2`）
+
+- 結論：主要功能都跟規格一致（共用參數、評分程式、匯出工具、案例、估算與費用上限、報告、gitignore）。有 3 項實作沒照規格做、3 項是規格沒跟上實作，等使用者決定怎麼處理。
+- 落差：
+  1. 指定的 `--baseline` 不存在時，腳本在**跑完、花完錢之後**才丟錯，`run.json` 和報告都不會寫出來（`functions/eval/run.ts` 讀 baseline 的那段）。規格寫的是「基準輪不存在 → 只比較共同的部分」。
+  2. 跟基準輪比較時，只有「案例」會標新增／已移除，「檢查項目」新增或改名會直接略過（`compareRuns`，`functions/eval/report.ts`）。規格寫的是案例和檢查項目都要標。C5 的「光電」改名成「光電或太陽能」，下一輪就會碰到這種情況。
+  3. 沒有 `evals/private/` 時，只印在終端機，報告裡沒有寫（規格：報告註明）。
+  4. 規格的邊界案例寫「用 `max_tokens` 估最壞情況」來判斷有沒有超過上限，實作是用典型輸出 3000 token 判斷、最壞情況只列出來（T4 備註已寫原因）。這是規格沒跟上。
+  5. 規格寫 `estimateCost(tokens, runs, model)`，實作是 `estimateCaseCost(model, inputTokens, runs, outputTokens)`。這是規格沒跟上。
+  6. 呼叫失敗的那一次不算進「N 次中通過幾次」的分母（`passCounts`，有測試），報告另外列「幾次呼叫失敗」。規格寫「3 次中通過幾次」，沒有講失敗的那一次怎麼算。
+- 規格未涵蓋：`--yes`（T4 備註已寫）、`--evals`、user message 加 `cache_control`、輪次資料夾用本機時間、附錄放整份輸出（規格只寫摘要、待辦、`follow_up`）、`--env-file-if-exists`（規格寫 `--env-file`）。
+- 處理（使用者 2026-11-01 確認，依照建議）：
+  - 落差 1～3 改實作：基準輪改在送出前用 `loadBaseline` 讀，指定的不存在就直接報錯；`compareRuns` 加上新增／已移除的檢查（`addedChecks`、`removedChecks`），報告列出來；`RunRecord.notes` 記錄「沒有 evals/private/」並寫進報告開頭。新增 3 個測試，functions 共 29 個測試通過。
+  - 落差 4～6 和規格未涵蓋的項目改規格：已更新「評測腳本」「評測結果」「邊界案例」「測試接縫」。
