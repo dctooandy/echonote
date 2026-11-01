@@ -197,36 +197,44 @@ flowchart LR
     - [x] `npm test`、`npm run build` 通過（不部署，決定 14）
   - 備註：另外匯出 `promptHash(system, schema)`，讓「改一個字就變」可以測。
 
-- [ ] **T2 評分程式**
+- [x] **T2 評分程式**
   - 做完能看到：用手寫的假輸出，`gradeOutput(output, request, expect)` 對每一種檢查都給出正確的通過／失敗。
   - 被誰卡住：無，可以直接開工
   - 主要會動的檔案：`functions/eval/grade.ts`、`functions/test/grade.test.ts`、`functions/tsconfig.test.json`
   - 軌道：可獨立進行
   - 驗收：
-    - [ ] `must_include`、`must_not_include`、`todos`、`todo_progress`、`decision_changes`、`new_topics`、`highlight_contexts` 各有通過和失敗的例子
-    - [ ] 通用檢查：schema 必填欄位、沒有被截斷、序號在範圍內、`previous_todo_index` 在範圍內、簡體字
-    - [ ] 欄位代號對應正確（例如 `summary` 包含 overview 和 key_points）
+    - [x] `must_include`、`must_not_include`、`todos`、`todo_progress`、`decision_changes`、`new_topics`、`highlight_contexts` 各有通過和失敗的例子
+    - [x] 通用檢查：schema 必填欄位、沒有被截斷、序號在範圍內、`previous_todo_index` 在範圍內、簡體字
+    - [x] 欄位代號對應正確（例如 `summary` 包含 overview 和 key_points）
+  - 備註：`functions/eval/grade.ts`，測試 `functions/test/grade.test.ts`（6 個）。`tsconfig.test.json` 加上 `eval`。
 
-- [ ] **T3 匯出工具**
+- [x] **T3 匯出工具**
   - 做完能看到：`dart run tool/export_eval_case.dart` 把 App 容器裡的一場會議轉成 `request.json`，依參數帶不帶詞庫，接續的前幾場凍結在檔案裡。
   - 被誰卡住：無，可以直接開工
   - 主要會動的檔案：`lib/services/analysis_service.dart`、新的純 Dart 檔（`buildHighlights`、`segmentIndexFor`）、`tool/export_eval_case.dart`、`test/`
   - 軌道：可獨立進行
   - 驗收：
-    - [ ] 前置重構後 `flutter test` 全部通過
-    - [ ] 用假的容器資料夾測試：欄位正確、帶不帶詞庫、接續的前幾場、找不到會議時的錯誤訊息
-    - [ ] 用名稱（標題或錄音名稱）或 id 都能指定會議
+    - [x] 前置重構後 `flutter test` 全部通過
+    - [x] 用假的容器資料夾測試：欄位正確、帶不帶詞庫、接續的前幾場、找不到會議時的錯誤訊息
+    - [x] 用名稱（標題或錄音名稱）或 id 都能指定會議
+  - 備註：前置重構比規格多走一步：整個組 request 的邏輯（`buildAnalysisRequest`，含 `buildHighlights`、`segmentIndexFor`）搬到純 Dart 的 `lib/services/analysis_request.dart`，App 的 `AnalysisService.analyze` 和匯出工具都呼叫它，`analysis_service.dart` 再 export 它，既有 import 不用改。測試 `test/tool/export_eval_case_test.dart`（5 個）。
 
-- [ ] **T4 評測腳本與報告**
+- [x] **T4 評測腳本與報告**
   - 做完能看到：`npm run eval` 會先估算費用，超過上限就停；每筆跑 N 次（同一筆的逐字稿用快取）；寫出 `run.json`、`report.md`，並跟基準輪比較。
   - 被誰卡住：T1、T2
   - 主要會動的檔案：`functions/eval/`、`functions/package.json`、`.gitignore`
   - 軌道：可獨立進行
   - 驗收：
-    - [ ] `estimateCost`、`compareRuns` 有測試（價格表用官方最新價格查證）
-    - [ ] 沒有 key、案例格式錯誤、request 沒通過驗證時，開跑前就失敗
-    - [ ] 報告標出 `expect.json` 被修改過的案例
-    - [ ] `.gitignore` 加上 `evals/private/`、`evals/runs/`
+    - [x] `estimateCost`、`compareRuns` 有測試（價格表用官方最新價格查證）
+    - [x] 沒有 key、案例格式錯誤、request 沒通過驗證時，開跑前就失敗
+    - [x] 報告標出 `expect.json` 被修改過的案例
+    - [x] `.gitignore` 加上 `evals/private/`、`evals/runs/`
+  - 備註：
+    - 模組：`eval/pricing.ts`（價格表、單次花費、估算）、`eval/cases.ts`（讀案例、`expect.json` 雜湊）、`eval/report.ts`（通過次數、跟基準輪比較、Markdown 報告）、`eval/run.ts`（CLI）。測試 `functions/test/eval.test.ts`（8 個）。
+    - 單價（2026-11-01 用 claude-api skill 查證）：Haiku 4.5 輸入 $1、輸出 $5／百萬 token，快取寫入 1.25 倍、讀取 0.1 倍，**最低 4096 token 才會快取**，所以只有長會議（C5）會用到快取；Haiku 5.5 為 $0.10／$0.50，最低 512 token。
+    - 估算以每次輸出 3000 token 計算（典型值），同時列出每次都寫滿 `max_tokens` 的最壞情況；照最壞情況估，5 筆 × 3 次就會超過 US$0.5，等於永遠跑不了。實際花費每次呼叫前檢查，達到上限就停。
+    - 比規格多一步：沒有加 `--yes` 時只估算、不送出，讓使用者先看估算（T6 的驗收條件）。
+    - 給第 ⑤ 步的提醒：Haiku 5.5 預設開 thinking（effort 預設 medium），thinking 會吃 `max_tokens`，換模型時要另外評估 `max_tokens` 和 thinking 設定。
 
 - [ ] **T5 建立 C1～C5 案例**
   - 做完能看到：5 個案例資料夾都有 `request.json`、`expect.json`（C5 經使用者確認）、`README.md`。

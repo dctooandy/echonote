@@ -49,3 +49,7 @@ app.*.map.json
 
 # App Check debug token (spec feature-app-check, decision 18); copy from app_check.local.json.example
 app_check.local.json
+
+# Analysis eval set: real meetings and run results stay local (spec feature-analysis-eval-set)
+evals/private/
+evals/runs/

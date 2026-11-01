@@ -8,7 +8,8 @@
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
-    "test": "tsc -p tsconfig.test.json && node --test build-test/test/"
+    "test": "tsc -p tsconfig.test.json && node --test build-test/test/",
+    "eval": "tsc -p tsconfig.test.json && node --env-file-if-exists=.env.local build-test/eval/run.js"
   },
   "engines": {
     "node": "22"
