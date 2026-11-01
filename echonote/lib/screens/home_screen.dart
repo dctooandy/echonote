@@ -223,11 +223,23 @@ class _HomeScreenState extends State<HomeScreen> {
       for (final s in seriesOf(recordings))
         for (final r in s.recordings) r.id: s.colorIndex,
     };
+    // Grouped by day under a heading, so each card shows only its time
+    // (decision 16).
+    final now = DateTime.now();
+    final items = <Object>[];
+    String? day;
+    for (final r in recordings) {
+      final heading = formatDayHeading(r.createdAt.toLocal(), now);
+      if (heading != day) items.add(day = heading);
+      items.add(r);
+    }
     return ListView.builder(
       padding: _listPadding,
-      itemCount: recordings.length,
+      itemCount: items.length,
       itemBuilder: (context, index) {
-        final recording = recordings[index];
+        final item = items[index];
+        if (item is String) return _DayHeading(item);
+        final recording = item as Recording;
         final color = colorOf[recording.id];
         return _row(
           recording,
@@ -281,8 +293,11 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
+          // Long press to name the series (decision 17).
+          InkWell(
+            onLongPress: () => _renameSeries(series),
+            child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
             child: Row(
               children: [
                 Icon(Icons.circle, size: 10, color: color),
@@ -302,16 +317,53 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
+          ),
           for (var i = 0; i < series.recordings.length; i++)
-            _row(series.recordings[i], recordings, hint: seriesRowHint(series, i), hintColor: color),
+            _row(series.recordings[i], recordings, hint: seriesRowHint(series, i), hintColor: color, withDate: true),
         ],
       ),
     );
   }
 
-  Widget _row(Recording recording, List<Recording> recordings, {ChainHint hint = const ChainHint(), Color? hintColor}) {
-    final status = _Status.of(context, recording);
-    final date = formatListDate(recording.createdAt.toLocal(), DateTime.now());
+  /// The series' name is kept on its first meeting; empty goes back to
+  /// the latest meeting's name (decision 17).
+  Future<void> _renameSeries(MeetingSeries series) async {
+    final controller = TextEditingController(text: series.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('系列名稱'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(helperText: '清空就用最近一場的名稱'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('儲存')),
+        ],
+      ),
+    );
+    if (name == null) return;
+    final trimmed = name.trim();
+    series.first.seriesName = trimmed.isEmpty ? null : trimmed;
+    await _store.save(series.first);
+    _reload();
+  }
+
+  /// One meeting's card: its time on the left (with the date too inside a
+  /// series frame, which isn't grouped by day), name and link hint in the
+  /// middle, state and length on the right (decision 16).
+  Widget _row(
+    Recording recording,
+    List<Recording> recordings, {
+    ChainHint hint = const ChainHint(),
+    Color? hintColor,
+    bool withDate = false,
+  }) {
+    final at = recording.createdAt.toLocal();
+    final theme = Theme.of(context);
+    const tabular = [FontFeature.tabularFigures()];
     return Dismissible(
       key: ValueKey(recording.id),
       direction: DismissDirection.endToStart,
@@ -344,18 +396,37 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Card(
         child: ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-          leading: CircleAvatar(
-            radius: 19,
-            backgroundColor: status.background,
-            foregroundColor: status.color,
-            child: Icon(status.icon, size: 20),
+          // Same height with or without a hint line, so the status and
+          // length on the right always fit.
+          minTileHeight: 64,
+          minLeadingWidth: 46,
+          leading: SizedBox(
+            width: 46,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              // One line each, shrunk rather than wrapped under large text.
+              children: [
+                if (withDate)
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(formatMonthDay(at), style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant, fontFeatures: tabular)),
+                  ),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(formatClock(at), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, fontFeatures: tabular)),
+                ),
+              ],
+            ),
           ),
+          horizontalTitleGap: 8,
           title: Text(
             recording.displayTitle,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          subtitle: _DateLine(date: date, hint: hint, color: hintColor ?? Theme.of(context).colorScheme.primary),
+          subtitle: hint.isEmpty ? null : _HintLine(hint: hint, color: hintColor ?? theme.colorScheme.primary),
           trailing: _trailing(context, recording),
           onTap: () async {
             await Navigator.of(context).push(
@@ -424,20 +495,33 @@ class _ViewTabs extends StatelessWidget {
   }
 }
 
-/// The date under a meeting's title, then what it links to in its
-/// series' color, with arrow icons rather than ↩/↪ (iOS draws those as
-/// emoji). Scrolls when too long for one line (decisions 13 to 15).
-class _DateLine extends StatelessWidget {
-  const _DateLine({required this.date, required this.hint, required this.color});
+/// A day's heading over its cards in 全部 (decision 16).
+class _DayHeading extends StatelessWidget {
+  const _DayHeading(this.text);
 
-  final String date;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 10, 20, 2),
+    child: Text(
+      text,
+      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurfaceVariant),
+    ),
+  );
+}
+
+/// What a meeting links to, in its series' color, with arrow icons rather
+/// than ↩/↪ (iOS draws those as emoji). Scrolls when too long for one line
+/// (decisions 13 to 15).
+class _HintLine extends StatelessWidget {
+  const _HintLine({required this.hint, required this.color});
+
   final ChainHint hint;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
-    final muted = TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant);
-    if (hint.isEmpty) return Text(date, maxLines: 1, overflow: TextOverflow.ellipsis, style: muted);
     final linked = TextStyle(color: color, fontWeight: FontWeight.w600);
     Widget part(IconData icon, String text) => Row(
       mainAxisSize: MainAxisSize.min,
@@ -451,7 +535,6 @@ class _DateLine extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('$date · ', style: muted),
           if (hint.follows != null) part(Icons.subdirectory_arrow_left, '接續 ${hint.follows}'),
           if (hint.follows != null && hint.followers > 0) Text(' · ', style: linked),
           if (hint.followers > 0) part(Icons.subdirectory_arrow_right, '${hint.followers} 場後續'),
@@ -464,7 +547,7 @@ class _DateLine extends StatelessWidget {
 /// A recording's state as the list shows it: grey to do, amber halfway,
 /// green done (spec feature-dark-theme).
 class _Status {
-  const _Status(this.label, this.icon, this.color, this.background);
+  const _Status(this.label, this.color, this.background);
 
   factory _Status.of(BuildContext context, Recording recording) {
     final scheme = Theme.of(context).colorScheme;
@@ -472,19 +555,17 @@ class _Status {
     if (!recording.isTranscribed) {
       return _Status(
         '未轉錄',
-        Icons.pending_outlined,
         scheme.onSurfaceVariant,
         scheme.surfaceContainerHighest,
       );
     }
     if (recording.analysis == null) {
-      return _Status('待分析', Icons.description_outlined, colors.amber, colors.amberSoft);
+      return _Status('待分析', colors.amber, colors.amberSoft);
     }
-    return _Status('已完成', Icons.check_circle, colors.green, colors.greenSoft);
+    return _Status('已完成', colors.green, colors.greenSoft);
   }
 
   final String label;
-  final IconData icon;
   final Color color;
   final Color background;
 }

@@ -44,7 +44,7 @@ void main() {
 
   tearDown(() => dir.delete(recursive: true));
 
-  void writeEntry(String id, {int? durationMs, String createdAt = '2026-10-22T14:30:05.000', String? previous}) {
+  void writeEntry(String id, {int? durationMs, String createdAt = '2026-10-22T14:30:05.000', String? previous, String? seriesName}) {
     final history = Directory('${dir.path}/history')..createSync(recursive: true);
     File('${history.path}/$id.json').writeAsStringSync(jsonEncode({
       'id': id,
@@ -54,6 +54,7 @@ void main() {
       'segments': [],
       'duration_ms': ?durationMs,
       'previous_recording_id': ?previous,
+      'series_name': ?seriesName,
     }));
   }
 
@@ -209,6 +210,49 @@ void main() {
 
       final stored = jsonDecode(File('${dir.path}/settings.json').readAsStringSync()) as Map<String, dynamic>;
       expect(stored['home_view'], 'series');
+    });
+
+    testWidgets('全部 groups cards by day, each with its time on the left and no status icon', (tester) async {
+      writeLinked();
+      await open(tester);
+
+      final now = DateTime.now().year;
+      String heading(String day) => now == 2026 ? day : '2026年$day';
+      for (final day in ['11月8日（日）', '11月3日（二）', '11月1日（日）', '10月31日（六）', '10月20日（二）']) {
+        expect(find.text(heading(day)), findsOneWidget, reason: day);
+      }
+      // Three meetings on 11/1 under one heading.
+      expect(tester.getTopLeft(find.text(heading('11月1日（日）'))).dy, lessThan(tester.getTopLeft(find.text('14:05')).dy));
+      expect(tester.getTopLeft(find.text('14:05')).dy, lessThan(tester.getTopLeft(find.text('12:33')).dy));
+      expect(tester.getTopLeft(find.text('14:05')).dx, lessThan(tester.getTopLeft(find.text('錄音 w2')).dx));
+      expect(find.byType(CircleAvatar), findsNothing);
+    });
+
+    testWidgets('a long press names the series, kept on its first meeting; clearing it goes back', (tester) async {
+      writeLinked();
+      await open(tester, view: HomeView.series);
+      expect(find.text('錄音 w3'), findsNWidgets(2), reason: 'named after the latest meeting, which is also a row');
+
+      await tester.longPress(find.text('4 場 · 最近 11/8'));
+      await tester.pumpAndSettle();
+      expect(find.text('系列名稱'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), '  官網改版  ');
+      await tester.tap(find.text('儲存'));
+      await settle(tester);
+      await settle(tester);
+
+      expect(find.text('官網改版'), findsOneWidget);
+      expect(saved('w1')['series_name'], '官網改版');
+      expect(saved('w3').containsKey('series_name'), isFalse);
+
+      await tester.longPress(find.text('官網改版'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '');
+      await tester.tap(find.text('儲存'));
+      await settle(tester);
+      await settle(tester);
+      expect(find.text('錄音 w3'), findsNWidgets(2));
+      expect(saved('w1').containsKey('series_name'), isFalse);
     });
 
     testWidgets('the series view without any links says how to make one', (tester) async {

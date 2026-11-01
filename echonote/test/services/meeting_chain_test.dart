@@ -168,6 +168,15 @@ void main() {
       expect(series.first.contains(solo), isFalse);
     });
 
+    test('a name given to the series is kept on its first meeting', () {
+      w1.seriesName = '官網改版';
+      addTearDown(() => w1.seriesName = null);
+      expect(seriesOf(all).first.name, '官網改版');
+      expect(seriesOf(all).first.first, same(w1));
+      // Gone with the first meeting.
+      expect(seriesOf(all.where((r) => r.id != 'w1').toList()).first.name, w3.displayTitle);
+    });
+
     test('colors go by the age of the series, so new recordings never recolor one', () {
       final colors = {for (final s in seriesOf(all)) s.recordings.last.id: s.colorIndex};
       expect(colors, {'t1': 0, 'w1': 1});

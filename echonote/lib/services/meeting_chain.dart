@@ -100,8 +100,11 @@ class MeetingSeries {
   /// on, so new recordings never recolor an older series (decision 9).
   final int colorIndex;
 
-  /// Named after its latest meeting.
-  String get name => recordings.first.displayTitle;
+  /// The first (oldest) meeting: where a name the user gives is kept.
+  Recording get first => recordings.last;
+
+  /// The name the user gave it, else its latest meeting's (decision 17).
+  String get name => first.seriesName ?? recordings.first.displayTitle;
   DateTime get latest => recordings.first.createdAt;
   bool contains(Recording recording) => recordings.any((r) => r.id == recording.id);
 }
