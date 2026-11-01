@@ -1,0 +1,146 @@
+{
+  "segments": [
+    {
+      "start_ms": 0,
+      "end_ms": 8960,
+      "text": "好 我們開始這週的官網改版週會先對一下上週進度",
+      "edited": false
+    },
+    {
+      "start_ms": 8960,
+      "end_ms": 17280,
+      "text": "首頁文案我已經寫完了 昨天放到供用資料夾 大家有空可以看一下",
+      "edited": false
+    },
+    {
+      "start_ms": 17280,
+      "end_ms": 27500,
+      "text": "涉及外包 爆價目前收到兩家 第三家說這週會回覆 所以還在等",
+      "edited": false
+    },
+    {
+      "start_ms": 27500,
+      "end_ms": 35660,
+      "text": "客戶特域建議 我整理好了 總共收了8折 已經交給小明",
+      "edited": false
+    },
+    {
+      "start_ms": 35660,
+      "end_ms": 44900,
+      "text": "謝謝 那上限時間 因為爆價還沒期 我覺得15號太感了",
+      "edited": false
+    },
+    {
+      "start_ms": 44900,
+      "end_ms": 60700,
+      "text": "演一週改到11月22號 同意22號比較保險 還有主色的部分 上週回去想一下",
+      "edited": false
+    },
+    {
+      "start_ms": 60700,
+      "end_ms": 72020,
+      "text": "也問了幾個客戶 大家覺得藍色太像銀行 我建議改成綠色比較有活力",
+      "edited": false
+    },
+    {
+      "start_ms": 72020,
+      "end_ms": 78820,
+      "text": "好 那就不用藍色了 主色改成綠色",
+      "edited": false
+    },
+    {
+      "start_ms": 78820,
+      "end_ms": 84660,
+      "text": "語系呢 還是一樣先做中文版嗎?",
+      "edited": false
+    },
+    {
+      "start_ms": 84660,
+      "end_ms": 90820,
+      "text": "對 維持原本的決定 先只做中文版",
+      "edited": false
+    },
+    {
+      "start_ms": 90820,
+      "end_ms": 98820,
+      "text": "另外 我想提一個新的網站要不要加一個常見問題的頁面",
+      "edited": false
+    },
+    {
+      "start_ms": 98820,
+      "end_ms": 103620,
+      "text": "克服最近一直被問一樣的問題",
+      "edited": false
+    },
+    {
+      "start_ms": 103620,
+      "end_ms": 107380,
+      "text": "好主意 加一個F&Q頁",
+      "edited": false
+    },
+    {
+      "start_ms": 107380,
+      "end_ms": 112820,
+      "text": "小華 你先寫一本F&Q嘲鎬 下週給大家看",
+      "edited": false
+    },
+    {
+      "start_ms": 112820,
+      "end_ms": 123140,
+      "text": "沒問題 最後是預算 這次改版的總預算上限抓15萬元",
+      "edited": false
+    },
+    {
+      "start_ms": 123140,
+      "end_ms": 127620,
+      "text": "外包爆價超過的話 要先跟我講",
+      "edited": false
+    },
+    {
+      "start_ms": 127620,
+      "end_ms": 130300,
+      "text": "好 那今天就到這裡",
+      "edited": false
+    }
+  ],
+  "previous_meetings": [
+    {
+      "title": "官網改版周慧",
+      "date": "2026-10-31",
+      "overview": "官網改版會議確定三個主要議題的決策：上線時間定為11月15日、首頁主色選用藍色、語系先做中文版。另外確認贊助台北開發者Mid-Up活動，費用2萬元。分配首頁文案、設計外包詢價、新網域申請、客戶推薦整理等工作。",
+      "decisions": [
+        "上線時間確定為11月15日",
+        "首頁主色確定為藍色",
+        "先製作中文版，英文版之後再推出",
+        "確認贊助台北開發者Mid-Up活動，費用2萬元"
+      ],
+      "todos": [
+        {
+          "task": "撰寫首頁文案",
+          "owner": "小明",
+          "done": false
+        },
+        {
+          "task": "尋找三家設計外包並請報價",
+          "owner": "小華",
+          "done": false
+        },
+        {
+          "task": "申請新網域",
+          "owner": "阿傑",
+          "done": false
+        },
+        {
+          "task": "整理客戶推薦文案放在首頁下面",
+          "owner": "小眉",
+          "done": false
+        },
+        {
+          "task": "回復贊助Mid-Up活動的相關事宜",
+          "owner": "小華",
+          "done": false
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,91 @@
+{
+  "description": "一般單場：官網改版週會第一場。逐字稿有錯字（上限＝上線、Mid-Up＝Meetup、小眉＝小美），沒有前一場、沒有筆記。",
+  "must_include": [
+    {
+      "id": "上線日期",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "11月15",
+        "11/15",
+        "十一月十五"
+      ]
+    },
+    {
+      "id": "主色藍色",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "藍色"
+      ]
+    },
+    {
+      "id": "先做中文版",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "中文版"
+      ]
+    },
+    {
+      "id": "贊助活動",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "贊助"
+      ]
+    }
+  ],
+  "todos": [
+    {
+      "id": "首頁文案",
+      "any_of": [
+        "文案"
+      ],
+      "owner_any_of": [
+        "小明"
+      ]
+    },
+    {
+      "id": "外包報價",
+      "any_of": [
+        "報價",
+        "外包"
+      ],
+      "owner_any_of": [
+        "小華",
+        "小花"
+      ]
+    },
+    {
+      "id": "申請網域",
+      "any_of": [
+        "網域"
+      ],
+      "owner_any_of": [
+        "阿傑"
+      ]
+    },
+    {
+      "id": "客戶推薦",
+      "any_of": [
+        "推薦"
+      ],
+      "owner_any_of": [
+        "小美",
+        "小眉"
+      ]
+    }
+  ],
+  "highlight_contexts": {
+    "count": 0
+  }
+}

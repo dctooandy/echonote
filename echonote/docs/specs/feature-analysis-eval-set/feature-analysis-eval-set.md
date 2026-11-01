@@ -236,16 +236,17 @@ flowchart LR
     - 比規格多一步：沒有加 `--yes` 時只估算、不送出，讓使用者先看估算（T6 的驗收條件）。
     - 給第 ⑤ 步的提醒：Haiku 5.5 預設開 thinking（effort 預設 medium），thinking 會吃 `max_tokens`，換模型時要另外評估 `max_tokens` 和 thinking 設定。
 
-- [ ] **T5 建立 C1～C5 案例**
+- [x] **T5 建立 C1～C5 案例**
   - 做完能看到：5 個案例資料夾都有 `request.json`、`expect.json`（C5 經使用者確認）、`README.md`。
   - 被誰卡住：T2（`expect.json` 的格式）、T3
   - 主要會動的檔案：`evals/cases/`、`evals/private/`
   - 軌道：需要使用者配合（用 Xcode 下載 App 容器、確認 C5 的預期結果）
   - 驗收：
-    - [ ] C3 帶詞庫，其他不帶
-    - [ ] C2 的 `previous_meetings` 有 C1 的結論
-    - [ ] C4 的 `highlights` 有 3 筆
-    - [ ] C5 只在 `evals/private/`，`git status` 看不到
+    - [x] C3 帶詞庫，其他不帶
+    - [x] C2 的 `previous_meetings` 有 C1 的結論
+    - [x] C4 的 `highlights` 有 3 筆
+    - [x] C5 只在 `evals/private/`，`git status` 看不到
+  - 備註：容器 `com.example.echonote 2026-11-01 13:41.35.797.xcappdata`。案例資料夾：`c1-website-weekly`、`c2-website-weekly-followup`、`c3-tech-stack-glossary`、`c4-team-trip-notes`（`evals/cases/`）、`c5-solar-policy-long`（`evals/private/`）。C5 逐字稿第 41 段是 whisper 把詞庫 prompt 誤轉成逐字稿（Flutter、PostureCheck…），加成 C5 的陷阱。C5 的 `expect.json` 使用者同意先照草稿跑（2026-11-01）。
 
 - [ ] **T6 第一輪實際評測**
   - 做完能看到：一份真實報告；使用者看附錄的原始輸出，確認程式評分跟自己的判斷一致。

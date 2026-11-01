@@ -1,0 +1,93 @@
+{
+  "segments": [
+    {
+      "start_ms": 0,
+      "end_ms": 11160,
+      "text": "我們來討論今年的員工旅遊,先講地點,我調查了一下,大家最想去宜蘭。",
+      "edited": false
+    },
+    {
+      "start_ms": 11160,
+      "end_ms": 17400,
+      "text": "宜蘭不錯,交通方便,雪碎過去一個多小時就到。",
+      "edited": false
+    },
+    {
+      "start_ms": 17400,
+      "end_ms": 27400,
+      "text": "那地點就決定宜蘭,日期的部分12月6號到7號,兩天一夜,大家可以嗎?",
+      "edited": false
+    },
+    {
+      "start_ms": 27400,
+      "end_ms": 32200,
+      "text": "可以,那個週末沒有其他活動。",
+      "edited": false
+    },
+    {
+      "start_ms": 32200,
+      "end_ms": 40200,
+      "text": "好,日期就定12月6號到7號,接下來是預算。",
+      "edited": false
+    },
+    {
+      "start_ms": 40200,
+      "end_ms": 46400,
+      "text": "公司補助每個人5000塊,超過的部分自己出。",
+      "edited": false
+    },
+    {
+      "start_ms": 46400,
+      "end_ms": 52400,
+      "text": "5000應該夠,住宿加一棟晚餐差不多。",
+      "edited": false
+    },
+    {
+      "start_ms": 52400,
+      "end_ms": 60400,
+      "text": "住的地方,小美你幫忙找民宿,最好是可以包動的。",
+      "edited": false
+    },
+    {
+      "start_ms": 60400,
+      "end_ms": 65400,
+      "text": "好,我這週先找三間比較。",
+      "edited": false
+    },
+    {
+      "start_ms": 65400,
+      "end_ms": 71400,
+      "text": "交通的部分,阿傑你問一下遊覽車的報價。",
+      "edited": false
+    },
+    {
+      "start_ms": 71400,
+      "end_ms": 75400,
+      "text": "沒問題,我問兩家。",
+      "edited": false
+    },
+    {
+      "start_ms": 75400,
+      "end_ms": 83400,
+      "text": "報名表我來做,下週一發給大家,那今天就先這樣。",
+      "edited": false
+    }
+  ],
+  "highlights": [
+    {
+      "note_index": 0,
+      "segment_index": 2,
+      "text": "決定改去花蓮"
+    },
+    {
+      "note_index": 1,
+      "segment_index": 5,
+      "text": null
+    },
+    {
+      "note_index": 2,
+      "segment_index": 7,
+      "text": "民宿要問能不能帶寵物"
+    }
+  ]
+}
