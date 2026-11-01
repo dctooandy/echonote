@@ -15,6 +15,7 @@ import '../services/app_settings.dart';
 import '../services/correction_learning.dart';
 import '../services/glossary_store.dart';
 import '../services/meeting_chain.dart';
+import '../services/meeting_html.dart';
 import '../services/recording_store.dart';
 import '../services/recording_transcriber.dart';
 import '../services/screen_awake.dart';
@@ -31,6 +32,7 @@ class MeetingDetailScreen extends StatefulWidget {
     this.store,
     this.analysisService,
     this.glossary,
+    this.shareFile,
   });
 
   final Recording recording;
@@ -39,6 +41,9 @@ class MeetingDetailScreen extends StatefulWidget {
   final RecordingStore? store;
   final AnalysisService? analysisService;
   final GlossaryStore? glossary;
+
+  /// Hands a written file to the OS share sheet; tests swap it out.
+  final Future<void> Function(String path, String fileName)? shareFile;
 
   @override
   State<MeetingDetailScreen> createState() => _MeetingDetailScreenState();
@@ -254,18 +259,41 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   String get _transcriptText =>
       widget.recording.segments.map((s) => '[${formatMs(s.startMs)}] ${s.text}').join('\n');
 
+  Future<void> _shareFile(String path, String fileName) =>
+      widget.shareFile?.call(path, fileName) ??
+      SharePlus.instance.share(ShareParams(files: [XFile(path)], fileNameOverrides: [fileName]));
+
+  /// The minutes as one HTML file, for people without the app (spec
+  /// feature-html-export).
+  Future<void> _exportMinutes() async {
+    try {
+      final all = _all ?? await _store.loadAll();
+      final html = buildMeetingHtml(
+        widget.recording,
+        previous: previousOf(widget.recording, all),
+        exportedAt: DateTime.now(),
+      );
+      final fileName = meetingHtmlFileName(widget.recording);
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsString(html);
+      await _shareFile(file.path, fileName);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('匯出失敗: $e')));
+    }
+  }
+
   /// Writes the transcript to a temp .txt file and hands it to the OS share
   /// sheet — lets the user save it into Files, AirDrop it, send it via
   /// LINE/Email, etc., without echonote needing its own file-destination UI.
   Future<void> _exportTranscript() async {
     try {
       final dir = await getTemporaryDirectory();
-      final safeName = widget.recording.displayTitle.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final safeName = safeFileName(widget.recording.displayTitle);
       final file = File('${dir.path}/$safeName.txt');
       await file.writeAsString(_transcriptText);
-      await SharePlus.instance.share(
-        ShareParams(files: [XFile(file.path)], fileNameOverrides: ['$safeName.txt']),
-      );
+      await _shareFile(file.path, '$safeName.txt');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('匯出失敗: $e')));
@@ -536,15 +564,23 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
               ),
               onSelected: (action) => switch (action) {
                 _MoreAction.previous => _pickPrevious(),
+                _MoreAction.export => _exportMinutes(),
                 _MoreAction.reanalyze => _confirmReanalyze(),
                 _MoreAction.retranscribe => _confirmRetranscribe(),
                 _MoreAction.delete => _delete(),
               },
               itemBuilder: (context) {
                 final error = Theme.of(context).colorScheme.error;
-                PopupMenuItem<_MoreAction> item(_MoreAction value, IconData icon, String label, [Color? color]) =>
+                PopupMenuItem<_MoreAction> item(
+                  _MoreAction value,
+                  IconData icon,
+                  String label, {
+                  Color? color,
+                  bool enabled = true,
+                }) =>
                     PopupMenuItem(
                       value: value,
+                      enabled: enabled,
                       child: Row(
                         children: [
                           Icon(icon, size: 20, color: color),
@@ -555,11 +591,12 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
                     );
                 return [
                   item(_MoreAction.previous, Icons.link, '接續上一場'),
+                  item(_MoreAction.export, Icons.ios_share, '匯出會議紀錄', enabled: analysis != null),
                   if (analysis != null && widget.recording.isTranscribed)
                     item(_MoreAction.reanalyze, Icons.auto_awesome, '重新分析'),
                   if (widget.recording.isTranscribed)
                     item(_MoreAction.retranscribe, Icons.subtitles_outlined, '用目前詞庫重新轉錄'),
-                  item(_MoreAction.delete, Icons.delete_outline, '刪除', error),
+                  item(_MoreAction.delete, Icons.delete_outline, '刪除', color: error),
                 ];
               },
             ),
@@ -998,7 +1035,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
 
   Widget _buildSummary(MeetingAnalysis? analysis) {
     return _analysisGate(analysis, (a) {
-      final copyText = ([a.overview, ...a.keyPoints.map((p) => '• $p')]).join('\n');
+      final copyText = summaryCopyText(a);
       return ListView(
         padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
@@ -1415,7 +1452,7 @@ class _TimePill extends StatelessWidget {
   }
 }
 
-enum _MoreAction { previous, reanalyze, retranscribe, delete }
+enum _MoreAction { previous, export, reanalyze, retranscribe, delete }
 
 enum _LearnChoice { dismiss, learn, learnAndApply }
 
