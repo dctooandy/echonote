@@ -15,6 +15,7 @@ class SettingsStore {
   static const _livePreviewKey = 'live_preview';
   static const _themeModeKey = 'theme_mode';
   static const _handednessKey = 'handedness';
+  static const _homeViewKey = 'home_view';
 
   Future<File> _file() async => File('${(await _documentsDir()).path}/settings.json');
 
@@ -49,6 +50,12 @@ class SettingsStore {
 
   Future<void> setHandedness(Handedness hand) => _write(_handednessKey, hand.name);
 
+  /// The home list one meeting at a time, or grouped by series; single
+  /// unless chosen otherwise (spec feature-chain-links, decision 3).
+  Future<HomeView> homeView() async => _enumValue(HomeView.values, (await _read())[_homeViewKey], HomeView.single);
+
+  Future<void> setHomeView(HomeView view) => _write(_homeViewKey, view.name);
+
   static T _enumValue<T extends Enum>(List<T> values, Object? name, T fallback) {
     for (final value in values) {
       if (value.name == name) return value;
@@ -65,3 +72,5 @@ class SettingsStore {
 }
 
 enum Handedness { right, left }
+
+enum HomeView { single, series }

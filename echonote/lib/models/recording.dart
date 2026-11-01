@@ -371,6 +371,7 @@ class Recording {
     this.durationMs,
     this.previousRecordingId,
     this.previousChangedSinceAnalysis = false,
+    this.seriesName,
   }) : notes = notes ?? [],
        dismissedReplacements = dismissedReplacements ?? [];
 
@@ -415,6 +416,11 @@ class Recording {
   /// follow-up compares against the wrong meeting. Cleared by re-analysis.
   bool previousChangedSinceAnalysis;
 
+  /// The name the user gave the series this meeting starts; only read on a
+  /// series' first meeting, and gone with it (spec feature-chain-links,
+  /// decision 17).
+  String? seriesName;
+
   bool get isTranscribed => segments.isNotEmpty;
 
   String get displayTitle =>
@@ -443,6 +449,7 @@ class Recording {
         durationMs: json['duration_ms'] as int?,
         previousRecordingId: json['previous_recording_id'] as String?,
         previousChangedSinceAnalysis: json['previous_changed_since_analysis'] as bool? ?? false,
+        seriesName: json['series_name'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -461,5 +468,6 @@ class Recording {
         if (durationMs != null) 'duration_ms': durationMs,
         if (previousRecordingId != null) 'previous_recording_id': previousRecordingId,
         if (previousChangedSinceAnalysis) 'previous_changed_since_analysis': true,
+        'series_name': ?seriesName,
       };
 }

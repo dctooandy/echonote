@@ -31,3 +31,17 @@ String formatListDate(DateTime t, DateTime now) {
 /// picker and in the analysis request (spec feature-cross-meeting-memory).
 String formatIsoDate(DateTime t) =>
     '${t.year.toString().padLeft(4, '0')}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+
+/// 10/31: a date in a short hint.
+String formatMonthDay(DateTime t) => '${t.month}/${t.day}';
+
+/// A day heading in the list: 11月1日（日）, with the year only when it
+/// isn't [now]'s.
+String formatDayHeading(DateTime t, DateTime now) {
+  const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+  final day = '${t.month}月${t.day}日（${weekdays[t.weekday - 1]}）';
+  return t.year == now.year ? day : '${t.year}年$day';
+}
+
+/// 13:11
+String formatClock(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';

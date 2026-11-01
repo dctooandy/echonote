@@ -605,6 +605,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
         ),
         body: Column(
           children: [
+            ?_buildChainCard(),
             // The untranscribed view has its own progress; this covers
             // replacing an existing transcript.
             if (_isTranscribing && widget.recording.isTranscribed) _buildRetranscribeProgress(),
@@ -851,11 +852,9 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   /// are the user's own, not AI output.
   Widget _buildSummaryTab(MeetingAnalysis? analysis) {
     final summary = _buildSummary(analysis);
-    final previousLink = _buildPreviousLink();
-    if (widget.recording.notes.isEmpty && previousLink == null) return summary;
+    if (widget.recording.notes.isEmpty) return summary;
     return Column(
       children: [
-        ?previousLink,
         if (widget.recording.notes.isNotEmpty)
           ConstrainedBox(
             constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.3),
@@ -866,35 +865,136 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     );
   }
 
-  /// "接續：…" above everything else on the summary tab; null when this
-  /// meeting follows none (or the list hasn't loaded yet).
-  Widget? _buildPreviousLink() {
+  /// Opened by a tap; closed again on every visit (spec
+  /// feature-chain-links, decision 11).
+  bool _chainOpen = false;
+
+  /// What this meeting follows and what follows it, above every tab (spec
+  /// feature-chain-links, decision 7); null for a meeting with no links (or
+  /// while the list loads).
+  Widget? _buildChainCard() {
     final all = _all;
-    if (widget.recording.previousRecordingId == null || all == null) return null;
+    if (all == null) return null;
+    final followsOne = widget.recording.previousRecordingId != null;
     final previous = previousOf(widget.recording, all);
+    final followers = followersOf(widget.recording, all);
+    if (!followsOne && followers.isEmpty) return null;
+    final scheme = Theme.of(context).colorScheme;
+    final series = seriesOf(all).where((s) => s.contains(widget.recording)).firstOrNull;
+    final color = series == null ? scheme.primary : seriesColor(context, series.colorIndex);
+    final muted = TextStyle(color: scheme.onSurfaceVariant);
+    final summary = [
+      if (followsOne) previous == null ? '接續的會議已刪除' : '← 接續：${previous.displayTitle}',
+      if (followers.isNotEmpty) '→ ${followers.length} 場後續',
+    ].join(' · ');
     return Card(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      child: ListTile(
-        dense: true,
-        leading: Icon(previous == null ? Icons.link_off : Icons.link),
-        title: Text(
-          previous == null ? '接續的會議已刪除' : '接續：${previous.displayTitle}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(previous == null ? '點這裡重新選擇' : formatIsoDate(previous.createdAt)),
-        onTap: previous == null ? _pickPrevious : () => _openPrevious(previous),
-        trailing: previous == null
-            ? null
-            : IconButton(icon: const Icon(Icons.edit_outlined), tooltip: '更換接續', onPressed: _pickPrevious),
+      margin: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+      color: color.withValues(alpha: 0.12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(kCardRadius),
+        side: BorderSide(color: color.withValues(alpha: 0.5)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _chainOpen = !_chainOpen),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      summary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: color, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Icon(_chainOpen ? Icons.expand_less : Icons.expand_more, color: color),
+                ],
+              ),
+            ),
+          ),
+          if (_chainOpen) ...[
+            if (followsOne && previous == null)
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.link_off),
+                title: const Text('接續的會議已刪除'),
+                subtitle: const Text('點這裡重新選擇'),
+                onTap: _pickPrevious,
+              ),
+            if (previous != null)
+              ListTile(
+                dense: true,
+                leading: Icon(Icons.subdirectory_arrow_left, color: color),
+                title: Text(previous.displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text('上一場 · ${formatIsoDate(previous.createdAt)}', style: muted),
+                onTap: () => _openMeeting(previous),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(icon: const Icon(Icons.edit_outlined, size: 20), tooltip: '更換接續', onPressed: _pickPrevious),
+                    IconButton(
+                      icon: Icon(Icons.link_off, size: 20, color: scheme.error),
+                      tooltip: '取消接續',
+                      onPressed: () => _confirmUnlink(previous),
+                    ),
+                  ],
+                ),
+              ),
+            for (final follower in followers)
+              ListTile(
+                dense: true,
+                leading: Icon(Icons.subdirectory_arrow_right, color: color),
+                title: Text(follower.displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text('後續 · ${formatIsoDate(follower.createdAt)}', style: muted),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _openMeeting(follower),
+              ),
+          ],
+        ],
       ),
     );
   }
 
-  Future<void> _openPrevious(Recording previous) async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => MeetingDetailScreen(recording: previous, store: widget.store)));
-    // Its title or analysis may have changed there.
+  Future<void> _openMeeting(Recording recording) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => MeetingDetailScreen(recording: recording, store: widget.store)));
+    // Its title, analysis or links may have changed there.
     await _loadAll();
+  }
+
+  /// Unlinking only drops the link, never a recording; an analysis that
+  /// compared against it goes stale (spec feature-chain-links, decision 8).
+  Future<void> _confirmUnlink(Recording previous) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('取消接續？'),
+        content: Text(
+          '「${previous.displayTitle}（${formatIsoDate(previous.createdAt)}）」\n\n'
+          '只會解除這兩場的關係，不會刪除錄音。這場的「與上次相比」要重新分析後才會更新。',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('保留')),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('取消接續'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    _setPrevious(null);
+  }
+
+  void _setPrevious(String? id) {
+    widget.recording.previousRecordingId = id;
+    if (widget.recording.analysis != null) widget.recording.previousChangedSinceAnalysis = true;
+    _persist();
   }
 
   /// Picks the earlier meeting this one follows, or clears it. Changing it
@@ -939,9 +1039,9 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       ),
     );
     if (picked == null || picked.id == current) return;
-    widget.recording.previousRecordingId = picked.id;
-    if (widget.recording.analysis != null) widget.recording.previousChangedSinceAnalysis = true;
-    _persist();
+    final previous = previousOf(widget.recording, all);
+    if (picked.id == null && previous != null) return _confirmUnlink(previous);
+    _setPrevious(picked.id);
   }
 
   Widget _buildNotesSection() {

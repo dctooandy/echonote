@@ -286,3 +286,14 @@ ThemeData buildAppTheme(Brightness brightness) {
     ),
   );
 }
+
+/// One color per meeting series, chosen to stay clear of the status colors
+/// (green done, amber to-analyze, red delete); spec feature-chain-links,
+/// decision 6.
+const _seriesDark = [Color(0xFF6FD3E0), Color(0xFFB39DFF), Color(0xFFFF8FB8), Color(0xFF7FB2FF), Color(0xFFC6E07A)];
+const _seriesLight = [Color(0xFF0B7D8C), Color(0xFF6A4FD8), Color(0xFFC2306A), Color(0xFF2F6FD6), Color(0xFF5F7F12)];
+
+Color seriesColor(BuildContext context, int index) {
+  final colors = Theme.of(context).brightness == Brightness.dark ? _seriesDark : _seriesLight;
+  return colors[index % colors.length];
+}
