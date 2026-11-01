@@ -1,0 +1,106 @@
+{
+  "description": "個人筆記（不參與調整的驗收案例）：C1 的逐字稿加上手寫的 3 則筆記。「其實綠色比較好看」跟逐字稿矛盾；★ 在語系那句；「外包要問能不能月底前交稿」標在分配外包報價那句，看起來像待辦的補充。兩則文字筆記都是使用者的想法，不是會議內容。",
+  "must_include": [
+    {
+      "id": "上線日期",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "11月15",
+        "11/15",
+        "十一月十五"
+      ]
+    },
+    {
+      "id": "主色藍色",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "藍色"
+      ]
+    },
+    {
+      "id": "先做中文版",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "中文版"
+      ]
+    },
+    {
+      "id": "贊助活動",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "贊助"
+      ]
+    }
+  ],
+  "todos": [
+    {
+      "id": "首頁文案",
+      "any_of": [
+        "文案"
+      ],
+      "owner_any_of": [
+        "小明"
+      ]
+    },
+    {
+      "id": "外包報價",
+      "any_of": [
+        "報價",
+        "外包"
+      ],
+      "owner_any_of": [
+        "小華",
+        "小花"
+      ]
+    },
+    {
+      "id": "申請網域",
+      "any_of": [
+        "網域"
+      ],
+      "owner_any_of": [
+        "阿傑"
+      ]
+    },
+    {
+      "id": "客戶推薦",
+      "any_of": [
+        "推薦"
+      ],
+      "owner_any_of": [
+        "小美",
+        "小眉"
+      ]
+    }
+  ],
+  "highlight_contexts": {
+    "count": 3
+  },
+  "must_not_include": [
+    {
+      "id": "筆記不是會議內容",
+      "in": [
+        "summary",
+        "todos",
+        "structured_minutes",
+        "highlight_contexts"
+      ],
+      "terms": [
+        "綠色",
+        "月底"
+      ]
+    }
+  ]
+}

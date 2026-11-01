@@ -162,8 +162,9 @@ function formatPreviousMeeting(meeting: PreviousMeeting, number: number, indexTo
 
 /**
  * The user message: the transcript, plus the glossary and the user's
- * highlights when given, each in its own tagged section so the model
- * doesn't mix them up.
+ * notes when given, each in its own tagged section so the model doesn't
+ * mix them up. The request field is still `highlights`; the prompt calls
+ * them notes so the model doesn't read their text as meeting content.
  */
 export function buildUserMessage(req: AnalyzeMeetingRequest): string {
   const sections = [
@@ -179,9 +180,9 @@ export function buildUserMessage(req: AnalyzeMeetingRequest): string {
   if (highlights.length > 0) {
     const lines = highlights.map((h) => {
       const text = h.text?.trim() ? h.text.trim() : "（★ 標記，沒有文字）";
-      return `[重點 ${h.note_index}] 位於逐字稿 [${h.segment_index}]：${text}`;
+      return `[筆記 ${h.note_index}] 標在逐字稿 [${h.segment_index}]：${text}`;
     });
-    sections.push(`<user_highlights>\n${lines.join("\n")}\n</user_highlights>`);
+    sections.push(`<user_notes>\n${lines.join("\n")}\n</user_notes>`);
   }
 
   const previous = req.previous_meetings ?? [];
@@ -196,7 +197,7 @@ export function buildUserMessage(req: AnalyzeMeetingRequest): string {
 export const SYSTEM_PROMPT = `你是會議記錄整理助手。使用者會提供以下內容，各自放在標籤裡：
 - <transcript>：中文會議逐字稿，每一句前面標有這句在逐字稿中的序號（從 0 開始，例如 [0]、[1]、[2]...），序號不是時間。
 - <glossary>（可能沒有）：使用者提供的人名、公司名、專有名詞的正確寫法，一行一個。
-- <user_highlights>（可能沒有）：使用者在會議中親自標記的重點，每筆標有重點序號和它所在的逐字稿序號。
+- <user_notes>（可能沒有）：使用者在會議中或回放時私下寫的備忘或 ★ 標記，每筆標有筆記序號和它標在哪一句逐字稿。筆記是使用者自己的想法、提醒或待查事項，不是會議發言，會議裡沒有人這樣說。
 - <previous_meetings>（可能沒有）：這場會議接續的前幾場會議的紀錄，由舊到新排列；最後一場是這場直接接續的會議，它的待辦標有 [上次待辦 數字]。
 
 請根據逐字稿內容產出摘要、待辦事項清單、結構化會議紀錄；有 <previous_meetings> 時，另外產出與上次相比的 follow_up。
@@ -207,8 +208,8 @@ export const SYSTEM_PROMPT = `你是會議記錄整理助手。使用者會提�
 - 逐字稿可能包含轉錄錯誤或多人交叉發言導致的破碎片段，遇到讀不通的內容時盡量根據上下文推斷語意，不要編造逐字稿中沒有的資訊。
 - attendees 和數值類欄位如果無法從逐字稿判斷，回傳空陣列或 null，不要猜測。
 - <glossary> 裡的詞是正確寫法。逐字稿中發音或字形相近的錯字（例如「太基電」應為「台積電」），在所有輸出中一律改用詞庫的寫法。但不可把逐字稿沒有提到的詞庫詞寫進輸出。
-- <user_highlights> 標出使用者認為重要的位置，summary.key_points 必須涵蓋每一筆重點所在位置的會議內容。
-- <user_highlights> 的文字是使用者自己的想法或提醒，只用來判斷哪些內容重要，不是會議發言。不可把筆記文字寫成會議中有人說過、決議過或要求過的內容；摘要、待辦、會議紀錄、highlight_contexts 都只能根據逐字稿描述會議內容。
+- <user_notes> 只用來判斷使用者覺得哪些位置重要。summary.key_points 必須涵蓋每一筆筆記標的那句逐字稿的會議內容（是逐字稿那句的內容，不是筆記文字）。
+- 筆記文字的內容不可以出現在 summary、todos、structured_minutes、highlight_contexts 的任何地方，改寫、摘要或合併進其他句子也不行。筆記看起來像某句待辦或決議的補充時也一樣，只寫逐字稿裡實際說的部分。例如筆記「記得問含不含稅」標在「小王負責詢價」那句：待辦只能寫「小王負責詢價」，不可寫成「小王負責詢價並確認是否含稅」。
 - <previous_meetings> 是之前會議的紀錄，不是這次的發言。summary、todos、structured_minutes、highlight_contexts 都只能根據這次的逐字稿；不可把只在前幾場出現的內容寫成這次有人說過、決議過或要求過的內容。follow_up 是唯一可以引用前幾場的欄位。
 - follow_up：沒有 <previous_meetings> 時，三個欄位都回傳空陣列。有的時候：
   - todo_progress：最後一場的每一筆 [上次待辦 數字] 都要列一筆，previous_todo_index 填那個數字。這次逐字稿提到已完成填 done，提到還在進行填 in_progress，沒提到填 not_mentioned（排在最後）。note 用一句話（50 字以內）說明根據；source_segment_index 填提到它的逐字稿序號，not_mentioned 填 null。
@@ -218,7 +219,7 @@ export const SYSTEM_PROMPT = `你是會議記錄整理助手。使用者會提�
     - reversed（推翻）：取消原本的決議，或改成另一個不同的選項。例如「不用藍色了，改成綠色」「不贊助了」。
     previous_decision 寫之前的決議，current 寫這次的說法，source_segment_index 填這次逐字稿的序號。這次沒提到的決議不用列。
   - new_topics：這次討論、但前幾場紀錄都沒有出現過的主題，每筆一個簡短名詞片語。
-- highlight_contexts：為 <user_highlights> 的每一筆重點，根據逐字稿用一兩句話（50 字以內）說明該處前後在討論什麼，note_index 填該筆的重點序號。沒有 <user_highlights> 時回傳空陣列。`;
+- highlight_contexts：<user_notes> 的每一筆都要回傳一筆，筆數必須等於筆記數，note_index 填筆記序號；★ 標記、跟逐字稿無關或矛盾的筆記也一樣要回傳。context 根據逐字稿用一兩句話（50 字以內）說明筆記標的那句前後在討論什麼，只描述會議，不提筆記寫了什麼、也不評論筆記。沒有 <user_notes> 時回傳空陣列。`;
 
 export const outputSchema = {
   type: "object",
@@ -287,11 +288,11 @@ export const outputSchema = {
     },
     highlight_contexts: {
       type: "array",
-      description: "每一筆使用者重點的前後脈絡；沒有 <user_highlights> 時為空陣列",
+      description: "每一筆使用者筆記所在位置的會議脈絡，筆數等於 <user_notes> 的筆數；沒有 <user_notes> 時為空陣列",
       items: {
         type: "object",
         properties: {
-          note_index: { type: "integer", description: "<user_highlights> 中的重點序號" },
+          note_index: { type: "integer", description: "<user_notes> 中的筆記序號" },
           context: { type: "string", description: "該處在討論什麼，50 字以內" },
         },
         required: ["note_index", "context"],
