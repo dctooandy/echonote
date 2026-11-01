@@ -185,16 +185,17 @@ flowchart LR
   T5 --> T6
 ```
 
-- [ ] **T1 正式環境和評測共用同一組參數**
+- [x] **T1 正式環境和評測共用同一組參數**
   - 做完能看到：`buildAnalysisParams()`、`promptVersion()` 有測試；`index.ts` 改呼叫它，線上行為不變。
   - 被誰卡住：無，可以直接開工
   - 主要會動的檔案：`functions/src/analyze.ts`、`functions/src/index.ts`、`functions/test/analyze.test.ts`
   - 軌道：可獨立進行
   - 驗收：
-    - [ ] 預設模型 `claude-haiku-4-5`、`max_tokens` 6000、system、messages、`output_config` 跟改動前一致
-    - [ ] 可以覆寫模型
-    - [ ] `promptVersion()` 內容不變時相同、改一個字就變
-    - [ ] `npm test`、`npm run build` 通過（不部署，決定 14）
+    - [x] 預設模型 `claude-haiku-4-5`、`max_tokens` 6000、system、messages、`output_config` 跟改動前一致
+    - [x] 可以覆寫模型
+    - [x] `promptVersion()` 內容不變時相同、改一個字就變
+    - [x] `npm test`、`npm run build` 通過（不部署，決定 14）
+  - 備註：另外匯出 `promptHash(system, schema)`，讓「改一個字就變」可以測。
 
 - [ ] **T2 評分程式**
   - 做完能看到：用手寫的假輸出，`gradeOutput(output, request, expect)` 對每一種檢查都給出正確的通過／失敗。

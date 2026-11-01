@@ -3,13 +3,7 @@ import { defineSecret } from "firebase-functions/params";
 import Anthropic from "@anthropic-ai/sdk";
 import { initializeApp } from "firebase-admin/app";
 import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
-import {
-  AnalyzeMeetingRequest,
-  SYSTEM_PROMPT,
-  buildUserMessage,
-  outputSchema,
-  validateRequest,
-} from "./analyze";
+import { AnalyzeMeetingRequest, buildAnalysisParams, validateRequest } from "./analyze";
 import { DAILY_LIMIT, QUOTA_RETENTION_DAYS, decideQuota, quotaDayKey } from "./quota";
 
 initializeApp();
@@ -76,15 +70,7 @@ export const analyzeMeeting = onCall(
 
     let response;
     try {
-      response = await client.messages.create({
-        model: "claude-haiku-4-5",
-        max_tokens: 6000,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: buildUserMessage(data) }],
-        output_config: {
-          format: { type: "json_schema", schema: outputSchema },
-        },
-      });
+      response = await client.messages.create(buildAnalysisParams(data));
     } catch (err) {
       console.error("Anthropic API call failed", err);
       if (err instanceof Anthropic.AuthenticationError) {
