@@ -28,6 +28,10 @@ export interface RunRecord {
   id: string;
   startedAt: string;
   model: string;
+  /** Analysis settings beyond the model; unset means the default. */
+  effort?: string;
+  thinking?: string;
+  maxTokens?: number;
   promptVersion: string;
   gitCommit: string;
   label: string;
@@ -139,6 +143,38 @@ export function loadBaseline(runsDir: string, named: string | undefined, except:
   return JSON.parse(readFileSync(path, "utf8")) as RunRecord;
 }
 
+/** "effort low · thinking 預設 · max_tokens 16000" (spec feature-haiku-5-5-eval). */
+export function settingsLabel(s: { effort?: string; thinking?: string; maxTokens?: number }): string {
+  return [
+    `effort ${s.effort ?? "預設"}`,
+    `thinking ${s.thinking ?? "預設"}`,
+    `max_tokens ${s.maxTokens ?? "預設"}`,
+  ].join(" · ");
+}
+
+/** Speed and endings over every call that reached the model. */
+export function callStats(run: RunRecord): {
+  calls: number;
+  medianSec: number;
+  maxSec: number;
+  avgCostUsd: number;
+  truncated: number;
+  refused: number;
+} {
+  const calls = run.cases.flatMap((c) => c.calls).filter((c) => c.ok);
+  const secs = calls.map((c) => c.ms / 1000).sort((a, b) => a - b);
+  const mid = secs.length / 2;
+  const median = secs.length === 0 ? 0 : secs.length % 2 ? secs[Math.floor(mid)] : (secs[mid - 1] + secs[mid]) / 2;
+  return {
+    calls: calls.length,
+    medianSec: median,
+    maxSec: secs.length ? secs[secs.length - 1] : 0,
+    avgCostUsd: calls.length ? calls.reduce((n, c) => n + c.costUsd, 0) / calls.length : 0,
+    truncated: calls.filter((c) => c.stopReason === "max_tokens").length,
+    refused: calls.filter((c) => c.stopReason === "refusal").length,
+  };
+}
+
 const pct = (rate: number) => `${Math.round(rate * 100)}%`;
 const usd = (n: number) => `US$${n.toFixed(4)}`;
 
@@ -155,19 +191,27 @@ export function renderReport(run: RunRecord, baseline?: RunRecord): string {
   lines.push(
     `# 分析評測報告 ${run.id}`,
     "",
-    `- 模型：\`${run.model}\`　prompt 版本：\`${run.promptVersion}\`　commit：\`${run.gitCommit}\``,
+    `- 模型：\`${run.model}\`（${settingsLabel(run)}）　prompt 版本：\`${run.promptVersion}\`　commit：\`${run.gitCommit}\``,
     run.label ? `- 標籤：${run.label}` : "",
     `- 每筆 ${run.runsPerCase} 次；花費 ${usd(run.totalCostUsd)}（估算 ${usd(run.estimatedUsd)}，上限 ${usd(run.budgetUsd)}）`,
     run.completed ? "" : "- ⚠️ **未跑完**：達到費用上限，後面的呼叫沒有送出",
     ...(run.notes ?? []).map((n) => `- ${n}`),
     `- 整體通過率：${total ? pct(pass / total) : "—"}（${pass}/${total} 項次）`,
+    (() => {
+      const s = callStats(run);
+      return `- 速度：中位數 ${s.medianSec.toFixed(1)} 秒、最慢 ${s.maxSec.toFixed(1)} 秒；每次平均 ${usd(s.avgCostUsd)}；被截斷 ${s.truncated} 次、拒答 ${s.refused} 次（共 ${s.calls} 次）`;
+    })(),
     ""
   );
 
   if (baseline) {
     const { changes, added, removed, addedChecks, removedChecks, editedCases } = compareRuns(run, baseline);
     lines.push(`## 跟基準輪 ${baseline.id} 比較`, "");
-    lines.push(`基準：\`${baseline.model}\`、prompt \`${baseline.promptVersion}\`、commit \`${baseline.gitCommit}\``, "");
+    const b = callStats(baseline);
+    lines.push(
+      `基準：\`${baseline.model}\`（${settingsLabel(baseline)}）、prompt \`${baseline.promptVersion}\`、commit \`${baseline.gitCommit}\`；速度中位數 ${b.medianSec.toFixed(1)} 秒、最慢 ${b.maxSec.toFixed(1)} 秒，每次平均 ${usd(b.avgCostUsd)}`,
+      ""
+    );
     if (changes.length === 0) lines.push("通過率沒有變化。");
     else {
       lines.push("| 案例 | 檢查 | 之前 | 現在 | |", "|---|---|---|---|---|");

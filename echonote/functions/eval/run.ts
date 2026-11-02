@@ -11,11 +11,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { ANALYSIS_MAX_TOKENS, ANALYSIS_MODEL, buildAnalysisParams, promptVersion } from "../src/analyze";
+import { ANALYSIS_MODEL, AnalysisEffort, AnalysisOptions, buildAnalysisParams, promptVersion } from "../src/analyze";
 import { EvalCase, loadCases } from "./cases";
 import { gradeOutput } from "./grade";
 import { TYPICAL_OUTPUT_TOKENS, callCost, estimateCaseCost } from "./pricing";
-import { CallRecord, RunRecord, loadBaseline, renderReport } from "./report";
+import { CallRecord, RunRecord, loadBaseline, renderReport, settingsLabel } from "./report";
 
 function option(args: string[], name: string): string | undefined {
   const i = args.indexOf(name);
@@ -26,8 +26,8 @@ function option(args: string[], name: string): string | undefined {
  * Production's params, with the user message marked for caching: the N
  * calls of one case share it, so calls 2..N read it back.
  */
-function cachedParams(c: EvalCase, model: string) {
-  const params = buildAnalysisParams(c.request, { model });
+function cachedParams(c: EvalCase, options: AnalysisOptions) {
+  const params = buildAnalysisParams(c.request, options);
   return {
     ...params,
     messages: params.messages.map((m) => ({
@@ -40,6 +40,14 @@ function cachedParams(c: EvalCase, model: string) {
 async function main() {
   const args = process.argv.slice(2);
   const model = option(args, "--model") ?? ANALYSIS_MODEL;
+  const effort = option(args, "--effort") as AnalysisEffort | undefined;
+  if (effort && !["low", "medium", "high"].includes(effort)) throw new Error("--effort 要是 low、medium 或 high");
+  const thinking = option(args, "--thinking") as AnalysisOptions["thinking"];
+  if (thinking && !["adaptive", "disabled"].includes(thinking)) throw new Error("--thinking 要是 adaptive 或 disabled");
+  const maxTokensArg = option(args, "--max-tokens");
+  const maxTokens = maxTokensArg ? Number(maxTokensArg) : undefined;
+  if (maxTokens !== undefined && (!Number.isInteger(maxTokens) || maxTokens < 1)) throw new Error("--max-tokens 要是正整數");
+  const options: AnalysisOptions = { model, effort, thinking, maxTokens };
   const runs = Number(option(args, "--runs") ?? 3);
   const budget = Number(option(args, "--budget") ?? 0.5);
   const label = option(args, "--label") ?? "";
@@ -62,9 +70,10 @@ async function main() {
   // Estimate before spending anything.
   let estimated = 0;
   let worstCase = 0;
-  console.log(`模型 ${model}，prompt ${promptVersion()}，每筆 ${runs} 次：`);
+  console.log(`模型 ${model}（${settingsLabel(options)}），prompt ${promptVersion()}，每筆 ${runs} 次：`);
   for (const c of cases) {
-    const params = buildAnalysisParams(c.request, { model });
+    // Throws for settings the model doesn't take, before any call.
+    const params = buildAnalysisParams(c.request, options);
     // With output_config: the schema adds ~2,600 tokens of input, which
     // also lifts the short cases past Haiku 4.5's 4,096-token cache minimum.
     const { input_tokens } = await client.messages.countTokens({
@@ -72,10 +81,11 @@ async function main() {
       system: params.system,
       messages: params.messages,
       output_config: params.output_config,
+      ...("thinking" in params ? { thinking: params.thinking } : {}),
     });
     const cost = estimateCaseCost(model, input_tokens, runs, TYPICAL_OUTPUT_TOKENS);
     estimated += cost;
-    worstCase += estimateCaseCost(model, input_tokens, runs, ANALYSIS_MAX_TOKENS);
+    worstCase += estimateCaseCost(model, input_tokens, runs, params.max_tokens);
     console.log(`  ${c.name}${c.private ? "（私人）" : ""}：輸入 ${input_tokens} token，估 US$${cost.toFixed(4)}`);
   }
   console.log(`估算 US$${estimated.toFixed(4)}（每次都寫滿 max_tokens 的最壞情況 US$${worstCase.toFixed(4)}），上限 US$${budget}`);
@@ -100,6 +110,9 @@ async function main() {
     id,
     startedAt: new Date().toISOString(),
     model,
+    effort,
+    thinking,
+    maxTokens,
     promptVersion: promptVersion(),
     gitCommit: execSync("git rev-parse --short HEAD").toString().trim(),
     label,
@@ -125,7 +138,7 @@ async function main() {
       const started = Date.now();
       let call: CallRecord;
       try {
-        const response = await client.messages.create(cachedParams(c, model));
+        const response = await client.messages.create(cachedParams(c, options));
         const text = response.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text;
         let output: unknown = null;
         try {

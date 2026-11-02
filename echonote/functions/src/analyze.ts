@@ -350,19 +350,40 @@ export const outputSchema = {
 export const ANALYSIS_MODEL = "claude-haiku-4-5";
 export const ANALYSIS_MAX_TOKENS = 6000;
 
+export type AnalysisEffort = "low" | "medium" | "high";
+
+export interface AnalysisOptions {
+  model?: string;
+  /** Thinking depth; only for models that take it (not Haiku 4.5). */
+  effort?: AnalysisEffort;
+  /** Left unset, the model's default (Haiku 5.5 thinks by default). */
+  thinking?: "adaptive" | "disabled";
+  maxTokens?: number;
+}
+
+/** Models that reject output_config.effort and adaptive thinking. */
+const NO_EFFORT_MODELS = new Set(["claude-haiku-4-5"]);
+
 /**
  * Everything messages.create gets, for production and the eval set alike,
- * so the two can't drift apart (spec feature-analysis-eval-set). [model]
- * is overridable for the eval set only.
+ * so the two can't drift apart (spec feature-analysis-eval-set). The
+ * options are for the eval set (spec feature-haiku-5-5-eval); unset, they
+ * send nothing extra.
  */
-export function buildAnalysisParams(req: AnalyzeMeetingRequest, options: { model?: string } = {}) {
+export function buildAnalysisParams(req: AnalyzeMeetingRequest, options: AnalysisOptions = {}) {
+  const model = options.model ?? ANALYSIS_MODEL;
+  if (NO_EFFORT_MODELS.has(model) && (options.effort || options.thinking === "adaptive")) {
+    throw new Error(`${model} 不支援 effort 和 adaptive thinking`);
+  }
   return {
-    model: options.model ?? ANALYSIS_MODEL,
-    max_tokens: ANALYSIS_MAX_TOKENS,
+    model,
+    max_tokens: options.maxTokens ?? ANALYSIS_MAX_TOKENS,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user" as const, content: buildUserMessage(req) }],
+    ...(options.thinking ? { thinking: { type: options.thinking } } : {}),
     output_config: {
       format: { type: "json_schema" as const, schema: outputSchema },
+      ...(options.effort ? { effort: options.effort } : {}),
     },
   };
 }

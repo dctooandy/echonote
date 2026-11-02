@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadCases } from "../eval/cases";
 import { callCost, estimateCaseCost, priceOf } from "../eval/pricing";
-import { CaseRecord, RunRecord, compareRuns, loadBaseline, passCounts, renderReport } from "../eval/report";
+import { CaseRecord, RunRecord, callStats, compareRuns, loadBaseline, passCounts, renderReport, settingsLabel } from "../eval/report";
 
 const close = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-9, `${a} != ${b}`);
 
@@ -163,4 +163,35 @@ test("the baseline is resolved before any call: latest run by default, error whe
   assert.equal(loadBaseline(runsDir, undefined, "now")?.id, "20261101-1430_a");
   assert.equal(loadBaseline(runsDir, "20261101-0554_a", "now")?.id, "20261101-0554_a");
   assert.throws(() => loadBaseline(runsDir, "typo", "now"), /找不到基準輪 typo/);
+});
+
+test("the report shows the settings, speed, truncations and refusals (spec feature-haiku-5-5-eval)", () => {
+  const timed = (ms: number, stopReason: string | null, costUsd = 0.01) => ({ ...call([["a", true]]), ms, stopReason, costUsd });
+  const current: RunRecord = {
+    ...run("2", [
+      {
+        name: "c1",
+        private: false,
+        expectHash: "h",
+        calls: [timed(2000, "end_turn"), timed(10000, "max_tokens"), timed(4000, "refusal"), { ...call([], false), error: "boom" }],
+      },
+    ]),
+    model: "claude-haiku-5-5",
+    effort: "low",
+    maxTokens: 16000,
+  };
+  const stats = callStats(current);
+  assert.equal(stats.calls, 3, "a failed call never reached the model");
+  assert.equal(stats.medianSec, 4);
+  assert.equal(stats.maxSec, 10);
+  assert.equal(stats.truncated, 1);
+  assert.equal(stats.refused, 1);
+  close(stats.avgCostUsd, 0.01);
+  assert.equal(settingsLabel(current), "effort low · thinking 預設 · max_tokens 16000");
+  assert.equal(settingsLabel(run("1", [])), "effort 預設 · thinking 預設 · max_tokens 預設");
+
+  const report = renderReport(current, run("1", [{ name: "c1", private: false, expectHash: "h", calls: [timed(3000, "end_turn")] }]));
+  assert.match(report, /`claude-haiku-5-5`（effort low · thinking 預設 · max_tokens 16000）/);
+  assert.match(report, /速度：中位數 4\.0 秒、最慢 10\.0 秒；每次平均 US\$0\.0100；被截斷 1 次、拒答 1 次（共 3 次）/);
+  assert.match(report, /基準：`claude-haiku-4-5`（effort 預設 · thinking 預設 · max_tokens 預設）.*速度中位數 3\.0 秒/);
 });
