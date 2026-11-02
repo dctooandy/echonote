@@ -239,3 +239,10 @@ test("the prompt ties 我 to my_name and keeps unsure owners null", () => {
   assert.match(SYSTEM_PROMPT, /兩個以上其他人被點名發言或被叫到名字時.*不可以把任何「我」寫成使用者/);
   assert.match(SYSTEM_PROMPT, /沒有 <my_name> 時，「我」不對到使用者/);
 });
+
+test("the prompt says which remarks count as todos", () => {
+  assert.match(SYSTEM_PROMPT, /順口答應的（例如「我先列一份問題給您」）/);
+  assert.match(SYSTEM_PROMPT, /會議最後整理「這週要做的事」時提到的每一項/);
+  assert.match(SYSTEM_PROMPT, /兩件不同的事不要合成一筆/);
+  assert.match(SYSTEM_PROMPT, /以下不算待辦：只是討論、沒有人答應要做的/);
+});
