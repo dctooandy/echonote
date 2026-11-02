@@ -1,0 +1,117 @@
+{
+  "description": "詞庫（不參與調整的驗收案例）：C1 的逐字稿帶詞庫「小美、Meetup、網域」。逐字稿把小美聽成「小眉」、Meetup 聽成「Mid-Up」、網域聽成「新網欲」；所有欄位（含待辦負責人）都要改成詞庫寫法。",
+  "must_include": [
+    {
+      "id": "上線日期",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "11月15",
+        "11/15",
+        "十一月十五"
+      ]
+    },
+    {
+      "id": "主色藍色",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "藍色"
+      ]
+    },
+    {
+      "id": "先做中文版",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "中文版"
+      ]
+    },
+    {
+      "id": "贊助活動",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "贊助"
+      ]
+    },
+    {
+      "id": "Meetup",
+      "in": [
+        "summary",
+        "structured_minutes"
+      ],
+      "any_of": [
+        "Meetup"
+      ]
+    }
+  ],
+  "must_not_include": [
+    {
+      "id": "錯字沒改",
+      "in": [
+        "summary",
+        "todos",
+        "structured_minutes",
+        "follow_up",
+        "highlight_contexts"
+      ],
+      "terms": [
+        "小眉",
+        "Mid-Up",
+        "網欲"
+      ]
+    }
+  ],
+  "todos": [
+    {
+      "id": "首頁文案",
+      "any_of": [
+        "文案"
+      ],
+      "owner_any_of": [
+        "小明"
+      ]
+    },
+    {
+      "id": "外包報價",
+      "any_of": [
+        "報價",
+        "外包"
+      ],
+      "owner_any_of": [
+        "小華",
+        "小花"
+      ]
+    },
+    {
+      "id": "申請網域",
+      "any_of": [
+        "網域"
+      ],
+      "owner_any_of": [
+        "阿傑"
+      ]
+    },
+    {
+      "id": "客戶推薦",
+      "any_of": [
+        "推薦"
+      ],
+      "owner_any_of": [
+        "小美"
+      ]
+    }
+  ],
+  "highlight_contexts": {
+    "count": 0
+  }
+}
