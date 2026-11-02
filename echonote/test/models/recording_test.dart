@@ -225,4 +225,46 @@ void main() {
       expect(clamped.text, '晚了');
     });
   });
+
+  group('custom title (spec feature-rename)', () {
+    MeetingAnalysis analysis(String title) => MeetingAnalysis(
+      overview: '',
+      keyPoints: const [],
+      todos: [],
+      title: title,
+      attendees: const [],
+      agendaItems: const [],
+    );
+
+    test("the name shown is the user's, else the AI's, else the audio name", () {
+      final recording = Recording.fromJson(_legacyJson());
+      expect(recording.displayTitle, '新錄音 64.m4a');
+      recording.analysis = analysis('官網改版週會');
+      expect(recording.displayTitle, '官網改版週會');
+      recording.customTitle = '十月週會';
+      expect(recording.displayTitle, '十月週會');
+      expect(recording.defaultTitle, '官網改版週會');
+    });
+
+    test('it survives a new analysis and a save', () {
+      final recording = Recording.fromJson(_legacyJson())..rename('我的會議');
+      recording.analysis = analysis('AI 標題');
+      expect(recording.displayTitle, '我的會議');
+      final again = Recording.fromJson(recording.toJson());
+      expect(again.customTitle, '我的會議');
+      expect(Recording.fromJson(_legacyJson()).toJson().containsKey('custom_title'), isFalse);
+    });
+
+    test('renaming trims, cuts to the limit, and clears on blank or the default', () {
+      final recording = Recording.fromJson(_legacyJson())..analysis = analysis('AI 標題');
+      recording.rename('  新名字  ');
+      expect(recording.customTitle, '新名字');
+      recording.rename('   ');
+      expect(recording.customTitle, isNull);
+      recording.rename('AI 標題');
+      expect(recording.customTitle, isNull);
+      recording.rename('字' * 70, maxChars: 60);
+      expect(recording.customTitle!.runes.length, 60);
+    });
+  });
 }

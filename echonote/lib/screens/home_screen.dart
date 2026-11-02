@@ -12,6 +12,7 @@ import '../theme/app_theme.dart';
 import '../utils/format.dart';
 import '../widgets/confirm_delete_dialog.dart';
 import '../widgets/marquee.dart';
+import '../widgets/rename_dialog.dart';
 import '../widgets/round_icon_button.dart';
 import 'glossary_screen.dart';
 import 'import_screen.dart';
@@ -328,26 +329,38 @@ class _HomeScreenState extends State<HomeScreen> {
   /// The series' name is kept on its first meeting; empty goes back to
   /// the latest meeting's name (decision 17).
   Future<void> _renameSeries(MeetingSeries series) async {
-    final controller = TextEditingController(text: series.name);
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('系列名稱'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(helperText: '清空就用最近一場的名稱'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('儲存')),
-        ],
-      ),
+    final name = await showRenameDialog(
+      context,
+      title: '系列名稱',
+      initial: series.name,
+      helper: '清空就用最近一場的名稱',
     );
     if (name == null) return;
-    final trimmed = name.trim();
+    final trimmed = String.fromCharCodes(name.trim().runes.take(nameMaxChars)).trim();
     series.first.seriesName = trimmed.isEmpty ? null : trimmed;
-    await _store.save(series.first);
+    await _save(series.first);
+  }
+
+  /// A long press on any card renames that meeting (spec feature-rename,
+  /// decisions 1 and 7).
+  Future<void> _renameMeeting(Recording recording) async {
+    final name = await showRenameDialog(
+      context,
+      title: '會議名稱',
+      initial: recording.displayTitle,
+      helper: '清空就恢復成：${recording.defaultTitle}',
+    );
+    if (name == null) return;
+    recording.rename(name, maxChars: nameMaxChars);
+    await _save(recording);
+  }
+
+  Future<void> _save(Recording recording) async {
+    try {
+      await _store.save(recording);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('改名失敗: $e')));
+    }
     _reload();
   }
 
@@ -428,6 +441,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           subtitle: hint.isEmpty ? null : _HintLine(hint: hint, color: hintColor ?? theme.colorScheme.primary),
           trailing: _trailing(context, recording),
+          onLongPress: () => _renameMeeting(recording),
           onTap: () async {
             await Navigator.of(context).push(
               MaterialPageRoute(

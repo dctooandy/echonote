@@ -255,6 +255,33 @@ void main() {
       expect(saved('w1').containsKey('series_name'), isFalse);
     });
 
+    testWidgets('a long press on any card renames that meeting, in both views', (tester) async {
+      writeLinked();
+      await open(tester);
+
+      await tester.longPress(find.text('錄音 solo'));
+      await tester.pumpAndSettle();
+      expect(find.text('會議名稱'), findsOneWidget);
+      expect(find.text('清空就恢復成：錄音 solo'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), '技術選型');
+      await tester.tap(find.text('儲存'));
+      await settle(tester);
+      await settle(tester);
+      expect(find.text('技術選型'), findsOneWidget);
+      expect(saved('solo')['custom_title'], '技術選型');
+
+      await tester.tap(find.text('系列'));
+      await settle(tester);
+      await tester.longPress(find.text('錄音 t1'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '旅遊初談');
+      await tester.tap(find.text('儲存'));
+      await settle(tester);
+      await settle(tester);
+      expect(find.text('旅遊初談'), findsOneWidget);
+      expect(saved('t1')['custom_title'], '旅遊初談');
+    });
+
     testWidgets('the series view without any links says how to make one', (tester) async {
       writeEntry('solo');
       await open(tester, view: HomeView.series);

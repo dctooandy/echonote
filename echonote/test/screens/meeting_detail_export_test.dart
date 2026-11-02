@@ -145,4 +145,33 @@ void main() {
     expect(copied, contains('與上次相比'));
     expect(copied, contains('新的主題：FAQ 頁'));
   });
+
+  testWidgets('a long press on the title renames the meeting; clearing goes back to the AI title', (tester) async {
+    final recording = _recording('m5', analysis: _analysis('AI 標題'));
+    await tester.pumpWidget(
+      MaterialApp(home: MeetingDetailScreen(recording: recording, store: _MemoryStore([recording]), glossary: _EmptyGlossary())),
+    );
+    await tester.pump();
+
+    await tester.longPress(find.descendant(of: find.byType(AppBar), matching: find.text('AI 標題')));
+    await tester.pumpAndSettle();
+    expect(find.text('清空就恢復成：AI 標題'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), '我的名稱');
+    await tester.tap(find.text('儲存'));
+    await tester.pumpAndSettle();
+    expect(recording.customTitle, '我的名稱');
+    expect(find.text('我的名稱'), findsOneWidget, reason: 'the app bar');
+
+    await tester.tap(find.text('紀錄'));
+    await tester.pumpAndSettle();
+    expect(find.text('我的名稱'), findsNWidgets(2), reason: 'the minutes heading too');
+
+    await tester.longPress(find.descendant(of: find.byType(AppBar), matching: find.text('我的名稱')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '');
+    await tester.tap(find.text('儲存'));
+    await tester.pumpAndSettle();
+    expect(recording.customTitle, isNull);
+    expect(find.text('AI 標題'), findsNWidgets(2));
+  });
 }
