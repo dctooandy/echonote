@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/app_settings.dart';
 import '../widgets/pill_choice.dart';
+import '../widgets/rename_dialog.dart';
 import 'glossary_screen.dart';
 
 /// Theme and handedness, both applied as soon as they're picked (spec
@@ -19,6 +20,27 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
         children: [
+          // The user's own name, so the analysis knows who 「我」 is (spec
+          // feature-my-name, decision 1).
+          _section(context, '個人'),
+          Card(
+            margin: EdgeInsets.zero,
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor: theme.colorScheme.primaryContainer,
+                foregroundColor: theme.colorScheme.primary,
+                child: const Icon(Icons.person_outline, size: 20),
+              ),
+              title: const Text('我的名字'),
+              subtitle: Text(
+                '${settings.myName ?? '未設定'}\n分析會議時，逐字稿裡你說的「我來做」會寫成這個名字。',
+                style: muted,
+              ),
+              isThreeLine: true,
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _editMyName(context, settings),
+            ),
+          ),
           _section(context, '外觀'),
           _card(
             context,
@@ -73,6 +95,23 @@ class SettingsScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _editMyName(BuildContext context, AppSettings settings) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final name = await showRenameDialog(
+      context,
+      title: '我的名字',
+      initial: settings.myName ?? '',
+      helper: '只用在你有參加的會議（詳細頁「⋯」的「我有參加」）。清空就不送名字。',
+      maxChars: myNameMaxChars,
+    );
+    if (name == null) return;
+    try {
+      await settings.setMyName(name);
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('儲存失敗')));
+    }
   }
 
   Widget _section(BuildContext context, String label) => Padding(

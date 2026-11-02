@@ -3,6 +3,7 @@ import 'package:echonote/screens/meeting_detail_screen.dart';
 import 'dart:async';
 
 import 'package:echonote/services/analysis_service.dart';
+import 'package:echonote/services/app_settings.dart';
 import 'package:echonote/services/glossary_store.dart';
 import 'package:echonote/services/recording_store.dart';
 import 'package:flutter/material.dart';
@@ -30,6 +31,7 @@ class _MemoryStore extends RecordingStore {
 class _FakeAnalysisService extends AnalysisService {
   final result = Completer<MeetingAnalysis>();
   List<Recording>? sentPrevious;
+  String? sentMyName;
 
   @override
   Future<MeetingAnalysis> analyze(
@@ -37,8 +39,10 @@ class _FakeAnalysisService extends AnalysisService {
     List<String> glossary = const [],
     List<UserNote> notes = const [],
     List<Recording> previous = const [],
+    String? myName,
   }) {
     sentPrevious = previous;
+    sentMyName = myName;
     return result.future;
   }
 }
@@ -74,14 +78,18 @@ Future<void> _pump(
   Recording recording,
   List<Recording> saved, {
   AnalysisService? analysisService,
+  AppSettings? settings,
 }) async {
   await tester.pumpWidget(
-    MaterialApp(
-      home: MeetingDetailScreen(
-        recording: recording,
-        store: _MemoryStore(saved),
-        analysisService: analysisService,
-        glossary: _EmptyGlossary(),
+    AppSettingsScope(
+      settings: settings ?? AppSettings(),
+      child: MaterialApp(
+        home: MeetingDetailScreen(
+          recording: recording,
+          store: _MemoryStore(saved),
+          analysisService: analysisService,
+          glossary: _EmptyGlossary(),
+        ),
       ),
     ),
   );
@@ -283,9 +291,14 @@ void main() {
     setUp(() => AnalysisService.available = true);
     tearDown(() => AnalysisService.available = false);
 
-    Future<_FakeAnalysisService> startReanalysis(WidgetTester tester, Recording current, List<Recording> saved) async {
+    Future<_FakeAnalysisService> startReanalysis(
+      WidgetTester tester,
+      Recording current,
+      List<Recording> saved, {
+      AppSettings? settings,
+    }) async {
       final service = _FakeAnalysisService();
-      await _pump(tester, current, saved, analysisService: service);
+      await _pump(tester, current, saved, analysisService: service, settings: settings);
       await tester.tap(find.byTooltip('更多'));
       await tester.pumpAndSettle();
       // .last: the menu sits above the stale banner's own 重新分析 button.
@@ -330,6 +343,52 @@ void main() {
       expect(find.text('正在重新分析…'), findsNothing);
       expect(find.text('分析失敗：Bad state: boom'), findsOneWidget);
       expect(current.analysis?.title, '這場');
+    });
+
+    // spec feature-my-name, decisions 9 and 10.
+    testWidgets('my name is not sent for an imported meeting', (tester) async {
+      final imported = _recording('current', DateTime(2026, 10, 15), title: '這場');
+      final service = await startReanalysis(tester, imported, [imported], settings: AppSettings(myName: 'Andy'));
+      expect(service.sentMyName, isNull);
+    });
+
+    testWidgets('my name is sent for a live recording', (tester) async {
+      final live = Recording.fromJson({
+        ..._recording('current', DateTime(2026, 10, 15), title: '這場').toJson(),
+        'source': 'live',
+      });
+      final service = await startReanalysis(tester, live, [live], settings: AppSettings(myName: 'Andy'));
+      expect(service.sentMyName, 'Andy');
+    });
+
+    testWidgets('toggling 我有參加 saves it and offers to re-analyze', (tester) async {
+      final current = _recording('current', DateTime(2026, 10, 15), title: '這場');
+      final service = _FakeAnalysisService();
+      await _pump(tester, current, [current], analysisService: service, settings: AppSettings(myName: 'Andy'));
+      await tester.tap(find.byTooltip('更多'));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.check_box_outline_blank), findsOneWidget);
+      await tester.tap(find.text('我有參加'));
+      await tester.pumpAndSettle();
+
+      expect(current.attended, isTrue);
+      expect(find.text('要重新分析嗎？'), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, '重新分析'));
+      await tester.pump();
+      expect(service.sentMyName, 'Andy');
+    });
+
+    testWidgets('without my name set, turning it on says where to set it', (tester) async {
+      final current = _recording('current', DateTime(2026, 10, 15), title: '這場');
+      await _pump(tester, current, [current]);
+      await tester.tap(find.byTooltip('更多'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('我有參加'));
+      await tester.pumpAndSettle();
+
+      expect(current.attended, isTrue);
+      expect(find.text('要重新分析嗎？'), findsNothing);
+      expect(find.text('到「設定」填好「我的名字」，分析時才會用到'), findsOneWidget);
     });
   });
 }

@@ -71,6 +71,14 @@ List<String> loadGlossary(Directory documents) {
   ];
 }
 
+/// The user's name from the container's settings, as the app reads it.
+String? loadMyName(Directory documents) {
+  final file = File('${documents.path}/settings.json');
+  if (!file.existsSync()) return null;
+  final value = (jsonDecode(file.readAsStringSync()) as Map<String, dynamic>)['my_name'];
+  return value is String && value.trim().isNotEmpty ? value : null;
+}
+
 /// The request the app would send to analyze [meeting] now, with its
 /// previous meetings frozen as they are in the container.
 Map<String, dynamic> exportEvalCase(Directory documents, String meeting, {required bool withGlossary}) {
@@ -82,6 +90,7 @@ Map<String, dynamic> exportEvalCase(Directory documents, String meeting, {requir
     glossary: withGlossary ? loadGlossary(documents) : const [],
     notes: recording.notes,
     previous: previousChain(recording, all),
+    myName: recording.iAttended ? loadMyName(documents) : null,
   ).request;
 }
 

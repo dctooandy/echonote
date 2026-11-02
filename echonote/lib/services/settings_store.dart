@@ -16,6 +16,7 @@ class SettingsStore {
   static const _themeModeKey = 'theme_mode';
   static const _handednessKey = 'handedness';
   static const _homeViewKey = 'home_view';
+  static const _myNameKey = 'my_name';
 
   Future<File> _file() async => File('${(await _documentsDir()).path}/settings.json');
 
@@ -56,6 +57,16 @@ class SettingsStore {
 
   Future<void> setHomeView(HomeView view) => _write(_homeViewKey, view.name);
 
+  /// The user's own name, sent with meetings they took part in; null when
+  /// not set (spec feature-my-name).
+  Future<String?> myName() async {
+    final value = (await _read())[_myNameKey];
+    return value is String && value.trim().isNotEmpty ? value : null;
+  }
+
+  /// Null removes it.
+  Future<void> setMyName(String? name) => _write(_myNameKey, name);
+
   static T _enumValue<T extends Enum>(List<T> values, Object? name, T fallback) {
     for (final value in values) {
       if (value.name == name) return value;
@@ -63,10 +74,15 @@ class SettingsStore {
     return fallback;
   }
 
-  /// Keeps any other settings already in the file.
-  Future<void> _write(String key, Object value) async {
-    final settings = await _read()
-      ..[key] = value;
+  /// Keeps any other settings already in the file; a null [value] removes
+  /// [key].
+  Future<void> _write(String key, Object? value) async {
+    final settings = await _read();
+    if (value == null) {
+      settings.remove(key);
+    } else {
+      settings[key] = value;
+    }
     await (await _file()).writeAsString(jsonEncode(settings));
   }
 }

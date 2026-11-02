@@ -1,0 +1,61 @@
+{
+  "description": "「我有參加」誤開的最壞情況：C1 的逐字稿（Andy 不在會議裡）＋ my_name: Andy。負責人和出席者都不可出現 Andy，原本的待辦負責人照舊。",
+  "must_not_include": [
+    {
+      "id": "沒有Andy",
+      "in": [
+        "summary",
+        "todos",
+        "structured_minutes"
+      ],
+      "terms": [
+        "Andy",
+        "安迪"
+      ]
+    }
+  ],
+  "todos": [
+    {
+      "id": "首頁文案",
+      "any_of": [
+        "文案"
+      ],
+      "owner_any_of": [
+        "小明"
+      ]
+    },
+    {
+      "id": "外包報價",
+      "any_of": [
+        "報價",
+        "外包"
+      ],
+      "owner_any_of": [
+        "小華",
+        "小花"
+      ]
+    },
+    {
+      "id": "申請網域",
+      "any_of": [
+        "網域"
+      ],
+      "owner_any_of": [
+        "阿傑"
+      ]
+    },
+    {
+      "id": "客戶推薦",
+      "any_of": [
+        "推薦"
+      ],
+      "owner_any_of": [
+        "小美",
+        "小眉"
+      ]
+    }
+  ],
+  "highlight_contexts": {
+    "count": 0
+  }
+}

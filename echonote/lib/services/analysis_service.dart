@@ -22,8 +22,15 @@ class AnalysisService {
     List<String> glossary = const [],
     List<UserNote> notes = const [],
     List<Recording> previous = const [],
+    String? myName,
   }) async {
-    final built = buildAnalysisRequest(segments, glossary: glossary, notes: notes, previous: previous);
+    final built = buildAnalysisRequest(
+      segments,
+      glossary: glossary,
+      notes: notes,
+      previous: previous,
+      myName: myName,
+    );
     final callable = FirebaseFunctions.instance.httpsCallable('analyzeMeeting');
     final result = await callable.call<Map<String, dynamic>>(built.request);
     // The plugin returns nested Map<Object?, Object?> from the platform channel;

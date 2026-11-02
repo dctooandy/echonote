@@ -11,6 +11,7 @@ Future<String?> showRenameDialog(
   required String title,
   required String initial,
   required String helper,
+  int maxChars = nameMaxChars,
 }) {
   final controller = TextEditingController(text: initial);
   return showDialog<String>(
@@ -20,7 +21,7 @@ Future<String?> showRenameDialog(
       content: TextField(
         controller: controller,
         autofocus: true,
-        maxLength: nameMaxChars,
+        maxLength: maxChars,
         decoration: InputDecoration(helperText: helper, helperMaxLines: 2),
         onSubmitted: (value) => Navigator.pop(context, value),
       ),
