@@ -8,12 +8,15 @@ import 'meeting_chain.dart';
 /// The analyzeMeeting request for [segments], plus what reading the answer
 /// needs: the note id behind each `note_index`, and the latest previous
 /// meeting's todos as sent (for `previous_todo_index`). [previous] is the
-/// chain of earlier meetings, oldest first (see [previousChain]).
+/// chain of earlier meetings, oldest first (see [previousChain]). [myName]
+/// is the user's own name, given only for a meeting they took part in
+/// (spec feature-my-name).
 ({Map<String, dynamic> request, List<String> noteIds, List<String> previousTodos}) buildAnalysisRequest(
   List<TranscriptSegment> segments, {
   List<String> glossary = const [],
   List<UserNote> notes = const [],
   List<Recording> previous = const [],
+  String? myName,
 }) {
   final highlights = buildHighlights(notes, segments);
   final previousPayload = previous.map(toPreviousMeetingPayload).toList();
@@ -23,6 +26,7 @@ import 'meeting_chain.dart';
       if (glossary.isNotEmpty) 'glossary': glossary,
       if (highlights.payload.isNotEmpty) 'highlights': highlights.payload,
       if (previousPayload.isNotEmpty) 'previous_meetings': previousPayload,
+      if (myName != null && myName.trim().isNotEmpty) 'my_name': myName.trim(),
     },
     noteIds: highlights.noteIds,
     previousTodos: previousPayload.isEmpty

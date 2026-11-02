@@ -86,4 +86,29 @@ void main() {
     expect(settings.handedness, Handedness.left);
     expect(await tester.runAsync(store.handedness), Handedness.left);
   });
+
+  // spec feature-my-name, decision 1.
+  testWidgets('my name can be set and cleared, and is saved', (tester) async {
+    final settings = await open(tester);
+    expect(find.textContaining('未設定'), findsOneWidget);
+
+    await tester.tap(find.text('我的名字'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '  Andy ');
+    await tester.tap(find.text('儲存'));
+    await settle(tester);
+
+    expect(settings.myName, 'Andy');
+    expect(find.textContaining('Andy'), findsOneWidget);
+    expect(await tester.runAsync(store.myName), 'Andy');
+
+    await tester.tap(find.text('我的名字'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '');
+    await tester.tap(find.text('儲存'));
+    await settle(tester);
+
+    expect(settings.myName, isNull);
+    expect(find.textContaining('未設定'), findsOneWidget);
+  });
 }

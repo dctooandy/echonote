@@ -133,6 +133,22 @@ test("todos match the task and, when given, the owner", () => {
   assert.match(byKey(results, "待辦:沒有").detail ?? "", /沒有待辦/);
 });
 
+test("owner_none_of fails only when the owner is one of the names", () => {
+  const results = gradeOutput(
+    output(),
+    request,
+    {
+      todos: [
+        { id: "不是阿傑", any_of: ["FAQ"], owner_none_of: ["阿傑"] },
+        { id: "不是小華", any_of: ["FAQ"], owner_none_of: ["小華"] },
+      ],
+    },
+    null
+  );
+  assert.equal(byKey(results, "待辦:不是阿傑").pass, true);
+  assert.match(byKey(results, "待辦:不是小華").detail ?? "", /不可是 小華/);
+});
+
 test("todo_progress, decision_changes, new_topics and highlight count", () => {
   const expect: Expect = {
     todo_progress: [

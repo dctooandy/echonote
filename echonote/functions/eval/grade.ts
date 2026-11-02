@@ -11,7 +11,7 @@ export interface Expect {
   description?: string;
   must_include?: { id: string; in: FieldKey[]; any_of: string[] }[];
   must_not_include?: { id: string; in: FieldKey[]; terms: string[] }[];
-  todos?: { id: string; any_of: string[]; owner_any_of?: string[] }[];
+  todos?: { id: string; any_of: string[]; owner_any_of?: string[]; owner_none_of?: string[] }[];
   todo_progress?: { id: string; previous_todo_index: number; status: "done" | "in_progress" | "not_mentioned" }[];
   decision_changes?: { id: string; previous_any_of: string[]; change: "continued" | "revised" | "reversed" }[];
   new_topics?: { id: string; any_of: string[] }[];
@@ -171,10 +171,18 @@ export function gradeOutput(
   const todos = list(output?.todos);
   for (const c of expect.todos ?? []) {
     const matches = todos.filter((t) => containsAny(str(t?.task), c.any_of));
-    const withOwner = c.owner_any_of ? matches.filter((t) => containsAny(str(t?.owner), c.owner_any_of!)) : matches;
+    const withOwner = matches.filter(
+      (t) =>
+        (!c.owner_any_of || containsAny(str(t?.owner), c.owner_any_of)) &&
+        !(c.owner_none_of && containsAny(str(t?.owner), c.owner_none_of))
+    );
+    const expected = [
+      c.owner_any_of ? `預期 ${c.owner_any_of.join("／")}` : "",
+      c.owner_none_of ? `不可是 ${c.owner_none_of.join("／")}` : "",
+    ].filter(Boolean).join("，");
     let detail: string | undefined;
     if (matches.length === 0) detail = `沒有待辦包含 ${c.any_of.join("／")}`;
-    else if (withOwner.length === 0) detail = `負責人是 ${matches.map((t) => str(t?.owner) || "（空）").join("、")}，預期 ${c.owner_any_of!.join("／")}`;
+    else if (withOwner.length === 0) detail = `負責人是 ${matches.map((t) => str(t?.owner) || "（空）").join("、")}，${expected}`;
     results.push({ key: `待辦:${c.id}`, pass: withOwner.length > 0, detail });
   }
 

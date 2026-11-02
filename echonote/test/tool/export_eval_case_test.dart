@@ -94,6 +94,24 @@ void main() {
     expect(exportEvalCase(docs, '官網', withGlossary: false).containsKey('glossary'), isFalse);
   });
 
+  test('my_name goes in only for a meeting the user took part in', () {
+    final root = _container([
+      _meeting('1', DateTime(2026, 10, 24), title: '官網改版週會'),
+      _meeting('2', DateTime(2026, 10, 31), title: '技術選型'),
+    ]);
+    final docs = documentsIn(root);
+    // Both are imports, so not attended unless set.
+    final history = '${docs.path}/history';
+    final attended = jsonDecode(File('$history/2.json').readAsStringSync()) as Map<String, dynamic>
+      ..['attended'] = true;
+    File('$history/2.json').writeAsStringSync(jsonEncode(attended));
+    expect(exportEvalCase(docs, '官網', withGlossary: false).containsKey('my_name'), isFalse);
+    expect(exportEvalCase(docs, '技術', withGlossary: false).containsKey('my_name'), isFalse);
+    File('${docs.path}/settings.json').writeAsStringSync(jsonEncode({'my_name': 'Andy'}));
+    expect(exportEvalCase(docs, '官網', withGlossary: false).containsKey('my_name'), isFalse);
+    expect(exportEvalCase(docs, '技術', withGlossary: false)['my_name'], 'Andy');
+  });
+
   test('meetings are found by id, title or recording name, and must be unique', () {
     final docs = documentsIn(_container([first, second]));
     expect(exportEvalCase(docs, '1', withGlossary: false).containsKey('previous_meetings'), isFalse);

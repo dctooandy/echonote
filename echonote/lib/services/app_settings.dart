@@ -13,6 +13,7 @@ class AppSettings extends ChangeNotifier {
     this._themeMode = ThemeMode.dark,
     this._handedness = Handedness.right,
     this._homeView = HomeView.single,
+    this._myName,
   });
 
   static Future<AppSettings> load(SettingsStore store) async => AppSettings(
@@ -20,6 +21,7 @@ class AppSettings extends ChangeNotifier {
     themeMode: await store.themeMode(),
     handedness: await store.handedness(),
     homeView: await store.homeView(),
+    myName: await store.myName(),
   );
 
   /// Null keeps changes in memory only (tests).
@@ -27,10 +29,14 @@ class AppSettings extends ChangeNotifier {
   ThemeMode _themeMode;
   Handedness _handedness;
   HomeView _homeView;
+  String? _myName;
 
   ThemeMode get themeMode => _themeMode;
   Handedness get handedness => _handedness;
   HomeView get homeView => _homeView;
+
+  /// The user's own name; null when not set (spec feature-my-name).
+  String? get myName => _myName;
 
   Future<void> setThemeMode(ThemeMode mode) async {
     if (mode == _themeMode) return;
@@ -52,7 +58,22 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
     await _store?.setHomeView(view);
   }
+
+  /// Sets the name from what was typed: trimmed, cut to [myNameMaxChars];
+  /// blank clears it. Throws when it can't be saved, leaving it unchanged.
+  Future<void> setMyName(String typed) async {
+    final name = String.fromCharCodes(typed.trim().runes.take(myNameMaxChars)).trim();
+    final value = name.isEmpty ? null : name;
+    if (value == _myName) return;
+    await _store?.setMyName(value);
+    _myName = value;
+    notifyListeners();
+  }
 }
+
+/// The longest name the user can give themselves; matches the function's
+/// `MY_NAME_MAX_CHARS` (spec feature-my-name, decision 2).
+const myNameMaxChars = 20;
 
 /// Makes [AppSettings] available below it; widgets that read it rebuild
 /// when a setting changes.

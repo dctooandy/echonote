@@ -210,3 +210,32 @@ test("the prompt explains the homophone notes in the glossary", () => {
   assert.match(SYSTEM_PROMPT, /逐字稿裡也寫成：…）」，列的是逐字稿裡跟這個詞讀音相同的寫法/);
   assert.match(SYSTEM_PROMPT, /註明了「逐字稿裡也寫成」時，逐字稿裡那些寫法指的就是這個詞/);
 });
+
+test("my_name is optional, a non-empty string of at most 20 characters", () => {
+  assert.equal(validateRequest({ segments, my_name: "Andy" }), null);
+  assert.match(validateRequest({ segments, my_name: "  " }) ?? "", /my_name/);
+  assert.match(validateRequest({ segments, my_name: 3 as unknown as string }) ?? "", /my_name/);
+  assert.match(validateRequest({ segments, my_name: "名".repeat(21) }) ?? "", /my_name/);
+  assert.equal(validateRequest({ segments, my_name: "名".repeat(20) }), null);
+});
+
+test("my_name gets its own section and joins the glossary", () => {
+  const message = buildUserMessage({ segments, my_name: " Andy ", glossary: ["陳醫師"] });
+  assert.match(message, /<my_name>Andy<\/my_name>/);
+  assert.match(message, /<glossary>\n陳醫師\nAndy\n<\/glossary>/);
+  assert.match(buildUserMessage({ segments, my_name: "Andy" }), /<glossary>\nAndy\n<\/glossary>/);
+  assert.match(buildUserMessage({ segments, my_name: "Andy", glossary: ["Andy"] }), /<glossary>\nAndy\n<\/glossary>/);
+});
+
+test("without my_name the message has no my_name section", () => {
+  assert.doesNotMatch(buildUserMessage({ segments, glossary: ["陳醫師"] }), /my_name/);
+});
+
+test("the prompt ties 我 to my_name and keeps unsure owners null", () => {
+  assert.match(SYSTEM_PROMPT, /<my_name>（可能沒有）：錄音的使用者本人的名字/);
+  assert.match(SYSTEM_PROMPT, /判斷不出來就填 null，不要猜/);
+  assert.match(SYSTEM_PROMPT, /被叫到名字的人不等於負責人/);
+  assert.match(SYSTEM_PROMPT, /<my_name> 只代表使用者可能在場/);
+  assert.match(SYSTEM_PROMPT, /兩個以上其他人被點名發言或被叫到名字時.*不可以把任何「我」寫成使用者/);
+  assert.match(SYSTEM_PROMPT, /沒有 <my_name> 時，「我」不對到使用者/);
+});

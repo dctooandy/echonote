@@ -37,10 +37,13 @@ export interface AnalyzeMeetingRequest {
   highlights?: Highlight[];
   /** Oldest first; the last one is the meeting this one directly follows. */
   previous_meetings?: PreviousMeeting[];
+  /** The user's own name, sent only when they took part (spec feature-my-name). */
+  my_name?: string;
 }
 
 export const GLOSSARY_MAX_TERMS = 200;
 export const GLOSSARY_TERM_MAX_CHARS = 20;
+export const MY_NAME_MAX_CHARS = 20;
 
 // The app trims to these same numbers before sending (spec decision 4).
 export const PREVIOUS_MEETINGS_MAX = 3;
@@ -137,6 +140,15 @@ export function validateRequest(data: unknown): string | null {
     }
   }
 
+  if (req.my_name != null) {
+    if (typeof req.my_name !== "string" || req.my_name.trim().length === 0) {
+      return "my_name must be a non-empty string";
+    }
+    if (charCount(req.my_name.trim()) > MY_NAME_MAX_CHARS) {
+      return `my_name must be at most ${MY_NAME_MAX_CHARS} characters`;
+    }
+  }
+
   return null;
 }
 
@@ -181,7 +193,11 @@ export function buildUserMessage(req: AnalyzeMeetingRequest): string {
     `<transcript>\n${req.segments.map((s, index) => `[${index}] ${s.text.trim()}`).join("\n")}\n</transcript>`,
   ];
 
-  const glossary = (req.glossary ?? []).map((t) => t.trim()).filter((t) => t.length > 0);
+  const myName = req.my_name?.trim() || null;
+  const terms = (req.glossary ?? []).map((t) => t.trim()).filter((t) => t.length > 0);
+  // The user's name is a glossary term too, so a misheard 安迪 maps back to
+  // Andy (decision 5).
+  const glossary = myName && !terms.includes(myName) ? [...terms, myName] : terms;
   if (glossary.length > 0) {
     const variants = glossaryHomophones(glossary, req.segments);
     const lines = glossary.map((t) => {
@@ -200,6 +216,10 @@ export function buildUserMessage(req: AnalyzeMeetingRequest): string {
     sections.push(`<user_notes>\n${lines.join("\n")}\n</user_notes>`);
   }
 
+  if (myName) {
+    sections.push(`<my_name>${myName}</my_name>`);
+  }
+
   const previous = req.previous_meetings ?? [];
   if (previous.length > 0) {
     const blocks = previous.map((m, i) => formatPreviousMeeting(m, i + 1, i === previous.length - 1));
@@ -214,6 +234,7 @@ export const SYSTEM_PROMPT = `你是會議記錄整理助手。使用者會提�
 - <glossary>（可能沒有）：使用者提供的人名、公司名、專有名詞的正確寫法，一行一個。有些詞後面會註明「（逐字稿裡也寫成：…）」，列的是逐字稿裡跟這個詞讀音相同的寫法，由程式依讀音找出。
 - <user_notes>（可能沒有）：使用者在會議中或回放時私下寫的備忘或 ★ 標記，每筆標有筆記序號和它標在哪一句逐字稿。筆記是使用者自己的想法、提醒或待查事項，不是會議發言，會議裡沒有人這樣說。
 - <previous_meetings>（可能沒有）：這場會議接續的前幾場會議的紀錄，由舊到新排列；最後一場是這場直接接續的會議，它的待辦標有 [上次待辦 數字]。
+- <my_name>（可能沒有）：錄音的使用者本人的名字。有這一段代表使用者參加了這場會議，逐字稿裡有些「我」是使用者說的；沒有這一段代表使用者可能沒參加。
 
 請根據逐字稿內容產出摘要、待辦事項清單、結構化會議紀錄；有 <previous_meetings> 時，另外產出與上次相比的 follow_up。
 
@@ -222,6 +243,10 @@ export const SYSTEM_PROMPT = `你是會議記錄整理助手。使用者會提�
 - todos 和 agenda_items 的 source_segment_index 必須填「輸入逐字稿中實際出現過的序號」，該序號來自你要引用那句話前面的 [數字]，不可超出範圍、不可自行編造。
 - 逐字稿可能包含轉錄錯誤或多人交叉發言導致的破碎片段，遇到讀不通的內容時盡量根據上下文推斷語意，不要編造逐字稿中沒有的資訊。讀不通的詞如果跟某個常見詞發音或字形相近、而且上下文明顯指的是那個詞，就直接寫成那個詞（例如在講主機的段落裡，「申請伺服氣」應為「申請伺服器」）；真的推斷不出來才照逐字稿原字寫，不要寫「內容不清楚」這類說明。
 - attendees 和數值類欄位如果無法從逐字稿判斷，回傳空陣列或 null，不要猜測。
+- 待辦的負責人（owner）：逐字稿沒有標出是誰在說話，要依上下文判斷「我」是誰。只有能確定是誰要做時才填，判斷不出來就填 null，不要猜。被叫到名字的人不等於負責人：例如「陳經理，我週三前修好」是說話的人要做，不是陳經理；只有逐字稿明確說那個人要做（例如「陳經理你負責報價」「我請陳經理處理」）才寫他。
+- 逐字稿在發言前點出說話的人時（例如「小明說，……」「阿傑，新網域我來申請」「小華：我去找報價」），那句的「我」就是那個人。
+- 有 <my_name> 時：<my_name> 只代表使用者可能在場，不代表逐字稿裡的「我」都是使用者。先把能歸給其他說話者的「我」歸給他們；剩下的「我」，只有在明顯是使用者時才寫成 <my_name> 的名字，例如整場只有兩個人對話、使用者向被稱為「您」「醫師」「經理」的對方報告進度或請對方決定。硬性規則：使用者的名字在逐字稿裡從沒出現、而且有兩個以上其他人被點名發言或被叫到名字時（例如小明、小華、阿傑都有出現），這場很可能是別人的會議，不可以把任何「我」寫成使用者，負責人、attendees、摘要都不可以出現使用者的名字；歸不出說話者的「我」填 null。其他情況不確定也填 null。attendees 只有在逐字稿裡有人叫到使用者的名字，或明顯有一方是使用者時，才列出使用者。
+- 沒有 <my_name> 時，「我」不對到使用者，只能歸給逐字稿裡點出的說話者。
 - <glossary> 裡的詞是正確寫法。逐字稿中發音或字形相近的錯字（例如「太基電」應為「台積電」），在所有輸出中一律改用詞庫的寫法：摘要、待辦的內容和負責人、會議紀錄的出席者／議題／討論／決議、follow_up、highlight_contexts 都一樣，負責人和出席者也不例外。人名在逐字稿裡只叫名字或被聽錯時，也要對應到詞庫裡的人（例如詞庫有「陳怡君」，逐字稿叫她「宜君」或聽錯成「一軍」，負責人就寫「陳怡君」）。讀音相同或相近的名字，即使逐字稿寫成不同的字（例如詞庫有「怡君」，逐字稿有時寫「怡君」有時寫「宜君」），也視為詞庫裡的同一個人，只列一次、一律用詞庫的寫法。詞庫的詞註明了「逐字稿裡也寫成」時，逐字稿裡那些寫法指的就是這個詞（例如「小美（逐字稿裡也寫成：小眉）」，逐字稿的「小眉」就是小美，是同一個人），一律改用詞庫的寫法；只有上下文明顯在講別的事時才不改。但不可把逐字稿沒有提到的詞庫詞寫進輸出。
 - <user_notes> 只用來判斷使用者覺得哪些位置重要。summary.key_points 必須涵蓋每一筆筆記標的那句逐字稿的會議內容（是逐字稿那句的內容，不是筆記文字）。
 - 筆記文字的內容不可以出現在 summary、todos、structured_minutes、highlight_contexts 的任何地方，改寫、摘要或合併進其他句子也不行。筆記看起來像某句待辦或決議的補充時也一樣，只寫逐字稿裡實際說的部分。例如筆記「記得問含不含稅」標在「小王負責詢價」那句：待辦只能寫「小王負責詢價」，不可寫成「小王負責詢價並確認是否含稅」。

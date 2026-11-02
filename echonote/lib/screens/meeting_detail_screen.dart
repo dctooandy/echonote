@@ -140,6 +140,9 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       if (mounted) setState(() => _analysisSeconds++);
     });
     try {
+      // The user's name goes only with a meeting they took part in (spec
+      // feature-my-name, decision 9).
+      final myName = widget.recording.iAttended ? AppSettingsScope.of(context).myName : null;
       // A corrupt glossary loads as empty: analyze without it.
       final glossary = (await _glossary.load()).terms.map((t) => t.term).toList();
       final all = await _store.loadAll();
@@ -148,6 +151,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
         glossary: glossary,
         notes: widget.recording.notes,
         previous: previousChain(widget.recording, all),
+        myName: myName,
       );
       widget.recording
         ..analysis = analysis
@@ -178,6 +182,37 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
         content: const Text('會用目前的逐字稿重新產生摘要、待辦和結構化紀錄，取代現在的結果，待辦的勾選也會重來。\n\n你的重點不受影響。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('重新分析')),
+        ],
+      ),
+    );
+    if (ok == true) await _runAnalysis();
+  }
+
+  /// Flips whether the user took part. Only the next analysis sees it, so
+  /// offer one when there's an analysis already (spec feature-my-name,
+  /// decision 10).
+  Future<void> _toggleAttended() async {
+    final recording = widget.recording;
+    recording.attended = !recording.iAttended;
+    _persist();
+    final hasName = AppSettingsScope.of(context).myName != null;
+    if (recording.iAttended && !hasName) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('到「設定」填好「我的名字」，分析時才會用到')));
+      return;
+    }
+    if (recording.analysis == null || !recording.isTranscribed) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('要重新分析嗎？'),
+        content: Text(
+          recording.iAttended
+              ? '重新分析後，逐字稿裡你說的「我來做」會寫成你的名字。現在的結果和待辦的勾選會被取代。'
+              : '重新分析後，不會再把逐字稿裡的「我」當成你。現在的結果和待辦的勾選會被取代。',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('先不要')),
           TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('重新分析')),
         ],
       ),
@@ -581,6 +616,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
               ),
               onSelected: (action) => switch (action) {
                 _MoreAction.previous => _pickPrevious(),
+                _MoreAction.attended => _toggleAttended(),
                 _MoreAction.export => _exportMinutes(),
                 _MoreAction.reanalyze => _confirmReanalyze(),
                 _MoreAction.retranscribe => _confirmRetranscribe(),
@@ -594,6 +630,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
                   String label, {
                   Color? color,
                   bool enabled = true,
+                  String? hint,
                 }) =>
                     PopupMenuItem(
                       value: value,
@@ -602,12 +639,37 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
                         children: [
                           Icon(icon, size: 20, color: color),
                           const SizedBox(width: 12),
-                          Text(label, style: TextStyle(color: color)),
+                          if (hint == null)
+                            Text(label, style: TextStyle(color: color))
+                          else
+                            Flexible(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(label, style: TextStyle(color: color)),
+                                  Text(
+                                    hint,
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                         ],
                       ),
                     );
                 return [
                   item(_MoreAction.previous, Icons.link, '接續上一場'),
+                  item(
+                    _MoreAction.attended,
+                    widget.recording.iAttended ? Icons.check_box : Icons.check_box_outline_blank,
+                    '我有參加',
+                    // A wrong tick lets others' 「我來做」 become the user's
+                    // (spec feature-my-name, C9).
+                    hint: '只有你在會議裡發言才打勾，不然 AI 可能把別人的工作寫成你',
+                  ),
                   item(_MoreAction.export, Icons.ios_share, '匯出會議紀錄', enabled: analysis != null),
                   if (analysis != null && widget.recording.isTranscribed)
                     item(_MoreAction.reanalyze, Icons.auto_awesome, '重新分析'),
@@ -1569,7 +1631,7 @@ class _TimePill extends StatelessWidget {
   }
 }
 
-enum _MoreAction { previous, export, reanalyze, retranscribe, delete }
+enum _MoreAction { previous, attended, export, reanalyze, retranscribe, delete }
 
 enum _LearnChoice { dismiss, learn, learnAndApply }
 

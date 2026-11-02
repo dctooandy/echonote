@@ -81,4 +81,18 @@ void main() {
     expect(await store.livePreview(), isTrue);
     expect(await store.themeMode(), ThemeMode.light);
   });
+
+  test('my name is unset until saved, and null removes it', () async {
+    expect(await store.myName(), isNull);
+    await store.setMyName('Andy');
+    expect(await store.myName(), 'Andy');
+    await store.setMyName(null);
+    expect(await store.myName(), isNull);
+    expect((jsonDecode(await file.readAsString()) as Map).containsKey('my_name'), isFalse);
+  });
+
+  test('a blank saved name counts as unset', () async {
+    await file.writeAsString(jsonEncode({'my_name': '  '}));
+    expect(await store.myName(), isNull);
+  });
 }

@@ -373,6 +373,7 @@ class Recording {
     this.previousChangedSinceAnalysis = false,
     this.seriesName,
     this.customTitle,
+    this.attended,
   }) : notes = notes ?? [],
        dismissedReplacements = dismissedReplacements ?? [];
 
@@ -426,6 +427,15 @@ class Recording {
   /// re-analysis leaves it alone (spec feature-rename, decision 2).
   String? customTitle;
 
+  /// Whether the user took part in this meeting, as they set it; null when
+  /// never set (spec feature-my-name, decision 10).
+  bool? attended;
+
+  /// Took part unless set otherwise: yes for a live recording, no for an
+  /// imported file, which may well be someone else's meeting. Only then is
+  /// the user's name sent for analysis (decision 9).
+  bool get iAttended => attended ?? source == RecordingSource.live;
+
   bool get isTranscribed => segments.isNotEmpty;
 
   /// What the meeting is called without a name of the user's: the AI's
@@ -467,6 +477,7 @@ class Recording {
         previousChangedSinceAnalysis: json['previous_changed_since_analysis'] as bool? ?? false,
         seriesName: json['series_name'] as String?,
         customTitle: json['custom_title'] as String?,
+        attended: json['attended'] as bool?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -487,5 +498,6 @@ class Recording {
         if (previousChangedSinceAnalysis) 'previous_changed_since_analysis': true,
         'series_name': ?seriesName,
         'custom_title': ?customTitle,
+        'attended': ?attended,
       };
 }

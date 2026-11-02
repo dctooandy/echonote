@@ -90,6 +90,26 @@ void main() {
     });
   });
 
+  group('attended (spec feature-my-name)', () {
+    test('a live recording counts as attended, an import does not, until set', () {
+      final imported = Recording.fromJson(_legacyJson());
+      final live = Recording.fromJson({..._legacyJson(), 'source': 'live'});
+      expect(imported.iAttended, isFalse);
+      expect(live.iAttended, isTrue);
+      expect(imported.toJson().containsKey('attended'), isFalse);
+
+      imported.attended = true;
+      live.attended = false;
+      expect(imported.iAttended, isTrue);
+      expect(live.iAttended, isFalse);
+    });
+
+    test('the choice round-trips', () {
+      final recording = Recording.fromJson({..._legacyJson(), 'source': 'live', 'attended': false});
+      expect(Recording.fromJson(recording.toJson()).iAttended, isFalse);
+    });
+  });
+
   group('isTranscribed', () {
     test('true when segments exist', () {
       expect(Recording.fromJson(_legacyJson()).isTranscribed, isTrue);
