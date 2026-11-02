@@ -141,6 +141,29 @@ test("the eval set can swap the model, and nothing else", () => {
   assert.deepEqual({ ...params, model: "x" }, { ...buildAnalysisParams({ segments }), model: "x" });
 });
 
+test("the eval set can set effort, thinking and max tokens; unset, nothing extra is sent", () => {
+  const plain = buildAnalysisParams({ segments }, { model: "claude-haiku-5-5" });
+  assert.equal("thinking" in plain, false);
+  assert.equal("effort" in plain.output_config, false);
+
+  const tuned = buildAnalysisParams(
+    { segments },
+    { model: "claude-haiku-5-5", effort: "low", thinking: "adaptive", maxTokens: 16000 }
+  );
+  assert.equal(tuned.max_tokens, 16000);
+  assert.deepEqual(tuned.thinking, { type: "adaptive" });
+  assert.deepEqual(tuned.output_config, {
+    format: { type: "json_schema", schema: outputSchema },
+    effort: "low",
+  });
+});
+
+test("Haiku 4.5 rejects effort and adaptive thinking before any call", () => {
+  assert.throws(() => buildAnalysisParams({ segments }, { effort: "low" }), /不支援 effort/);
+  assert.throws(() => buildAnalysisParams({ segments }, { thinking: "adaptive" }), /不支援 effort/);
+  assert.equal(buildAnalysisParams({ segments }, { thinking: "disabled" }).thinking?.type, "disabled");
+});
+
 test("prompt version is a stable short hash", () => {
   assert.match(promptVersion(), /^[0-9a-f]{8}$/);
   assert.equal(promptVersion(), promptHash(SYSTEM_PROMPT, outputSchema));
