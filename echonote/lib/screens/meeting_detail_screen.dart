@@ -23,6 +23,7 @@ import '../theme/app_theme.dart';
 import '../utils/format.dart';
 import '../widgets/confirm_delete_dialog.dart';
 import '../widgets/glossary_term_dialog.dart';
+import '../widgets/rename_dialog.dart';
 import '../widgets/round_icon_button.dart';
 
 class MeetingDetailScreen extends StatefulWidget {
@@ -300,6 +301,18 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     }
   }
 
+  Future<void> _rename() async {
+    final name = await showRenameDialog(
+      context,
+      title: '會議名稱',
+      initial: widget.recording.displayTitle,
+      helper: '清空就恢復成：${widget.recording.defaultTitle}',
+    );
+    if (name == null || !mounted) return;
+    widget.recording.rename(name, maxChars: nameMaxChars);
+    _persist();
+  }
+
   Future<void> _editTodoTask(Todo todo) async {
     final controller = TextEditingController(text: todo.task);
     final result = await showDialog<String>(
@@ -546,7 +559,11 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       length: 4,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(widget.recording.displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+          // Long press to rename (spec feature-rename).
+          title: GestureDetector(
+            onLongPress: _rename,
+            child: Text(widget.recording.displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
           // Seldom used and costly to hit by mistake, so up here, out of the
           // thumb's way, behind one menu so the title keeps its room; each
           // asks first (spec feature-dark-theme; menu since
@@ -1438,7 +1455,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 18),
-            child: Text(a.title, style: Theme.of(context).textTheme.titleLarge),
+            child: Text(widget.recording.displayTitle, style: Theme.of(context).textTheme.titleLarge),
           ),
           const SizedBox(height: 12),
           Padding(

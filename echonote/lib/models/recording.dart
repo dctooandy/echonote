@@ -372,6 +372,7 @@ class Recording {
     this.previousRecordingId,
     this.previousChangedSinceAnalysis = false,
     this.seriesName,
+    this.customTitle,
   }) : notes = notes ?? [],
        dismissedReplacements = dismissedReplacements ?? [];
 
@@ -421,10 +422,25 @@ class Recording {
   /// decision 17).
   String? seriesName;
 
+  /// The name the user gave this meeting. Kept apart from the analysis so
+  /// re-analysis leaves it alone (spec feature-rename, decision 2).
+  String? customTitle;
+
   bool get isTranscribed => segments.isNotEmpty;
 
-  String get displayTitle =>
+  /// What the meeting is called without a name of the user's: the AI's
+  /// title, else the audio file's name.
+  String get defaultTitle =>
       (analysis?.title.isNotEmpty ?? false) ? analysis!.title : audioName;
+
+  String get displayTitle => customTitle ?? defaultTitle;
+
+  /// Sets the user's name from what they typed: trimmed, cut to [maxChars];
+  /// blank, or the same as [defaultTitle], clears it (spec feature-rename).
+  void rename(String typed, {int maxChars = 60}) {
+    final name = String.fromCharCodes(typed.trim().runes.take(maxChars)).trim();
+    customTitle = name.isEmpty || name == defaultTitle ? null : name;
+  }
 
   factory Recording.fromJson(Map<String, dynamic> json) => Recording(
         id: json['id'] as String,
@@ -450,6 +466,7 @@ class Recording {
         previousRecordingId: json['previous_recording_id'] as String?,
         previousChangedSinceAnalysis: json['previous_changed_since_analysis'] as bool? ?? false,
         seriesName: json['series_name'] as String?,
+        customTitle: json['custom_title'] as String?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -469,5 +486,6 @@ class Recording {
         if (previousRecordingId != null) 'previous_recording_id': previousRecordingId,
         if (previousChangedSinceAnalysis) 'previous_changed_since_analysis': true,
         'series_name': ?seriesName,
+        'custom_title': ?customTitle,
       };
 }
