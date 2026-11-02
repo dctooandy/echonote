@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { findHomophones } from "./homophones";
 
 // Pure request handling for analyzeMeeting: validation, prompt and schema.
 // Kept free of Firebase and Anthropic imports so it can be exercised
@@ -160,6 +161,15 @@ function formatPreviousMeeting(meeting: PreviousMeeting, number: number, indexTo
   return lines.join("\n");
 }
 
+/** Homophone spellings to note in the glossary; none if the lookup fails. */
+function glossaryHomophones(glossary: string[], segments: TranscriptSegment[]): Map<string, string[]> {
+  try {
+    return findHomophones(glossary, segments.map((s) => s.text));
+  } catch {
+    return new Map();
+  }
+}
+
 /**
  * The user message: the transcript, plus the glossary and the user's
  * notes when given, each in its own tagged section so the model doesn't
@@ -173,7 +183,12 @@ export function buildUserMessage(req: AnalyzeMeetingRequest): string {
 
   const glossary = (req.glossary ?? []).map((t) => t.trim()).filter((t) => t.length > 0);
   if (glossary.length > 0) {
-    sections.push(`<glossary>\n${glossary.join("\n")}\n</glossary>`);
+    const variants = glossaryHomophones(glossary, req.segments);
+    const lines = glossary.map((t) => {
+      const spellings = variants.get(t);
+      return spellings ? `${t}（逐字稿裡也寫成：${spellings.join("、")}）` : t;
+    });
+    sections.push(`<glossary>\n${lines.join("\n")}\n</glossary>`);
   }
 
   const highlights = req.highlights ?? [];
@@ -196,7 +211,7 @@ export function buildUserMessage(req: AnalyzeMeetingRequest): string {
 
 export const SYSTEM_PROMPT = `你是會議記錄整理助手。使用者會提供以下內容，各自放在標籤裡：
 - <transcript>：中文會議逐字稿，每一句前面標有這句在逐字稿中的序號（從 0 開始，例如 [0]、[1]、[2]...），序號不是時間。
-- <glossary>（可能沒有）：使用者提供的人名、公司名、專有名詞的正確寫法，一行一個。
+- <glossary>（可能沒有）：使用者提供的人名、公司名、專有名詞的正確寫法，一行一個。有些詞後面會註明「（逐字稿裡也寫成：…）」，列的是逐字稿裡跟這個詞讀音相同的寫法，由程式依讀音找出。
 - <user_notes>（可能沒有）：使用者在會議中或回放時私下寫的備忘或 ★ 標記，每筆標有筆記序號和它標在哪一句逐字稿。筆記是使用者自己的想法、提醒或待查事項，不是會議發言，會議裡沒有人這樣說。
 - <previous_meetings>（可能沒有）：這場會議接續的前幾場會議的紀錄，由舊到新排列；最後一場是這場直接接續的會議，它的待辦標有 [上次待辦 數字]。
 
@@ -207,7 +222,7 @@ export const SYSTEM_PROMPT = `你是會議記錄整理助手。使用者會提�
 - todos 和 agenda_items 的 source_segment_index 必須填「輸入逐字稿中實際出現過的序號」，該序號來自你要引用那句話前面的 [數字]，不可超出範圍、不可自行編造。
 - 逐字稿可能包含轉錄錯誤或多人交叉發言導致的破碎片段，遇到讀不通的內容時盡量根據上下文推斷語意，不要編造逐字稿中沒有的資訊。讀不通的詞如果跟某個常見詞發音或字形相近、而且上下文明顯指的是那個詞，就直接寫成那個詞（例如在講主機的段落裡，「申請伺服氣」應為「申請伺服器」）；真的推斷不出來才照逐字稿原字寫，不要寫「內容不清楚」這類說明。
 - attendees 和數值類欄位如果無法從逐字稿判斷，回傳空陣列或 null，不要猜測。
-- <glossary> 裡的詞是正確寫法。逐字稿中發音或字形相近的錯字（例如「太基電」應為「台積電」），在所有輸出中一律改用詞庫的寫法：摘要、待辦的內容和負責人、會議紀錄的出席者／議題／討論／決議、follow_up、highlight_contexts 都一樣，負責人和出席者也不例外。人名在逐字稿裡只叫名字或被聽錯時，也要對應到詞庫裡的人（例如詞庫有「陳怡君」，逐字稿叫她「宜君」或聽錯成「一軍」，負責人就寫「陳怡君」）。讀音相同或相近的名字，即使逐字稿寫成不同的字（例如詞庫有「怡君」，逐字稿有時寫「怡君」有時寫「宜君」），也視為詞庫裡的同一個人，只列一次、一律用詞庫的寫法。但不可把逐字稿沒有提到的詞庫詞寫進輸出。
+- <glossary> 裡的詞是正確寫法。逐字稿中發音或字形相近的錯字（例如「太基電」應為「台積電」），在所有輸出中一律改用詞庫的寫法：摘要、待辦的內容和負責人、會議紀錄的出席者／議題／討論／決議、follow_up、highlight_contexts 都一樣，負責人和出席者也不例外。人名在逐字稿裡只叫名字或被聽錯時，也要對應到詞庫裡的人（例如詞庫有「陳怡君」，逐字稿叫她「宜君」或聽錯成「一軍」，負責人就寫「陳怡君」）。讀音相同或相近的名字，即使逐字稿寫成不同的字（例如詞庫有「怡君」，逐字稿有時寫「怡君」有時寫「宜君」），也視為詞庫裡的同一個人，只列一次、一律用詞庫的寫法。詞庫的詞註明了「逐字稿裡也寫成」時，逐字稿裡那些寫法指的就是這個詞（例如「小美（逐字稿裡也寫成：小眉）」，逐字稿的「小眉」就是小美，是同一個人），一律改用詞庫的寫法；只有上下文明顯在講別的事時才不改。但不可把逐字稿沒有提到的詞庫詞寫進輸出。
 - <user_notes> 只用來判斷使用者覺得哪些位置重要。summary.key_points 必須涵蓋每一筆筆記標的那句逐字稿的會議內容（是逐字稿那句的內容，不是筆記文字）。
 - 筆記文字的內容不可以出現在 summary、todos、structured_minutes、highlight_contexts 的任何地方，改寫、摘要或合併進其他句子也不行。筆記看起來像某句待辦或決議的補充時也一樣，只寫逐字稿裡實際說的部分。例如筆記「記得問含不含稅」標在「小王負責詢價」那句：待辦只能寫「小王負責詢價」，不可寫成「小王負責詢價並確認是否含稅」。
 - <previous_meetings> 是之前會議的紀錄，不是這次的發言。summary、todos、structured_minutes、highlight_contexts 都只能根據這次的逐字稿；不可把只在前幾場出現的內容寫成這次有人說過、決議過或要求過的內容。follow_up 是唯一可以引用前幾場的欄位。

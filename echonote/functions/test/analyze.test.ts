@@ -205,3 +205,8 @@ test("the prompt keeps note text out of the output and asks for one context per 
   assert.match(contexts.description, /<user_notes>/);
   assert.match(contexts.items.properties.note_index.description, /<user_notes>/);
 });
+
+test("the prompt explains the homophone notes in the glossary", () => {
+  assert.match(SYSTEM_PROMPT, /逐字稿裡也寫成：…）」，列的是逐字稿裡跟這個詞讀音相同的寫法/);
+  assert.match(SYSTEM_PROMPT, /註明了「逐字稿裡也寫成」時，逐字稿裡那些寫法指的就是這個詞/);
+});
