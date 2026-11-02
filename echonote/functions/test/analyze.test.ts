@@ -164,6 +164,13 @@ test("Haiku 4.5 rejects effort and adaptive thinking before any call", () => {
   assert.equal(buildAnalysisParams({ segments }, { thinking: "disabled" }).thinking?.type, "disabled");
 });
 
+test("the glossary applies to owners and attendees too, and misheard words are inferred", () => {
+  assert.match(SYSTEM_PROMPT, /待辦的內容和負責人/);
+  assert.match(SYSTEM_PROMPT, /負責人和出席者也不例外/);
+  assert.match(SYSTEM_PROMPT, /不要寫「內容不清楚」/);
+  assert.match(SYSTEM_PROMPT, /讀音相同或相近的名字.*視為詞庫裡的同一個人/);
+});
+
 test("prompt version is a stable short hash", () => {
   assert.match(promptVersion(), /^[0-9a-f]{8}$/);
   assert.equal(promptVersion(), promptHash(SYSTEM_PROMPT, outputSchema));
