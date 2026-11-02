@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { AnalyzeMeetingRequest } from "../src/analyze";
-import { CheckResult, Expect, fieldText, gradeOutput } from "../eval/grade";
+import { CheckResult, Expect, TODOS_MAX, fieldText, gradeOutput } from "../eval/grade";
 
 const request: AnalyzeMeetingRequest = {
   segments: [
@@ -61,7 +61,7 @@ test("a good output passes every universal check", () => {
   );
   assert.deepEqual(
     results.map((r) => r.key),
-    ["通用:schema", "通用:未截斷", "通用:逐字稿序號", "通用:上次待辦序號", "通用:簡體字"]
+    ["通用:schema", "通用:未截斷", "通用:逐字稿序號", "通用:上次待辦序號", "通用:待辦筆數", "通用:簡體字"]
   );
 });
 
@@ -179,4 +179,9 @@ test("todo_progress, decision_changes, new_topics and highlight count", () => {
   assert.equal(byKey(results, "新主題:預算").pass, true);
   assert.equal(byKey(results, "新主題:沒有").pass, false);
   assert.match(byKey(results, "重點說明:筆數").detail ?? "", /1 筆，預期 3 筆/);
+});
+
+test("more than TODOS_MAX todos fails the todo-count check", () => {
+  const many = { ...output(), todos: Array.from({ length: TODOS_MAX + 1 }, (_, i) => ({ task: `t${i}`, owner: null, due_date: null, source_segment_index: 0 })) };
+  assert.match(byKey(gradeOutput(many, request, {}, null), "通用:待辦筆數").detail ?? "", /超過 15 筆/);
 });

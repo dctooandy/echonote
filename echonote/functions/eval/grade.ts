@@ -30,6 +30,9 @@ export interface CheckResult {
  * Characters that only exist in simplified Chinese. Kept short on purpose
  * (spec decision 11): 后、台 and the like are valid traditional too.
  */
+/** More todos than this from one meeting probably means remarks were listed too. */
+export const TODOS_MAX = 15;
+
 export const SIMPLIFIED_ONLY = [..."这们会说时国为来对进过还发经与两样实现问题议决动项预"];
 
 // The output is model JSON; read it loosely and let the schema check
@@ -129,6 +132,15 @@ function universalChecks(output: Json, request: AnalyzeMeetingRequest, stopReaso
     key: "通用:上次待辦序號",
     pass: badTodos.length === 0,
     detail: badTodos.length ? `上次只有 ${previousTodos} 筆待辦：${badTodos.join("、")}` : undefined,
+  });
+
+  // Guards against listing every remark as a todo (spec fix-todo-recall,
+  // decision 3); the longest case so far has 13.
+  const todoCount = list(output?.todos).length;
+  results.push({
+    key: "通用:待辦筆數",
+    pass: todoCount <= TODOS_MAX,
+    detail: todoCount > TODOS_MAX ? `${todoCount} 筆，超過 ${TODOS_MAX} 筆` : undefined,
   });
 
   const text = JSON.stringify(output ?? "");
