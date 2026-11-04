@@ -185,3 +185,8 @@ test("more than TODOS_MAX todos fails the todo-count check", () => {
   const many = { ...output(), todos: Array.from({ length: TODOS_MAX + 1 }, (_, i) => ({ task: `t${i}`, owner: null, due_date: null, source_segment_index: 0 })) };
   assert.match(byKey(gradeOutput(many, request, {}, null), "通用:待辦筆數").detail ?? "", /超過 15 筆/);
 });
+
+test("the decisions field holds only the decisions, not the discussion", () => {
+  const out = { structured_minutes: { agenda_items: [{ topic: "主題", discussion: "討論內容", decisions: ["決定一", "決定二"] }] } };
+  assert.equal(fieldText(out, "decisions"), "決定一\n決定二");
+});

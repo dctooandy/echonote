@@ -5,7 +5,7 @@
 import { AnalyzeMeetingRequest } from "../src/analyze";
 
 /** Which part of the output a text check looks in. */
-export type FieldKey = "summary" | "todos" | "structured_minutes" | "follow_up" | "highlight_contexts";
+export type FieldKey = "summary" | "todos" | "structured_minutes" | "decisions" | "follow_up" | "highlight_contexts";
 
 export interface Expect {
   description?: string;
@@ -60,6 +60,10 @@ export function fieldText(output: Json, field: FieldKey): string {
         ...list(m?.agenda_items).map((a) => [str(a?.topic), str(a?.discussion), ...list(a?.decisions).map(str)].join(" ")),
       ].join("\n");
     }
+    case "decisions":
+      return list(output?.structured_minutes?.agenda_items)
+        .flatMap((a) => list(a?.decisions).map(str))
+        .join("\n");
     case "follow_up": {
       const f = output?.follow_up;
       return [

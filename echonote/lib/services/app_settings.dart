@@ -14,6 +14,7 @@ class AppSettings extends ChangeNotifier {
     this._handedness = Handedness.right,
     this._homeView = HomeView.single,
     this._myName,
+    this._lineGreetingName,
   });
 
   static Future<AppSettings> load(SettingsStore store) async => AppSettings(
@@ -22,6 +23,7 @@ class AppSettings extends ChangeNotifier {
     handedness: await store.handedness(),
     homeView: await store.homeView(),
     myName: await store.myName(),
+    lineGreetingName: await store.lineGreetingName(),
   );
 
   /// Null keeps changes in memory only (tests).
@@ -30,6 +32,7 @@ class AppSettings extends ChangeNotifier {
   Handedness _handedness;
   HomeView _homeView;
   String? _myName;
+  String? _lineGreetingName;
 
   ThemeMode get themeMode => _themeMode;
   Handedness get handedness => _handedness;
@@ -37,6 +40,9 @@ class AppSettings extends ChangeNotifier {
 
   /// The user's own name; null when not set (spec feature-my-name).
   String? get myName => _myName;
+
+  /// Who the last LINE message greeted; null when none.
+  String? get lineGreetingName => _lineGreetingName;
 
   Future<void> setThemeMode(ThemeMode mode) async {
     if (mode == _themeMode) return;
@@ -68,6 +74,14 @@ class AppSettings extends ChangeNotifier {
     await _store?.setMyName(value);
     _myName = value;
     notifyListeners();
+  }
+
+  Future<void> setLineGreetingName(String typed) async {
+    final name = typed.trim();
+    final value = name.isEmpty ? null : name;
+    if (value == _lineGreetingName) return;
+    await _store?.setLineGreetingName(value);
+    _lineGreetingName = value;
   }
 }
 

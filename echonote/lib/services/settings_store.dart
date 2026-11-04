@@ -17,6 +17,7 @@ class SettingsStore {
   static const _handednessKey = 'handedness';
   static const _homeViewKey = 'home_view';
   static const _myNameKey = 'my_name';
+  static const _lineGreetingNameKey = 'line_greeting_name';
 
   Future<File> _file() async => File('${(await _documentsDir()).path}/settings.json');
 
@@ -66,6 +67,16 @@ class SettingsStore {
 
   /// Null removes it.
   Future<void> setMyName(String? name) => _write(_myNameKey, name);
+
+  /// Who the last LINE message greeted; null when none (spec
+  /// feature-meeting-to-line, decision 6).
+  Future<String?> lineGreetingName() async {
+    final value = (await _read())[_lineGreetingNameKey];
+    return value is String && value.trim().isNotEmpty ? value : null;
+  }
+
+  /// Null removes it.
+  Future<void> setLineGreetingName(String? name) => _write(_lineGreetingNameKey, name);
 
   static T _enumValue<T extends Enum>(List<T> values, Object? name, T fallback) {
     for (final value in values) {
