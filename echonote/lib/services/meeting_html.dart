@@ -150,6 +150,10 @@ String summaryCopyText(MeetingAnalysis a) {
 
 /// `<title>_<YYYY-MM-DD>.html`, with characters file systems reject swapped
 /// for `_` (same rule as the transcript export).
+/// The PDF made from the same minutes.
+String meetingPdfFileName(Recording recording) =>
+    meetingHtmlFileName(recording).replaceFirst(RegExp(r'\.html$'), '.pdf');
+
 String meetingHtmlFileName(Recording recording) =>
     '${safeFileName(recording.displayTitle)}_${formatIsoDate(recording.createdAt)}.html';
 

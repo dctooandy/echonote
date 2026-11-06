@@ -21,8 +21,9 @@ class _FakePathProvider extends PathProviderPlatform {
 /// Real file IO doesn't finish under the widget tester's fake clock, so the
 /// screen gets an in-memory store.
 class _MemoryStore extends RecordingStore {
-  _MemoryStore(this.recordings);
+  _MemoryStore(this.recordings, {this.audioPath});
   final List<Recording> recordings;
+  final String? audioPath;
 
   @override
   Future<List<Recording>> loadAll() async => recordings;
@@ -31,7 +32,7 @@ class _MemoryStore extends RecordingStore {
   Future<void> save(Recording recording) async {}
 
   @override
-  Future<String> resolveAudioPath(Recording recording) async => '/missing/${recording.audioFileName}';
+  Future<String> resolveAudioPath(Recording recording) async => audioPath ?? '/missing/${recording.audioFileName}';
 }
 
 class _EmptyGlossary extends GlossaryStore {
@@ -61,23 +62,43 @@ Recording _recording(String id, {MeetingAnalysis? analysis, String? previous}) =
   previousRecordingId: previous,
 );
 
-Future<void> _openMenu(WidgetTester tester, Recording recording, List<Recording> all, {
-  Future<void> Function(String, String)? shareFile,
+typedef _Files = List<({String path, String name})>;
+
+Future<void> _openShare(
+  WidgetTester tester,
+  Recording recording,
+  List<Recording> all, {
+  Future<void> Function(_Files)? shareFiles,
+  Future<Uint8List> Function(String)? htmlToPdf,
+  String? audioPath,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       home: MeetingDetailScreen(
         recording: recording,
-        store: _MemoryStore(all),
+        store: _MemoryStore(all, audioPath: audioPath),
         glossary: _EmptyGlossary(),
-        shareFile: shareFile,
+        shareFiles: shareFiles,
+        htmlToPdf: htmlToPdf,
       ),
     ),
   );
   await tester.pump();
-  await tester.tap(find.byTooltip('更多'));
+  await tester.tap(find.byTooltip('分享'));
   await tester.pumpAndSettle();
 }
+
+/// The file writes are real IO: let real time pass, then pump, until the
+/// screen gets to the share call.
+Future<void> _waitFor(WidgetTester tester, Completer<Object?> done) async {
+  for (var i = 0; i < 100 && !done.isCompleted; i++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+    await tester.pump();
+  }
+}
+
+ListTile _row(WidgetTester tester, String label) =>
+    tester.widget<ListTile>(find.ancestor(of: find.text(label), matching: find.byType(ListTile)));
 
 void main() {
   late Directory dir;
@@ -93,40 +114,163 @@ void main() {
 
   tearDown(() => dir.delete(recursive: true));
 
-  testWidgets('export writes the minutes and hands the file to the share sheet', (tester) async {
+  // spec feature-share.
+  testWidgets('the minutes go out as a PDF made from the same HTML', (tester) async {
     final previous = _recording('m1', analysis: _analysis('第一次週會'));
     final current = _recording('m2', analysis: _analysis('官網改版週會'), previous: 'm1');
-    final shared = Completer<(String, String)>();
-    await _openMenu(tester, current, [current, previous], shareFile: (path, name) async => shared.complete((path, name)));
+    final shared = Completer<_Files>();
+    String? html;
+    await _openShare(
+      tester,
+      current,
+      [current, previous],
+      shareFiles: (files) async => shared.complete(files),
+      htmlToPdf: (h) async {
+        html = h;
+        return Uint8List.fromList([1, 2, 3]);
+      },
+    );
 
-    await tester.tap(find.text('匯出會議紀錄'));
+    await tester.tap(find.text('會議紀錄'));
     await tester.pumpAndSettle();
-    // The file write is real IO: let real time pass, then pump, until the
-    // screen gets to the share call.
-    for (var i = 0; i < 100 && !shared.isCompleted; i++) {
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
-      await tester.pump();
-    }
-    final (path, name) = await shared.future;
+    await _waitFor(tester, shared);
+    final files = await shared.future;
 
-    expect(name, '官網改版週會_2026-11-01.html');
-    final html = (await tester.runAsync(() => File(path).readAsString()))!;
+    expect(files.single.name, '官網改版週會_2026-11-01.pdf');
     expect(html, contains('<h1>官網改版週會</h1>'));
     expect(html, contains('接續：第一次週會（2026-11-01）'));
+    expect(await tester.runAsync(() => File(files.single.path).readAsBytes()), [1, 2, 3]);
   });
 
-  testWidgets('export is greyed out until the meeting is analyzed', (tester) async {
+  testWidgets('an out-of-date analysis asks before the minutes go out', (tester) async {
+    final recording = _recording('m2', analysis: _analysis('週會'))..transcriptStaleAnalysis = true;
     var shared = false;
-    final recording = _recording('m3');
-    await _openMenu(tester, recording, [recording], shareFile: (_, _) async => shared = true);
-
-    final item = tester.widget<PopupMenuItem<Object?>>(
-      find.ancestor(of: find.text('匯出會議紀錄'), matching: find.byWidgetPredicate((w) => w is PopupMenuItem)),
+    await _openShare(
+      tester,
+      recording,
+      [recording],
+      shareFiles: (_) async => shared = true,
+      htmlToPdf: (_) async => Uint8List(0),
     );
-    expect(item.enabled, isFalse);
-    await tester.tap(find.text('匯出會議紀錄'), warnIfMissed: false);
+    await tester.tap(find.text('會議紀錄'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('分析可能過時'), findsOneWidget);
+    await tester.tap(find.text('取消'));
     await tester.pumpAndSettle();
     expect(shared, isFalse);
+  });
+
+  testWidgets('without an analysis, conclusions and minutes are off, full data is on', (tester) async {
+    final recording = _recording('m3');
+    await _openShare(tester, recording, [recording]);
+
+    expect(_row(tester, '傳給對方的結論').enabled, isFalse);
+    expect(_row(tester, '會議紀錄').enabled, isFalse);
+    expect(_row(tester, '完整資料').enabled, isTrue);
+  });
+
+  testWidgets('with nothing to send, full data is off too', (tester) async {
+    final recording = _recording('m3')..segments = [];
+    await _openShare(tester, recording, [recording]);
+    expect(_row(tester, '完整資料').enabled, isFalse);
+    expect(find.text('沒有逐字稿，也找不到錄音檔'), findsOneWidget);
+  });
+
+  testWidgets('conclusions open the preview', (tester) async {
+    final recording = _recording('m2', analysis: _analysis('週會'));
+    await _openShare(tester, recording, [recording]);
+    await tester.tap(find.text('傳給對方的結論'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(AppBar, '傳給對方的結論'), findsOneWidget);
+  });
+
+  testWidgets('the old ways in are gone', (tester) async {
+    final recording = _recording('m2', analysis: _analysis('週會'));
+    await tester.pumpWidget(
+      MaterialApp(home: MeetingDetailScreen(recording: recording, store: _MemoryStore([recording]), glossary: _EmptyGlossary())),
+    );
+    await tester.pump();
+    expect(find.byTooltip('匯出逐字稿'), findsNothing);
+    await tester.tap(find.byTooltip('更多'));
+    await tester.pumpAndSettle();
+    expect(find.text('匯出會議紀錄'), findsNothing);
+    expect(find.text('複製成 LINE 訊息'), findsNothing);
+  });
+
+  group('full data', () {
+    late String audioPath;
+
+    setUp(() {
+      audioPath = '${dir.path}/audio.m4a';
+      File(audioPath).writeAsBytesSync(List.filled(2048, 0));
+    });
+
+    testWidgets('sends the transcript by default, with no notes', (tester) async {
+      final recording = _recording('m2', analysis: _analysis('週會'));
+      final shared = Completer<_Files>();
+      await _openShare(tester, recording, [recording], audioPath: audioPath, shareFiles: (f) async => shared.complete(f));
+      await tester.tap(find.text('完整資料'));
+      await tester.pumpAndSettle();
+      expect(find.text('2 KB，含所有發言'), findsOneWidget);
+
+      await tester.tap(find.text('分享'));
+      await tester.pumpAndSettle();
+      await _waitFor(tester, shared);
+
+      final files = await shared.future;
+      expect(files.map((f) => f.name), ['週會.txt']);
+      expect(await tester.runAsync(() => File(files.single.path).readAsString()), contains('大家好'));
+    });
+
+    testWidgets('adding the recording asks once more, then sends both', (tester) async {
+      final recording = _recording('m2', analysis: _analysis('週會'));
+      final shared = Completer<_Files>();
+      await _openShare(tester, recording, [recording], audioPath: audioPath, shareFiles: (f) async => shared.complete(f));
+      await tester.tap(find.text('完整資料'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('原始錄音'));
+      await tester.pumpAndSettle();
+      expect(find.text('要傳錄音嗎？'), findsNothing);
+
+      await tester.tap(find.text('分享'));
+      await tester.pumpAndSettle();
+      expect(find.text('要傳錄音嗎？'), findsOneWidget);
+      await tester.tap(find.text('確定要傳'));
+      await tester.pumpAndSettle();
+      await _waitFor(tester, shared);
+
+      final files = await shared.future;
+      expect(files.map((f) => f.name), ['週會.txt', '週會.m4a']);
+      expect(files.last.path, audioPath);
+    });
+
+    testWidgets('cancelling the question sends nothing', (tester) async {
+      final recording = _recording('m2', analysis: _analysis('週會'));
+      var shared = false;
+      await _openShare(tester, recording, [recording], audioPath: audioPath, shareFiles: (_) async => shared = true);
+      await tester.tap(find.text('完整資料'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('原始錄音'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('分享'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(shared, isFalse);
+    });
+
+    testWidgets('a missing recording can\'t be ticked, and nothing ticked can\'t be sent', (tester) async {
+      final recording = _recording('m2', analysis: _analysis('週會'));
+      await _openShare(tester, recording, [recording]);
+      await tester.tap(find.text('完整資料'));
+      await tester.pumpAndSettle();
+      expect(find.text('找不到錄音檔'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(CheckboxListTile, '逐字稿'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<FilledButton>(find.byWidgetPredicate((w) => w is FilledButton)).onPressed, isNull);
+    });
   });
 
   testWidgets('copying the summary includes what changed since last time', (tester) async {

@@ -5,7 +5,7 @@ import '../models/recording.dart';
 import '../services/app_settings.dart';
 import '../services/meeting_line.dart';
 
-/// Shows the LINE message for one meeting, to read and change before it's
+/// Shows the conclusions message for one meeting, to read and change before it's
 /// copied (spec feature-meeting-to-line). Nothing is kept: leaving the page
 /// drops the edits.
 class LineMessageScreen extends StatefulWidget {
@@ -64,7 +64,7 @@ class _LineMessageScreenState extends State<LineMessageScreen> {
     final stale = recording.transcriptStaleAnalysis || recording.previousChangedSinceAnalysis;
     final empty = _body.text.trim().isEmpty;
     return Scaffold(
-      appBar: AppBar(title: const Text('LINE 訊息')),
+      appBar: AppBar(title: const Text('傳給對方的結論')),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
