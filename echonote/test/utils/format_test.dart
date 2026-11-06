@@ -39,4 +39,10 @@ void main() {
       expect(formatListDate(DateTime(2025, 12, 31, 23, 59), now), '2025/12/31 23:59');
     });
   });
+
+  test('formatFileSize uses KB, then MB', () {
+    expect(formatFileSize(500), '1 KB');
+    expect(formatFileSize(12 * 1024), '12 KB');
+    expect(formatFileSize((38.5 * 1024 * 1024).round()), '38.5 MB');
+  });
 }

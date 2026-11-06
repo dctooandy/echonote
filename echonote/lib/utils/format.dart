@@ -45,3 +45,9 @@ String formatDayHeading(DateTime t, DateTime now) {
 
 /// 13:11
 String formatClock(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+/// A file's size for people: 12 KB, 38.5 MB.
+String formatFileSize(int bytes) {
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).ceil()} KB';
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+}

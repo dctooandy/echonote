@@ -365,12 +365,12 @@ void main() {
     expect(find.text('重新分析'), findsOneWidget);
   });
 
-  testWidgets('the AppBar keeps one button, so the title has room', (tester) async {
+  testWidgets('the AppBar keeps two buttons, so the title has room', (tester) async {
     await _pump(tester, _recording()..analysis = analysis());
     final appBar = find.byType(AppBar);
 
-    // Only ⋯ (the page is the route root here, so no back button).
-    expect(find.descendant(of: appBar, matching: find.byType(IconButton)), findsOneWidget);
+    // Only 分享 and ⋯ (the page is the route root here, so no back button).
+    expect(find.descendant(of: appBar, matching: find.byType(IconButton)), findsNWidgets(2));
   });
 
   testWidgets('re-analyze asks first, and cancelling keeps the analysis', (tester) async {
