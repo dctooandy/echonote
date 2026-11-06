@@ -95,4 +95,12 @@ void main() {
     await file.writeAsString(jsonEncode({'my_name': '  '}));
     expect(await store.myName(), isNull);
   });
+
+  test('the LINE greeting name is unset until saved', () async {
+    expect(await store.lineGreetingName(), isNull);
+    await store.setLineGreetingName('陳醫師');
+    expect(await store.lineGreetingName(), '陳醫師');
+    await store.setLineGreetingName(null);
+    expect(await store.lineGreetingName(), isNull);
+  });
 }

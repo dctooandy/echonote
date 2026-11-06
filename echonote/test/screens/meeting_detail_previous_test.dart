@@ -287,6 +287,27 @@ void main() {
     expect(find.text('• 預算'), findsOneWidget);
   });
 
+  testWidgets('the LINE message needs an analysis, and opens from the menu', (tester) async {
+    final none = _recording('none', DateTime(2026, 10, 15));
+    await _pump(tester, none, [none]);
+    await tester.tap(find.byTooltip('更多'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('複製成 LINE 訊息'));
+    await tester.pumpAndSettle();
+    expect(find.text('LINE 訊息'), findsNothing);
+    await tester.tapAt(Offset.zero);
+    await tester.pumpAndSettle();
+
+    final done = _recording('done', DateTime(2026, 10, 16), title: '這場');
+    await tester.pumpWidget(const SizedBox());
+    await _pump(tester, done, [done]);
+    await tester.tap(find.byTooltip('更多'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('複製成 LINE 訊息'));
+    await tester.pumpAndSettle();
+    expect(find.text('LINE 訊息'), findsOneWidget);
+  });
+
   group('re-analysis', () {
     setUp(() => AnalysisService.available = true);
     tearDown(() => AnalysisService.available = false);

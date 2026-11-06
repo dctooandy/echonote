@@ -246,3 +246,9 @@ test("the prompt says which remarks count as todos", () => {
   assert.match(SYSTEM_PROMPT, /兩件不同的事不要合成一筆/);
   assert.match(SYSTEM_PROMPT, /以下不算待辦：只是討論、沒有人答應要做的/);
 });
+
+test("the prompt keeps status and assignments out of decisions, and tool names in", () => {
+  assert.match(SYSTEM_PROMPT, /只寫會議裡真正拍板的結論/);
+  assert.match(SYSTEM_PROMPT, /現況和進度報告.*工作分配.*都不算決議/);
+  assert.match(SYSTEM_PROMPT, /保留逐字稿提到的工具、產品、平台名稱/);
+});

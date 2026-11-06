@@ -25,6 +25,7 @@ import '../widgets/confirm_delete_dialog.dart';
 import '../widgets/glossary_term_dialog.dart';
 import '../widgets/rename_dialog.dart';
 import '../widgets/round_icon_button.dart';
+import 'line_message_screen.dart';
 
 class MeetingDetailScreen extends StatefulWidget {
   const MeetingDetailScreen({
@@ -188,6 +189,10 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
     );
     if (ok == true) await _runAnalysis();
   }
+
+  Future<void> _openLineMessage() => Navigator.of(context).push(
+    MaterialPageRoute(builder: (_) => LineMessageScreen(recording: widget.recording)),
+  );
 
   /// Flips whether the user took part. Only the next analysis sees it, so
   /// offer one when there's an analysis already (spec feature-my-name,
@@ -617,6 +622,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
               onSelected: (action) => switch (action) {
                 _MoreAction.previous => _pickPrevious(),
                 _MoreAction.attended => _toggleAttended(),
+                _MoreAction.line => _openLineMessage(),
                 _MoreAction.export => _exportMinutes(),
                 _MoreAction.reanalyze => _confirmReanalyze(),
                 _MoreAction.retranscribe => _confirmRetranscribe(),
@@ -670,6 +676,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
                     // (spec feature-my-name, C9).
                     hint: '只有你在會議裡發言才打勾，不然 AI 可能把別人的工作寫成你',
                   ),
+                  item(_MoreAction.line, Icons.chat_bubble_outline, '複製成 LINE 訊息', enabled: analysis != null),
                   item(_MoreAction.export, Icons.ios_share, '匯出會議紀錄', enabled: analysis != null),
                   if (analysis != null && widget.recording.isTranscribed)
                     item(_MoreAction.reanalyze, Icons.auto_awesome, '重新分析'),
@@ -1631,7 +1638,7 @@ class _TimePill extends StatelessWidget {
   }
 }
 
-enum _MoreAction { previous, attended, export, reanalyze, retranscribe, delete }
+enum _MoreAction { previous, attended, line, export, reanalyze, retranscribe, delete }
 
 enum _LearnChoice { dismiss, learn, learnAndApply }
 
