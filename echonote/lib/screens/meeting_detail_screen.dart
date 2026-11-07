@@ -27,6 +27,7 @@ import '../widgets/confirm_delete_dialog.dart';
 import '../widgets/glossary_term_dialog.dart';
 import '../widgets/rename_dialog.dart';
 import '../widgets/round_icon_button.dart';
+import '../widgets/save_notice.dart';
 import '../widgets/share_sheet.dart';
 import 'line_message_screen.dart';
 
@@ -129,7 +130,7 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
   /// there's no need to make the UI wait on the write finishing.
   void _persist() {
     setState(() {});
-    _store.save(widget.recording);
+    saveWithNotice(ScaffoldMessenger.of(context), () => _store.save(widget.recording));
   }
 
   Future<void> _runAnalysis() async {
@@ -140,6 +141,8 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
       ).showSnackBar(SnackBar(content: Text(Platform.isAndroid ? 'Android 版尚未支援分析' : '分析服務無法使用')));
       return;
     }
+    // Taken now: the save below must still report after the page is gone.
+    final messenger = ScaffoldMessenger.of(context);
     setState(() {
       _isAnalyzing = true;
       _analysisSeconds = 0;
@@ -165,10 +168,16 @@ class _MeetingDetailScreenState extends State<MeetingDetailScreen> {
         ..analysis = analysis
         ..transcriptStaleAnalysis = false
         ..previousChangedSinceAnalysis = false;
-      await _store.save(widget.recording);
+      // The analysis is good even if saving it isn't: don't call it failed
+      // (spec fix-save-failure-notice, decision 3).
+      final saved = await saveWithNotice(
+        messenger,
+        () => _store.save(widget.recording),
+        failureMessage: '分析完成，但存檔失敗',
+      );
       if (!mounted) return;
       setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('分析完成，內容已更新')));
+      if (saved) messenger.showSnackBar(const SnackBar(content: Text('分析完成，內容已更新')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(analysisErrorMessage(e))));

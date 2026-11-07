@@ -1,6 +1,7 @@
 import 'package:echonote/models/recording.dart';
 import 'package:echonote/screens/meeting_detail_screen.dart';
 import 'dart:async';
+import 'dart:io';
 
 import 'package:echonote/services/analysis_service.dart';
 import 'package:echonote/services/app_settings.dart';
@@ -12,6 +13,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// Real file IO doesn't finish under the widget tester's fake clock, so the
 /// screen gets an in-memory store.
+class _FailingStore extends _MemoryStore {
+  _FailingStore(super.saved);
+
+  @override
+  Future<void> save(Recording recording) async => throw const FileSystemException('disk full');
+}
+
 class _MemoryStore extends RecordingStore {
   _MemoryStore(List<Recording> recordings) : _recordings = {for (final r in recordings) r.id: r};
   final Map<String, Recording> _recordings;
@@ -331,6 +339,38 @@ void main() {
       expect(find.text('分析完成，內容已更新'), findsOneWidget);
       expect(current.analysis?.title, '新的標題');
       expect(current.previousChangedSinceAnalysis, isFalse);
+    });
+
+    testWidgets('an analysis that can\'t be saved isn\'t called a failed analysis', (tester) async {
+      final current = _recording('current', DateTime(2026, 10, 15), title: '這場');
+      final service = _FakeAnalysisService();
+      await tester.pumpWidget(
+        AppSettingsScope(
+          settings: AppSettings(),
+          child: MaterialApp(
+            home: MeetingDetailScreen(
+              recording: current,
+              store: _FailingStore([current]),
+              analysisService: service,
+              glossary: _EmptyGlossary(),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byTooltip('更多'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('重新分析').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '重新分析'));
+      await tester.pump();
+      service.result.complete(_analysis('新的標題'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('分析完成，但存檔失敗'), findsOneWidget);
+      expect(find.text('再試一次'), findsOneWidget);
+      expect(find.text('分析完成，內容已更新'), findsNothing);
+      expect(current.analysis?.title, '新的標題');
     });
 
     testWidgets('a failure removes the banner and says why', (tester) async {

@@ -21,15 +21,25 @@ class _FakePathProvider extends PathProviderPlatform {
 /// Real file IO doesn't finish under the widget tester's fake clock, so the
 /// screen gets an in-memory store.
 class _MemoryStore extends RecordingStore {
-  _MemoryStore(this.recordings, {this.audioPath});
+  _MemoryStore(this.recordings, {this.audioPath, this.failures = 0});
   final List<Recording> recordings;
   final String? audioPath;
+
+  /// How many saves fail before they start working.
+  int failures;
+  int saves = 0;
 
   @override
   Future<List<Recording>> loadAll() async => recordings;
 
   @override
-  Future<void> save(Recording recording) async {}
+  Future<void> save(Recording recording) async {
+    if (failures > 0) {
+      failures--;
+      throw const FileSystemException('disk full');
+    }
+    saves++;
+  }
 
   @override
   Future<String> resolveAudioPath(Recording recording) async => audioPath ?? '/missing/${recording.audioFileName}';
@@ -317,5 +327,54 @@ void main() {
     await tester.pumpAndSettle();
     expect(recording.customTitle, isNull);
     expect(find.text('AI 標題'), findsNWidgets(2));
+  });
+
+  group('a failed save (spec fix-save-failure-notice)', () {
+    Future<void> rename(WidgetTester tester, _MemoryStore store, Recording recording, String name) async {
+      await tester.pumpWidget(
+        MaterialApp(home: MeetingDetailScreen(recording: recording, store: store, glossary: _EmptyGlossary())),
+      );
+      await tester.pump();
+      await tester.longPress(find.descendant(of: find.byType(AppBar), matching: find.text('週會')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), name);
+      await tester.tap(find.text('儲存'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('says so, and trying again saves it', (tester) async {
+      final recording = _recording('m2', analysis: _analysis('週會'));
+      final store = _MemoryStore([recording], failures: 1);
+      await rename(tester, store, recording, '新名字');
+
+      expect(find.text('存檔失敗，這次的修改還沒保存'), findsOneWidget);
+      await tester.tap(find.text('再試一次'));
+      await tester.pumpAndSettle();
+
+      expect(store.saves, 1);
+      expect(find.text('存檔失敗，這次的修改還沒保存'), findsNothing);
+      expect(find.text('已保存'), findsOneWidget);
+    });
+
+    testWidgets('failing again says so again', (tester) async {
+      final recording = _recording('m2', analysis: _analysis('週會'));
+      final store = _MemoryStore([recording], failures: 2);
+      await rename(tester, store, recording, '新名字');
+      await tester.tap(find.text('再試一次'));
+      await tester.pumpAndSettle();
+
+      expect(store.saves, 0);
+      expect(find.text('存檔失敗，這次的修改還沒保存'), findsOneWidget);
+    });
+
+    testWidgets('a good save says nothing', (tester) async {
+      final recording = _recording('m2', analysis: _analysis('週會'));
+      final store = _MemoryStore([recording]);
+      await rename(tester, store, recording, '新名字');
+
+      expect(store.saves, 1);
+      expect(find.textContaining('存檔失敗'), findsNothing);
+      expect(find.text('已保存'), findsNothing);
+    });
   });
 }

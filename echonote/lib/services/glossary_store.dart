@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/glossary.dart';
+import 'atomic_write.dart';
 
 class GlossaryCorruptException implements Exception {
   const GlossaryCorruptException();
@@ -48,7 +49,8 @@ class GlossaryStore {
 
   Future<void> save(List<GlossaryTerm> terms) async {
     final file = await _file();
-    await file.writeAsString(
+    await writeStringAtomically(
+      file,
       jsonEncode({'version': 1, 'terms': terms.map((t) => t.toJson()).toList()}),
     );
   }
