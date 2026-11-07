@@ -4,8 +4,27 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/recording.dart';
+import 'atomic_write.dart';
 
 class RecordingStore {
+  /// The last pending write of each entry. Shared because every screen has
+  /// its own store, and they all write the same files.
+  static final _pending = <String, Future<void>>{};
+
+  /// Runs [write] after the entry's earlier writes, so an older edit can't
+  /// land on top of a newer one; a failed write doesn't stop the next
+  /// (spec fix-save-failure-notice, decision 5).
+  Future<void> _inTurn(String id, Future<void> Function() write) {
+    final next = (_pending[id] ?? Future<void>.value()).then<void>((_) {}, onError: (_) {}).then((_) => write());
+    _pending[id] = next;
+    void forget() {
+      if (identical(_pending[id], next)) _pending.remove(id);
+    }
+
+    next.then<void>((_) => forget(), onError: (_) => forget());
+    return next;
+  }
+
   Future<Directory> _historyDir() async {
     final dir = await getApplicationDocumentsDirectory();
     final historyDir = Directory('${dir.path}/history');
@@ -20,20 +39,23 @@ class RecordingStore {
     return recDir;
   }
 
-  Future<void> save(Recording recording) async {
-    final dir = await _historyDir();
-    final file = File('${dir.path}/${recording.id}.json');
-    await file.writeAsString(jsonEncode(recording.toJson()));
+  Future<void> save(Recording recording) {
+    // Encoded now: the recording may change again while this waits its turn.
+    final contents = jsonEncode(recording.toJson());
+    return _inTurn(recording.id, () async {
+      final dir = await _historyDir();
+      await writeStringAtomically(File('${dir.path}/${recording.id}.json'), contents);
+    });
   }
 
   /// Removes [recording]'s history entry and its audio file. A missing
   /// audio file (e.g. a failed earlier delete) is not an error.
-  Future<void> delete(Recording recording) async {
+  Future<void> delete(Recording recording) => _inTurn(recording.id, () async {
     final audio = File(await resolveAudioPath(recording));
     if (await audio.exists()) await audio.delete();
     final entry = File('${(await _historyDir()).path}/${recording.id}.json');
     if (await entry.exists()) await entry.delete();
-  }
+  });
 
   /// Resolves [recording]'s audio file to an absolute path under the
   /// *current* app container. Never store the absolute path itself — iOS
@@ -48,17 +70,17 @@ class RecordingStore {
   /// Sets only the length of the saved entry [id], reading it fresh from
   /// disk so an edit saved meanwhile (e.g. on the detail page) isn't
   /// overwritten. A deleted or unreadable entry is left alone.
-  Future<void> saveDuration(String id, int durationMs) async {
+  Future<void> saveDuration(String id, int durationMs) => _inTurn(id, () async {
     final file = File('${(await _historyDir()).path}/$id.json');
     if (!await file.exists()) return;
     try {
       final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       json['duration_ms'] = durationMs;
-      await file.writeAsString(jsonEncode(json));
+      await writeStringAtomically(file, jsonEncode(json));
     } on FormatException {
       // Corrupt entry: loadAll skips it too.
     }
-  }
+  });
 
   Future<List<Recording>> loadAll() async {
     final dir = await _historyDir();

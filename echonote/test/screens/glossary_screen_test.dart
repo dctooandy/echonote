@@ -14,6 +14,20 @@ GlossaryTerm _term(String term, {bool pinned = false, DateTime? createdAt}) => G
   createdAt: createdAt ?? DateTime(2026, 10, 1),
 );
 
+/// Loads fine, then can't save until [broken] is cleared.
+class _BrokenStore extends GlossaryStore {
+  _BrokenStore({required super.documentsDir});
+
+  bool broken = true;
+  List<GlossaryTerm>? saved;
+
+  @override
+  Future<void> save(List<GlossaryTerm> terms) async {
+    if (broken) throw const FileSystemException('disk full');
+    saved = terms;
+  }
+}
+
 void main() {
   late Directory dir;
   late GlossaryStore store;
@@ -147,5 +161,25 @@ void main() {
     );
     await settle(tester);
     expect(tester.getCenter(find.byTooltip('新增詞條')).dx, lessThan(width / 2));
+  });
+
+  // spec fix-save-failure-notice, decision 4.
+  testWidgets('a failed save says so, and trying again saves it', (tester) async {
+    final broken = _BrokenStore(documentsDir: () async => dir);
+    await tester.pumpWidget(MaterialApp(home: GlossaryScreen(store: broken)));
+    await settle(tester);
+
+    await tester.tap(find.byTooltip('新增詞條'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '台積電');
+    await tester.tap(find.text('儲存'));
+    await settle(tester);
+    expect(find.text('存檔失敗，這次的修改還沒保存'), findsOneWidget);
+
+    broken.broken = false;
+    await tester.tap(find.text('再試一次'));
+    await settle(tester);
+    expect(broken.saved?.map((t) => t.term), ['台積電']);
+    expect(find.text('已保存'), findsOneWidget);
   });
 }

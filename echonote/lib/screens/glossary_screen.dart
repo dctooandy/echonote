@@ -5,6 +5,7 @@ import '../services/app_settings.dart';
 import '../services/glossary_store.dart';
 import '../services/whisper_prompt.dart';
 import '../widgets/glossary_term_dialog.dart';
+import '../widgets/save_notice.dart';
 
 /// The global glossary. Listed in prompt priority order, so the user sees
 /// which terms make it into transcription.
@@ -36,7 +37,7 @@ class _GlossaryScreenState extends State<GlossaryScreen> {
 
   Future<void> _save() async {
     setState(() {});
-    await _store.save(_terms);
+    await saveWithNotice(ScaffoldMessenger.of(context), () => _store.save(_terms));
   }
 
   void _showSnack(String message, {SnackBarAction? action}) {

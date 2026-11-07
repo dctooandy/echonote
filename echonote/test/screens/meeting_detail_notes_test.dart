@@ -277,7 +277,7 @@ void main() {
     await tester.tap(find.text('加入並修正 2 處'));
     // The glossary is read and written with real file I/O, which fake time
     // doesn't advance: let real time pass between pumps until it's done.
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < 15; i++) {
       await tester.pump();
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
     }
@@ -317,7 +317,7 @@ void main() {
 
     await tester.tap(find.text('加入詞庫'));
     // Loading the glossary is real file I/O.
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < 15; i++) {
       await tester.pump();
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
     }
@@ -326,7 +326,7 @@ void main() {
     expect(find.text('填正確寫法，不是聽起來的音'), findsOneWidget);
     await tester.enterText(find.byType(TextField), 'FoodSnap');
     await tester.tap(find.text('儲存'));
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < 15; i++) {
       await tester.pump();
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
     }
